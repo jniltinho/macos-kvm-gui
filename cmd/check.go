@@ -20,7 +20,7 @@ var checkCmd = &cobra.Command{
 		}
 		tw := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 4, 2, ' ', 0)
 		failed := 0
-		for _, ch := range core.SystemHost().Checks(c.Version) {
+		for _, ch := range core.SystemHost().ChecksFor(c) {
 			line := fmt.Sprintf("%s\t%s\t%s", ch.Status, ch.Name, ch.Detail)
 			if ch.Hint != "" {
 				line += " (" + ch.Hint + ")"

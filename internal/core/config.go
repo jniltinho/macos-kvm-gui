@@ -65,6 +65,9 @@ type Config struct {
 	// so OpenCore Legacy Patcher can root-patch a passed-through NVIDIA Kepler GPU inside
 	// Monterey to Sequoia (see rootpatch.go).
 	RootPatch bool `json:"root_patch,omitempty"`
+	// Graphics is the display adapter: "" or GraphicsSVGA (the default), or GraphicsReims, a
+	// paravirtual GPU with Metal through the host's Vulkan driver (reims.go, reimshost.go).
+	Graphics string `json:"graphics,omitempty"`
 	// rootPatchWasOn is set by PrepareBoot when the previous boot had root-patch mode on.
 	rootPatchWasOn bool
 	// Extras is a start's snapshot of settings.yaml, never saved; nil
@@ -100,6 +103,15 @@ const (
 	DisplayApp    = "app"
 	DisplayWindow = "window"
 )
+
+// Graphics adapters.
+const (
+	GraphicsSVGA  = "vmware-svga"
+	GraphicsReims = "reims-vgpu"
+)
+
+// Reims reports whether the VM runs on Reims vGPU.
+func (c Config) Reims() bool { return c.Graphics == GraphicsReims }
 
 // InApp reports whether the VM's screen is shown inside the app (the default).
 func (c Config) InApp() bool { return c.Display != DisplayWindow }
@@ -157,6 +169,12 @@ func (c Config) Validate() error {
 	}
 	if c.RootPatch && !RootPatchVersion(c.Version) {
 		return &FieldError{"root_patch", "root-patch mode is for Monterey 12 to Sequoia 15: Big Sur drives Kepler GPUs natively, and Tahoe has no stable OCLP support yet"}
+	}
+	if c.Graphics != "" && c.Graphics != GraphicsSVGA && c.Graphics != GraphicsReims {
+		return &FieldError{"graphics", "expected " + GraphicsSVGA + " or " + GraphicsReims}
+	}
+	if c.Reims() && c.GPU != "" {
+		return &FieldError{"graphics", "Reims vGPU and GPU passthrough cannot be used together: choose one of them (clear the GPU, or set graphics to " + GraphicsSVGA + ")"}
 	}
 	if c.GPU != "" && !pciAddrRe.MatchString(c.GPU) {
 		return &FieldError{"gpu", "expected a PCI address such as 0000:03:00.0"}

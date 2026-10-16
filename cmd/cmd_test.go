@@ -33,6 +33,21 @@ func TestConfigCommands(t *testing.T) {
 	if _, err := run(t, "--config", cfg, "config", "set", "nope=1"); err == nil {
 		t.Fatal("unknown keys must be refused")
 	}
+	if out, _ := run(t, "--config", cfg, "config", "show"); !strings.Contains(out, `"graphics": "vmware-svga"`) {
+		t.Fatalf("show must print the default graphics:\n%s", out)
+	}
+	if _, err := run(t, "--config", cfg, "config", "set", "graphics=virtio"); err == nil || !strings.Contains(err.Error(), "vmware-svga or reims-vgpu") {
+		t.Fatalf("invalid graphics: %v", err)
+	}
+	if _, err := run(t, "--config", cfg, "config", "set", "graphics=reims-vgpu", "gpu=0000:03:00.0"); err == nil || !strings.Contains(err.Error(), "choose one") {
+		t.Fatalf("Reims vGPU with a GPU: %v", err)
+	}
+	if _, err := run(t, "--config", cfg, "config", "set", "graphics=reims-vgpu"); err != nil {
+		t.Fatal(err)
+	}
+	if out, _ := run(t, "--config", cfg, "config", "show"); !strings.Contains(out, `"graphics": "reims-vgpu"`) {
+		t.Fatalf("show: %s", out)
+	}
 	if _, err := run(t, "--config", cfg, "media", "remove"); err == nil || !strings.Contains(err.Error(), "--yes") {
 		t.Fatalf("media remove needs --yes: %v", err)
 	}

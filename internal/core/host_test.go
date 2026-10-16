@@ -31,9 +31,16 @@ func fakeHost(t *testing.T, cpuFlags, msrs string, procs ...string) Host {
 		DevKVM:   filepath.Join(root, "kvm"),
 		LookPath: func(s string) (string, error) { return "/usr/bin/" + s, nil },
 		Output: func(string, ...string) ([]byte, error) {
-			return []byte("QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1)"), nil
+			return []byte("QEMU emulator version 8.2.2 (Debian 1:8.2.2+ds-0ubuntu1)\nname \"apple-gfx-pci\", bus PCI"), nil
 		},
+		ShareRoot:  filepath.Join(root, "share"),
+		DevUdmabuf: filepath.Join(root, "udmabuf"),
 	}
+	write(t, filepath.Join(h.ShareRoot, "vulkan/icd.d/nvidia_icd.json"), "{}")
+	write(t, filepath.Join(h.ProcRoot, "sys/vm/max_map_count"), "2097152\n")
+	reims := filepath.Join(root, "reims-qemu")
+	write(t, reims, "")
+	t.Setenv("MKG_REIMS_QEMU", reims)
 	write(t, filepath.Join(h.ProcRoot, "cpuinfo"), "processor : 0\nflags\t\t: fpu "+cpuFlags+"\n")
 	if msrs != "" {
 		write(t, h.msrsPath(), msrs+"\n")

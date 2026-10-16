@@ -9,10 +9,10 @@
 
 ## 2. Core
 
-- [ ] 2.1 `Config.Graphics` with validation (values, exclusive with `GPU`), schema 4 migration, export/import; tests for an old database, a round trip and the exclusivity error.
-- [ ] 2.2 `reims.go`: `ReimsQEMU()` (`reims_qemu` in settings.yaml, `MKG_REIMS_QEMU`, `<Workspace>/.reims`, upstream's path), `apple-gfx-pci` probe, Vulkan ICD, `vm.max_map_count` and udmabuf checks over `Host` roots; table tests with a fake sysfs/procfs.
-- [ ] 2.3 `BuildArgs` for Reims VMs (memfd, S3 off, `-vga none`, `apple-gfx-pci` without a fixed address, xHCI interrupt mapping, one `snd0` audiodev bound to HDA and `usb-audio`, `-display none` plus VNC) and unchanged arguments for `vmware-svga`; golden tests for both, and a paused realization with the installed Reims QEMU (skipped when absent).
-- [ ] 2.4 `vm.Start` runs the Reims QEMU with `REIMS_VGPU_WINDOW` removed and runs the checks first; test the error messages for a missing build and a low map count.
+- [x] 2.1 `Config.Graphics` with validation (values, exclusive with `GPU`), schema 4 migration, export/import; tests for an old database, a round trip and the exclusivity error.
+- [x] 2.2 `reims.go`: `ReimsQEMU()` (`reims_qemu` in settings.yaml, `MKG_REIMS_QEMU`, `<Workspace>/.reims`, upstream's path), `apple-gfx-pci` probe, Vulkan ICD, `vm.max_map_count` and udmabuf checks over `Host` roots; table tests with a fake sysfs/procfs.
+- [x] 2.3 `BuildArgs` for Reims VMs (memfd, S3 off, `-vga none`, `apple-gfx-pci` without a fixed address, xHCI interrupt mapping, one `snd0` audiodev bound to HDA and `usb-audio`, `-display none` plus VNC) and unchanged arguments for `vmware-svga`; golden tests for both, and a paused realization with the installed Reims QEMU (skipped when absent).
+- [x] 2.4 `vm.Start` runs the Reims QEMU with `REIMS_VGPU_WINDOW` removed and runs the checks first; test the error messages for a missing build and a low map count.
 
 ## 3. Interfaces
 

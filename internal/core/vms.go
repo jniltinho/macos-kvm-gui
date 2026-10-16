@@ -64,8 +64,8 @@ CREATE TABLE IF NOT EXISTS vms (
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
 
 // schemaVersion is the database's PRAGMA user_version: 1 created the tables, 2 added the
-// network adapters, 3 root-patch mode.
-const schemaVersion = 3
+// network adapters, 3 root-patch mode, 4 the graphics adapter.
+const schemaVersion = 4
 
 // migrate brings a database from version v to schemaVersion. Each step is safe to repeat, and
 // the version is written last, so an interrupted upgrade runs again on the next start.
@@ -96,6 +96,18 @@ func migrate(db *sql.DB, v int) error {
 		}
 		if n == 0 {
 			if _, err := db.Exec(`ALTER TABLE vms ADD COLUMN root_patch INTEGER NOT NULL DEFAULT 0`); err != nil &&
+				!strings.Contains(err.Error(), "duplicate column name") {
+				return err
+			}
+		}
+	}
+	if v < 4 {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('vms') WHERE name = 'graphics'`).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := db.Exec(`ALTER TABLE vms ADD COLUMN graphics TEXT NOT NULL DEFAULT ''`); err != nil &&
 				!strings.Contains(err.Error(), "duplicate column name") {
 				return err
 			}
@@ -139,7 +151,7 @@ func openDB() (*sql.DB, error) {
 	return db, nil
 }
 
-const vmColumns = `id, name, workspace, version, ram_mib, cores, vcpus, ssh_port, display, gpu, networks, root_patch`
+const vmColumns = `id, name, workspace, version, ram_mib, cores, vcpus, ssh_port, display, gpu, networks, root_patch, graphics`
 
 // networksJSON stores the adapters; "" keeps a VM on its legacy single NAT adapter.
 func networksJSON(c Config) string {
@@ -154,7 +166,7 @@ func scanVM(row interface{ Scan(...any) error }) (VMEntry, error) {
 	var e VMEntry
 	c := &e.Config
 	var nets string
-	err := row.Scan(&e.ID, &c.Name, &c.Workspace, &c.Version, &c.RAMMiB, &c.Cores, &c.VCPUs, &c.SSHPort, &c.Display, &c.GPU, &nets, &c.RootPatch)
+	err := row.Scan(&e.ID, &c.Name, &c.Workspace, &c.Version, &c.RAMMiB, &c.Cores, &c.VCPUs, &c.SSHPort, &c.Display, &c.GPU, &nets, &c.RootPatch, &c.Graphics)
 	if err == nil && nets != "" {
 		if jerr := json.Unmarshal([]byte(nets), &c.Networks); jerr != nil {
 			return e, fmt.Errorf("VM %s: unreadable network adapters: %w", e.ID, jerr)
@@ -259,8 +271,8 @@ func insertVM(db *sql.DB, c Config) (VMEntry, error) {
 		}
 		id = fmt.Sprintf("%s-%d", base, i)
 	}
-	_, err := db.Exec(`INSERT INTO vms (`+vmColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch)
+	_, err := db.Exec(`INSERT INTO vms (`+vmColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch, c.Graphics)
 	if isUniqueErr(err) {
 		return VMEntry{}, &FieldError{"name", "a VM with this name already exists"}
 	}
@@ -289,8 +301,8 @@ func SaveVM(e VMEntry, c Config) error {
 	}
 	defer db.Close()
 	res, err := db.Exec(`UPDATE vms SET name = ?, workspace = ?, version = ?, ram_mib = ?, cores = ?, vcpus = ?, ssh_port = ?,
-		display = ?, gpu = ?, networks = ?, root_patch = ?, updated_at = datetime('now') WHERE id = ?`,
-		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch, e.ID)
+		display = ?, gpu = ?, networks = ?, root_patch = ?, graphics = ?, updated_at = datetime('now') WHERE id = ?`,
+		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch, c.Graphics, e.ID)
 	if isUniqueErr(err) {
 		return &FieldError{"name", "a VM with this name already exists"}
 	}

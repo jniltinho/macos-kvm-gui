@@ -23,7 +23,11 @@ var configShowCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		b, _ := json.MarshalIndent(e.Config, "", "  ")
+		c := e.Config
+		if c.Graphics == "" {
+			c.Graphics = core.GraphicsSVGA // the default, printed so it shows
+		}
+		b, _ := json.MarshalIndent(c, "", "  ")
 		src := e.Path
 		if src == "" {
 			db, _ := core.DBPath()
@@ -40,6 +44,7 @@ var configKeys = map[string]func(*core.Config, string) error{
 	"version":   func(c *core.Config, v string) error { c.Version = v; return nil },
 	"display":   func(c *core.Config, v string) error { c.Display = v; return nil },
 	"gpu":       func(c *core.Config, v string) error { c.GPU = v; return nil },
+	"graphics":  func(c *core.Config, v string) error { c.Graphics = v; return nil },
 	"ram":       intKey(func(c *core.Config, n int) { c.RAMMiB = n }),
 	"cores":     intKey(func(c *core.Config, n int) { c.Cores = n }),
 	"vcpus":     intKey(func(c *core.Config, n int) { c.VCPUs = n }),
@@ -106,7 +111,7 @@ func intKey(set func(*core.Config, int)) func(*core.Config, string) error {
 
 var configSetCmd = &cobra.Command{
 	Use:   "set key=value...",
-	Short: "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu, root-patch, nic<N>.enabled|mode|bridge|model|mac)",
+	Short: "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu, graphics, root-patch, nic<N>.enabled|mode|bridge|model|mac)",
 	Example: "  macos-kvm-gui config set version=sonoma ram=16384 cores=8 vcpus=16 display=app\n" +
 		"  macos-kvm-gui config set nic2.enabled=true nic2.mode=bridged nic2.bridge=br0 nic2.model=vmxnet3 nic2.mac=random",
 	Args: cobra.MinimumNArgs(1),

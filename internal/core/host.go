@@ -41,6 +41,9 @@ type Host struct {
 	LookPath func(string) (string, error)
 	Output   func(name string, args ...string) ([]byte, error)
 	Run      func(name string, args ...string) error
+
+	// ShareRoot is /usr/share (Vulkan ICD manifests); DevUdmabuf is /dev/udmabuf.
+	ShareRoot, DevUdmabuf string
 	// extras, when set, is the start's kexts snapshot that eligibility uses instead of
 	// reading settings.yaml again.
 	extras *ExtraKexts
@@ -62,6 +65,8 @@ func SystemHost() Host {
 			}
 			return err
 		},
+		ShareRoot:  "/usr/share",
+		DevUdmabuf: "/dev/udmabuf",
 	}
 }
 
@@ -71,7 +76,26 @@ var tools = []struct{ bin, pkg string }{
 }
 
 // Checks runs every host check for the chosen macOS version.
-func (h Host) Checks(version string) []Check {
+func (h Host) Checks(version string) []Check { return h.ChecksFor(Config{Version: version}) }
+
+// ChecksFor runs every host check for c. Reims vGPU's checks are included, as warnings at most
+// unless c runs on Reims vGPU.
+func (h Host) ChecksFor(c Config) []Check {
+	out := h.baseChecks(c.Version)
+	ram := c.RAMMiB
+	if ram == 0 {
+		ram = Defaults().RAMMiB
+	}
+	for _, ch := range h.ReimsChecks(ram) {
+		if ch.Status == Fail && !c.Reims() {
+			ch.Status = Warn
+		}
+		out = append(out, ch)
+	}
+	return out
+}
+
+func (h Host) baseChecks(version string) []Check {
 	flags := h.cpuFlags()
 	out := []Check{h.checkVirt(flags), h.checkKVM()}
 	for _, t := range tools {

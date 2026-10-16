@@ -45,6 +45,9 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 		"-drive", "id=OpenCoreBoot,if=none,format=raw,readonly=on,file=fat:" + f(EFIDir),
 		"-device", "virtio-blk-pci,drive=OpenCoreBoot,bootindex=0",
 	}
+	if c.Reims() {
+		args = reimsArgs(args, c.RAMMiB)
+	}
 	if withMedia {
 		args = append(args,
 			"-device", "ide-hd,bus=sata.3,drive=InstallMedia",
@@ -65,7 +68,12 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 	args = append(args, firstNIC...)
 	// vmware-svga stays even with a passed-through GPU: QEMU's window needs a graphical
 	// console to deliver keyboard and mouse input, and it shows the boot screens.
-	args = append(args, "-device", "vmware-svga")
+	if c.Reims() {
+		// No addr: upstream's 0x4 is taken by ich9-ahci, and OpenCore boots by scanning.
+		args = append(args, "-device", "apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080")
+	} else {
+		args = append(args, "-device", "vmware-svga")
+	}
 	if len(gpuFuncs) > 0 {
 		args = append(args, "-device", "vfio-pci,host="+gpuFuncs[0]+",multifunction=on,x-no-kvm-intx=on")
 		for _, f := range gpuFuncs[1:] {
@@ -73,7 +81,9 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 		}
 	}
 	args = append(args, moreNICs...)
-	if c.InApp() {
+	if c.InApp() || c.Reims() {
+		// A Reims VM's screen is always the library's own window (-display none); the VNC
+		// socket still serves the Preview and screen capture.
 		// No QEMU window: the screen goes to the app over VNC on a Unix socket in the same
 		// private 0700 directory as QMP, never on a TCP port.
 		// No -k: with it, QEMU remaps extended key events through that layout's keysyms and drops
@@ -122,6 +132,8 @@ func explainExit(err error, lastLines []string) string {
 		return "A bridged adapter could not attach: qemu-bridge-helper needs to be setuid root (or hold CAP_NET_ADMIN) and the bridge must be allowed in /etc/qemu/bridge.conf. See Troubleshooting › Bridged networking."
 	case err == nil:
 		return ""
+	case udmabufExit(out) != "":
+		return udmabufExit(out)
 	case strings.Contains(out, "Could not access KVM kernel module"), strings.Contains(out, "/dev/kvm"):
 		return "No access to KVM. Check the Host tab."
 	}
@@ -226,6 +238,17 @@ func (v *VM) Start(c Config) error {
 			return err
 		}
 	}
+	qemu := "qemu-system-x86_64"
+	if c.Reims() {
+		bin, warnings, err := SystemHost().ReimsReady(c)
+		if err != nil {
+			return err
+		}
+		for _, msg := range warnings {
+			v.log("warning: Reims vGPU: " + msg)
+		}
+		qemu = bin
+	}
 	unlock, err := w.Lock()
 	if err != nil {
 		return err
@@ -255,15 +278,18 @@ func (v *VM) Start(c Config) error {
 		}
 	}
 	args := BuildArgs(c, w, sock, w.HasMedia(), gpuFuncs)
-	v.log("qemu-system-x86_64 " + strings.Join(args, " "))
+	v.log(qemu + " " + strings.Join(args, " "))
 
 	started := make(chan error, 1)
 	go func() {
 		// Pdeathsig fires when the thread that created the process dies: it stays
 		// locked to this goroutine, which only ends after Wait.
 		runtime.LockOSThread()
-		cmd := exec.Command("qemu-system-x86_64", args...)
+		cmd := exec.Command(qemu, args...)
 		cmd.Dir = dir
+		if c.Reims() {
+			cmd.Env = reimsEnv(os.Environ())
+		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true} // Ctrl+C in a terminal must not reach QEMU
 		pr, pw := io.Pipe()
 		cmd.Stdout, cmd.Stderr = pw, pw
