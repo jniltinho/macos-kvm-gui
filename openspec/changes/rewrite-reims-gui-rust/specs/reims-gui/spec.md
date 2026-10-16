@@ -70,7 +70,7 @@ For a Reims vGPU VM started by the app, the guest display SHALL appear inside th
 - **THEN** the app runs on Wayland, the Reims window opens on its own with SDL's native backend and the Screen tab says so
 
 ### Requirement: Screen for VMware SVGA
-VMs on VMware SVGA SHALL show their screen in the Screen tab: with X11, QEMU's own window embedded like Reims (native scancodes for any layout); without X11, QEMU's VNC socket drawn by the app. The VNC socket SHALL always exist for the Preview and MCP.
+VMs on VMware SVGA SHALL show their screen in the Screen tab: with X11, QEMU's own SDL window embedded like Reims (native scancodes for any layout); without X11, QEMU's VNC socket drawn by the app. The VNC socket SHALL always exist for the Preview and MCP.
 
 #### Scenario: SVGA VM
 - **WHEN** a VMware SVGA VM starts with display in the app on an X11 or XWayland session
