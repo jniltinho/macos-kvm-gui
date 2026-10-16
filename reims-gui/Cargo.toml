@@ -63,6 +63,8 @@ serde_yaml_ng = "=0.10.0"
 fastrand = "=2.5.0"
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 include_dir = "=0.7.4"
+x11rb = "=0.13.2"
+sdl3 = { version = "=0.20.0", features = ["build-from-source-static"] }
 
 [profile.release]
 lto = "thin"
