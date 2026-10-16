@@ -11,4 +11,5 @@ workspace = true
 
 [dependencies]
 rg-agent.workspace = true
+anyhow.workspace = true
 rg-ui.workspace = true
