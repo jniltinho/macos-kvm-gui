@@ -34,22 +34,22 @@ const (
 	gib         = int64(1) << 30
 )
 
-// RequiredFiles são os arquivos do OSX-KVM que o app usa.
+// RequiredFiles are the OSX-KVM files the app uses.
 var RequiredFiles = []string{OpenCore, OVMFCode, VarsSource, FetchScript}
 
-var ErrBusy = errors.New("workspace em uso por outra operação ou outra instância do app")
+var ErrBusy = errors.New("workspace in use by another operation or another app instance")
 
 type Workspace struct {
 	Dir string
-	key *rsa.PublicKey // nil = chave da Apple; trocada só em testes
+	key *rsa.PublicKey // nil = Apple's key; replaced only in tests
 }
 
 func NewWorkspace(dir string) Workspace { return Workspace{Dir: dir} }
 
 func (w Workspace) Path(name string) string { return filepath.Join(w.Dir, name) }
 
-// Lock pega um flock exclusivo por workspace. O arquivo fica fora do workspace
-// para não impedir o git clone em diretório vazio; o kernel solta se o app morrer.
+// Lock takes an exclusive flock per workspace. The file lives outside the workspace
+// so it does not block git clone into an empty directory; the kernel releases it if the app dies.
 func (w Workspace) Lock() (unlock func(), err error) {
 	base := os.Getenv("XDG_RUNTIME_DIR")
 	if base == "" {
@@ -82,12 +82,12 @@ func (w Workspace) withLock(fn func() error) error {
 type WorkspaceState int
 
 const (
-	WorkspaceEmpty WorkspaceState = iota // inexistente ou vazio: pode clonar
+	WorkspaceEmpty WorkspaceState = iota // missing or empty: can clone
 	WorkspaceReady
-	WorkspaceIncomplete // não vazio e faltando arquivos: não mexemos
+	WorkspaceIncomplete // not empty and missing files: left alone
 )
 
-// Classify diz o estado do workspace e, se incompleto, quais arquivos faltam.
+// Classify reports the workspace state and, if incomplete, which files are missing.
 func (w Workspace) Classify() (WorkspaceState, []string) {
 	entries, err := os.ReadDir(w.Dir)
 	if errors.Is(err, os.ErrNotExist) || err == nil && len(entries) == 0 {
@@ -105,14 +105,14 @@ func (w Workspace) Classify() (WorkspaceState, []string) {
 	return WorkspaceReady, nil
 }
 
-// Prepare clona o OSX-KVM (raso) se o workspace estiver vazio.
+// Prepare clones OSX-KVM (shallow) if the workspace is empty.
 func (w Workspace) Prepare(ctx context.Context, log func(string)) error {
 	return w.withLock(func() error {
 		switch st, missing := w.Classify(); st {
 		case WorkspaceReady:
 			return nil
 		case WorkspaceIncomplete:
-			return fmt.Errorf("%s não está vazio e faltam: %s", w.Dir, strings.Join(missing, ", "))
+			return fmt.Errorf("%s is not empty and is missing: %s", w.Dir, strings.Join(missing, ", "))
 		}
 		if err := os.MkdirAll(filepath.Dir(w.Dir), 0o755); err != nil {
 			return err
@@ -121,7 +121,7 @@ func (w Workspace) Prepare(ctx context.Context, log func(string)) error {
 	})
 }
 
-// runStream roda um comando enviando cada trecho de saída (separado por \r ou \n) para log.
+// runStream runs a command, sending each output chunk (split on \r or \n) to log.
 func runStream(ctx context.Context, dir string, log func(string), name string, args ...string) error {
 	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Dir = dir
@@ -155,7 +155,7 @@ func runStream(ctx context.Context, dir string, log func(string), name string, a
 	return err
 }
 
-// scanCRLF divide em \n ou \r, porque barras de progresso reescrevem a linha com \r.
+// scanCRLF splits on \n or \r, because progress bars rewrite the line with \r.
 func scanCRLF(data []byte, atEOF bool) (int, []byte, error) {
 	for i, b := range data {
 		if b == '\n' || b == '\r' {
@@ -168,15 +168,15 @@ func scanCRLF(data []byte, atEOF bool) (int, []byte, error) {
 	return 0, nil, nil
 }
 
-// Etapas do preparo da mídia.
+// Media preparation stages.
 const (
-	StageChunklist = "Baixando chunklist"
-	StageImage     = "Baixando imagem"
-	StageVerify    = "Verificando assinatura e hashes"
-	StageConvert   = "Convertendo para imagem raw"
+	StageChunklist = "Downloading chunklist"
+	StageImage     = "Downloading image"
+	StageVerify    = "Verifying signature and hashes"
+	StageConvert   = "Converting to raw image"
 )
 
-// Progress: Pct < 0 significa indeterminado.
+// Progress: Pct < 0 means indeterminate.
 type Progress struct {
 	Stage string
 	Pct   float64
@@ -187,8 +187,8 @@ var (
 	convertPctRe  = regexp.MustCompile(`\((\d+(?:\.\d+)?)/100%\)`)
 )
 
-// parseProgress traduz um trecho de saída do fetch-macOS-v2.py ou do qemu-img -p.
-// Devolve ok=false quando o trecho não muda o progresso.
+// parseProgress interprets an output chunk from fetch-macOS-v2.py or qemu-img -p.
+// Returns ok=false when the chunk does not change the progress.
 func parseProgress(stage, line string) (Progress, bool) {
 	switch {
 	case strings.HasPrefix(line, "Saving ") && strings.Contains(line, ".chunklist"):
@@ -216,15 +216,15 @@ func freeBytes(dir string) (int64, error) {
 	return int64(st.Bavail) * st.Bsize, nil
 }
 
-// DownloadMedia baixa, verifica e publica a recovery da versão pedida.
-// Em qualquer falha a BaseSystem.img anterior fica intacta.
+// DownloadMedia downloads, verifies and publishes the recovery for the requested version.
+// On any failure the previous BaseSystem.img stays intact.
 func (w Workspace) DownloadMedia(ctx context.Context, version string, progress func(Progress), log func(string)) error {
 	return w.withLock(func() error {
 		if st, _ := w.Classify(); st != WorkspaceReady {
-			return errors.New("prepare o workspace antes de baixar a mídia")
+			return errors.New("prepare the workspace before downloading the media")
 		}
 		if free, err := freeBytes(w.Dir); err == nil && free < minFreeGiB*gib {
-			return fmt.Errorf("espaço livre insuficiente: são necessários %d GiB e há %.1f GiB", minFreeGiB, float64(free)/float64(gib))
+			return fmt.Errorf("not enough free space: %d GiB needed and %.1f GiB available", minFreeGiB, float64(free)/float64(gib))
 		}
 		staging := w.Path(stagingDir)
 		os.RemoveAll(staging)
@@ -239,7 +239,7 @@ func (w Workspace) DownloadMedia(ctx context.Context, version string, progress f
 				stage = p.Stage
 				progress(p)
 				if p.Pct >= 0 {
-					return // percentuais vão só para a barra, não para o log
+					return // percentages go only to the bar, not to the log
 				}
 			}
 			if log != nil {
@@ -247,14 +247,14 @@ func (w Workspace) DownloadMedia(ctx context.Context, version string, progress f
 			}
 		}
 		progress(Progress{stage, -1})
-		// O código de saída do script não prova nada (sem TTY ele falha a verificação e sai 0);
-		// a verificação de verdade é a nossa, logo abaixo.
+		// The script's exit code proves nothing (without a TTY it fails verification and exits 0);
+		// the real verification is ours, just below.
 		if err := runStream(ctx, staging, report, "python3", w.Path(FetchScript), "-s", version); err != nil {
-			return fmt.Errorf("download falhou: %w", err)
+			return fmt.Errorf("download failed: %w", err)
 		}
 		dmg, cnk := glob1(staging, "*.dmg"), glob1(staging, "*.chunklist")
 		if dmg == "" || cnk == "" {
-			return errors.New("o download não produziu o .dmg e o .chunklist")
+			return errors.New("the download did not produce the .dmg and the .chunklist")
 		}
 
 		stage = StageVerify
@@ -262,23 +262,23 @@ func (w Workspace) DownloadMedia(ctx context.Context, version string, progress f
 			progress(Progress{StageVerify, float64(done) * 100 / float64(total)})
 		})
 		if err != nil {
-			return fmt.Errorf("verificação falhou: %w", err)
+			return fmt.Errorf("verification failed: %w", err)
 		}
 
 		stage = StageConvert
 		progress(Progress{stage, 0})
 		tmpImg := filepath.Join(staging, MediaFile)
 		if err := runStream(ctx, "", report, "qemu-img", "convert", "-p", "-f", "dmg", "-O", "raw", dmg, tmpImg); err != nil {
-			return fmt.Errorf("conversão falhou (se o qemu-img não suportar esta compressão, instale o dmg2img): %w", err)
+			return fmt.Errorf("conversion failed (if qemu-img does not support this compression, install dmg2img): %w", err)
 		}
-		// Marcador antigo sai antes do rename: uma versão velha nunca rotula a mídia nova.
+		// The old marker goes before the rename: a stale version never labels the new media.
 		os.Remove(w.Path(mediaMarker))
 		if err := os.Rename(tmpImg, w.Path(MediaFile)); err != nil {
 			return err
 		}
-		// Após o rename a mídia nova já é válida; falhar aqui só deixa a versão "desconhecida".
+		// After the rename the new media is already valid; failing here only leaves the version "unknown".
 		if err := os.WriteFile(w.Path(mediaMarker), []byte(version+"\n"), 0o644); err != nil && log != nil {
-			log("aviso: não foi possível registrar a versão da mídia: " + err.Error())
+			log("warning: could not record the media version: " + err.Error())
 		}
 		return nil
 	})
@@ -299,14 +299,14 @@ func glob1(dir, pattern string) string {
 	return m[0]
 }
 
-// MediaVersion é a versão registrada da BaseSystem.img ("" se não houver mídia).
+// MediaVersion is the recorded version of BaseSystem.img ("" if there is no media).
 func (w Workspace) MediaVersion() string {
 	if !w.HasMedia() {
 		return ""
 	}
 	v, err := os.ReadFile(w.Path(mediaMarker))
 	if err != nil {
-		return "desconhecida"
+		return "unknown"
 	}
 	return strings.TrimSpace(string(v))
 }
@@ -319,7 +319,7 @@ func exists(p string) bool {
 	return err == nil
 }
 
-// Allocated devolve os bytes realmente ocupados no host (arquivos esparsos contam menos).
+// Allocated returns the bytes actually used on the host (sparse files count less).
 func Allocated(path string) int64 {
 	var st syscall.Stat_t
 	if syscall.Stat(path, &st) != nil {
@@ -328,32 +328,32 @@ func Allocated(path string) int64 {
 	return st.Blocks * 512
 }
 
-// CreateDisk cria o qcow2 thin. warning não vazio = disco criado, mas com ressalva.
+// CreateDisk creates the thin qcow2. A non-empty warning = disk created, with a caveat.
 func (w Workspace) CreateDisk(ctx context.Context, sizeGiB int) (warning string, err error) {
 	if sizeGiB < MinDiskGiB {
-		return "", fmt.Errorf("o disco precisa ter pelo menos %d GiB", MinDiskGiB)
+		return "", fmt.Errorf("the disk must be at least %d GiB", MinDiskGiB)
 	}
 	err = w.withLock(func() error {
 		if w.HasDisk() {
-			return fmt.Errorf("%s já existe; nada foi alterado", DiskFile)
+			return fmt.Errorf("%s already exists; nothing was changed", DiskFile)
 		}
 		if err := runStream(ctx, "", nil, "qemu-img", "create", "-f", "qcow2", w.Path(DiskFile), strconv.Itoa(sizeGiB)+"G"); err != nil {
 			return err
 		}
 		if free, err := freeBytes(w.Dir); err == nil && free < int64(sizeGiB)*gib {
-			warning = fmt.Sprintf("o host tem só %.1f GiB livres: o disco é thin e a VM pode parar por falta de espaço", float64(free)/float64(gib))
+			warning = fmt.Sprintf("the host has only %.1f GiB free: the disk is thin and the VM may stop when space runs out", float64(free)/float64(gib))
 		}
 		return nil
 	})
 	return warning, err
 }
 
-// RemoveMedia apaga a BaseSystem.img e devolve os bytes liberados.
+// RemoveMedia deletes BaseSystem.img and returns the bytes freed.
 func (w Workspace) RemoveMedia() (freed int64, err error) {
 	err = w.withLock(func() error {
 		p := w.Path(MediaFile)
 		if !exists(p) {
-			return errors.New("não há mídia de instalação para remover")
+			return errors.New("there is no install media to remove")
 		}
 		freed = Allocated(p)
 		if err := os.Remove(p); err != nil {

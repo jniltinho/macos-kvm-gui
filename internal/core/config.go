@@ -1,4 +1,4 @@
-// Package core contém a lógica do app, sem dependência da UI.
+// Package core holds the app logic, with no dependency on the UI.
 package core
 
 import (
@@ -10,13 +10,13 @@ import (
 	"strings"
 )
 
-// Version é uma versão do macOS aceita pelo fetch-macOS-v2.py (-s <Short>).
+// Version is a macOS version accepted by fetch-macOS-v2.py (-s <Short>).
 type Version struct {
 	Short string
 	Name  string
 }
 
-// Versions na ordem de lançamento; o índice decide o perfil de hardware.
+// Versions in release order; the index decides the hardware profile.
 var Versions = []Version{
 	{"high-sierra", "High Sierra (10.13)"},
 	{"mojave", "Mojave (10.14)"},
@@ -32,7 +32,7 @@ var Versions = []Version{
 const (
 	idxMonterey = 4
 	idxVentura  = 5
-	// validated: única versão testada de ponta a ponta no host de referência.
+	// validated: the only version tested end to end on the reference host.
 	validated = "sonoma"
 )
 
@@ -45,7 +45,7 @@ func versionIndex(short string) int {
 	return -1
 }
 
-// Config é o que o usuário ajusta e o app persiste.
+// Config is what the user adjusts and the app persists.
 type Config struct {
 	Workspace string `json:"workspace"`
 	Version   string `json:"version"`
@@ -53,14 +53,15 @@ type Config struct {
 	Cores     int    `json:"cores"`
 	VCPUs     int    `json:"vcpus"`
 	SSHPort   int    `json:"ssh_port"`
+	GPU       string `json:"gpu,omitempty"` // PCI address of a passed-through GPU; "" = emulated display
 }
 
 func Defaults() Config {
 	return Config{Workspace: "~/OSX-KVM", Version: validated, RAMMiB: 8192, Cores: 4, VCPUs: 8, SSHPort: 2222}
 }
 
-// Recommended ajusta CPU e RAM ao host. Sem GPU suportada o macOS desenha a tela
-// na CPU, então mais vCPUs deixam o vídeo visivelmente mais fluido.
+// Recommended fits CPU and RAM to the host. Without a supported GPU macOS draws the
+// screen on the CPU, so more vCPUs make the display visibly smoother.
 func Recommended(c Config, hostThreads, hostMemMiB int) Config {
 	vcpus := min(max(hostThreads/2/2*2, 2), 16)
 	c.VCPUs, c.Cores = vcpus, max(vcpus/2, 1)
@@ -68,7 +69,7 @@ func Recommended(c Config, hostThreads, hostMemMiB int) Config {
 	return c
 }
 
-// FieldError aponta o campo inválido para a UI destacar.
+// FieldError names the invalid field for the UI to highlight.
 type FieldError struct {
 	Field string
 	Msg   string
@@ -76,7 +77,7 @@ type FieldError struct {
 
 func (e *FieldError) Error() string { return e.Field + ": " + e.Msg }
 
-// WorkspaceDir expande "~" e exige caminho absoluto.
+// WorkspaceDir expands "~" and requires an absolute path.
 func (c Config) WorkspaceDir() (string, error) {
 	p := c.Workspace
 	if p == "~" || strings.HasPrefix(p, "~/") {
@@ -87,7 +88,7 @@ func (c Config) WorkspaceDir() (string, error) {
 		p = filepath.Join(home, strings.TrimPrefix(p, "~"))
 	}
 	if !filepath.IsAbs(p) {
-		return "", &FieldError{"workspace", "precisa ser um caminho absoluto"}
+		return "", &FieldError{"workspace", "must be an absolute path"}
 	}
 	return filepath.Clean(p), nil
 }
@@ -97,24 +98,27 @@ func (c Config) Validate() error {
 		return err
 	}
 	if versionIndex(c.Version) < 0 {
-		return &FieldError{"version", "versão desconhecida: " + c.Version}
+		return &FieldError{"version", "unknown version: " + c.Version}
 	}
 	if c.RAMMiB < 4096 {
-		return &FieldError{"ram", "mínimo de 4096 MiB"}
+		return &FieldError{"ram", "minimum is 4096 MiB"}
 	}
 	if c.Cores < 1 {
-		return &FieldError{"cores", "mínimo de 1 núcleo"}
+		return &FieldError{"cores", "minimum is 1 core"}
 	}
 	if c.VCPUs < 1 || c.VCPUs%c.Cores != 0 {
-		return &FieldError{"vcpus", "precisa ser múltiplo do número de núcleos"}
+		return &FieldError{"vcpus", "must be a multiple of the number of cores"}
+	}
+	if c.GPU != "" && !pciAddrRe.MatchString(c.GPU) {
+		return &FieldError{"gpu", "expected a PCI address such as 0000:03:00.0"}
 	}
 	if c.SSHPort < 1024 || c.SSHPort > 65535 {
-		return &FieldError{"ssh_port", "use uma porta entre 1024 e 65535"}
+		return &FieldError{"ssh_port", "use a port between 1024 and 65535"}
 	}
 	return nil
 }
 
-// ConfigPath é ~/.config/macos-kvm-gui/config.json (ou equivalente XDG).
+// ConfigPath is ~/.config/macos-kvm-gui/config.json (or the XDG equivalent).
 func ConfigPath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {
@@ -123,7 +127,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "macos-kvm-gui", "config.json"), nil
 }
 
-// LoadConfig devolve os padrões quando o arquivo ainda não existe.
+// LoadConfig returns the defaults when the file does not exist yet.
 func LoadConfig(path string) (Config, error) {
 	c := Defaults()
 	data, err := os.ReadFile(path)
@@ -134,12 +138,12 @@ func LoadConfig(path string) (Config, error) {
 		return c, err
 	}
 	if err := json.Unmarshal(data, &c); err != nil {
-		return Defaults(), fmt.Errorf("config inválida em %s: %w", path, err)
+		return Defaults(), fmt.Errorf("invalid config in %s: %w", path, err)
 	}
 	return c, nil
 }
 
-// SaveConfig valida e grava de forma atômica (temporário + rename).
+// SaveConfig validates and writes atomically (temp file + rename).
 func SaveConfig(path string, c Config) error {
 	if err := c.Validate(); err != nil {
 		return err
@@ -173,7 +177,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmp.Name(), path)
 }
 
-// Profile é o hardware virtual derivado da versão do macOS.
+// Profile is the virtual hardware derived from the macOS version.
 type Profile struct {
 	CPU          string
 	NIC          string
@@ -181,7 +185,7 @@ type Profile struct {
 	NeedsAVX2    bool
 }
 
-// cpuFlags vem do MY_OPTIONS do OpenCore-Boot.sh.
+// cpuFlags comes from MY_OPTIONS in OpenCore-Boot.sh.
 const cpuFlags = "kvm=on,vendor=GenuineIntel,+invtsc,vmware-cpuid-freq=on,+ssse3,+sse4.2,+popcnt,+avx,+aes,+xsave,+xsaveopt,check"
 
 func ProfileFor(version string) Profile {

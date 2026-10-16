@@ -20,7 +20,7 @@ func write(t *testing.T, path, data string) {
 	}
 }
 
-// fakeHost monta /proc, /sys e /etc falsos num diretório temporário.
+// fakeHost builds fake /proc, /sys and /etc in a temp directory.
 func fakeHost(t *testing.T, cpuFlags, msrs string, procs ...string) Host {
 	root := t.TempDir()
 	h := Host{
@@ -73,26 +73,26 @@ func TestChecksProblems(t *testing.T) {
 	os.Chmod(h.DevKVM, 0)
 	m := byName(h.Checks("sonoma"))
 	want := map[string]Status{
-		"Virtualização na CPU":        Fail,
+		"CPU virtualization":          Fail,
 		"qemu-img":                    Fail,
-		"Versão do QEMU":              Fail,
-		"CPU compatível com a versão": Fail,
+		"QEMU version":                Fail,
+		"CPU compatible with version": Fail,
 		"kvm ignore_msrs":             Fail,
-		"Outros hypervisors":          Warn,
+		"Other hypervisors":           Warn,
 	}
 	if os.Geteuid() != 0 {
 		want["/dev/kvm"] = Fail
 	}
 	for name, st := range want {
 		if m[name].Status != st {
-			t.Errorf("%s: esperado %v, veio %v (%s)", name, st, m[name].Status, m[name].Detail)
+			t.Errorf("%s: expected %v, got %v (%s)", name, st, m[name].Status, m[name].Detail)
 		}
 	}
 	if !strings.Contains(m["qemu-img"].Hint, "qemu-utils") {
-		t.Errorf("dica do qemu-img deve nomear o pacote: %q", m["qemu-img"].Hint)
+		t.Errorf("qemu-img hint must name the package: %q", m["qemu-img"].Hint)
 	}
 	if !strings.Contains(m["/dev/kvm"].Hint, "kvm") {
-		t.Errorf("dica do /dev/kvm: %q", m["/dev/kvm"].Hint)
+		t.Errorf("/dev/kvm hint: %q", m["/dev/kvm"].Hint)
 	}
 }
 
@@ -107,15 +107,15 @@ func TestMemTotal(t *testing.T) {
 func TestCompatOldVersionAndUnknownProcs(t *testing.T) {
 	h := fakeHost(t, "vmx", "Y")
 	if c := h.checkCompat(h.cpuFlags(), "monterey"); c.Status != OK {
-		t.Errorf("monterey não exige AVX2: %v", c.Status)
+		t.Errorf("monterey does not require AVX2: %v", c.Status)
 	}
-	h.ProcRoot = filepath.Join(h.ProcRoot, "nao-existe")
+	h.ProcRoot = filepath.Join(h.ProcRoot, "does-not-exist")
 	if c := h.checkConflict(); c.Status != Unknown {
-		t.Errorf("sem /proc deve ser inconclusivo: %v", c.Status)
+		t.Errorf("without /proc it must be inconclusive: %v", c.Status)
 	}
 }
 
-// exitErr produz um *exec.ExitError real com o código desejado.
+// exitErr produces a real *exec.ExitError with the given code.
 func exitErr(code int) error {
 	return exec.Command("/bin/sh", "-c", "exit "+strconv.Itoa(code)).Run()
 }
@@ -126,31 +126,31 @@ func TestFixIgnoreMSRs(t *testing.T) {
 
 	h.Run = func(name string, args ...string) error {
 		if name != "pkexec" || args[2] != fixScript {
-			t.Fatalf("comando inesperado: %s %v", name, args)
+			t.Fatalf("unexpected command: %s %v", name, args)
 		}
 		write(t, h.msrsPath(), "Y")
 		write(t, conf, "options kvm ignore_msrs=1\n")
 		return nil
 	}
 	if err := h.FixIgnoreMSRs(); err != nil {
-		t.Fatalf("sucesso esperado: %v", err)
+		t.Fatalf("expected success: %v", err)
 	}
 
 	write(t, h.msrsPath(), "N")
 	os.Remove(conf)
 	h.Run = func(string, ...string) error { return exitErr(126) }
 	if err := h.FixIgnoreMSRs(); !errors.Is(err, ErrCancelled) {
-		t.Fatalf("126 deve ser cancelado: %v", err)
+		t.Fatalf("126 must mean cancelled: %v", err)
 	}
 
 	h.Run = func(string, ...string) error { write(t, h.msrsPath(), "Y"); return exitErr(1) }
-	if err := h.FixIgnoreMSRs(); err == nil || !strings.Contains(err.Error(), "não persiste") {
-		t.Fatalf("falha parcial esperada: %v", err)
+	if err := h.FixIgnoreMSRs(); err == nil || !strings.Contains(err.Error(), "not persist") {
+		t.Fatalf("expected partial failure: %v", err)
 	}
 
 	write(t, h.msrsPath(), "N")
 	h.Run = func(string, ...string) error { return exitErr(127) }
-	if err := h.FixIgnoreMSRs(); err == nil || !strings.Contains(err.Error(), "pkexec falhou") {
-		t.Fatalf("erro do pkexec esperado: %v", err)
+	if err := h.FixIgnoreMSRs(); err == nil || !strings.Contains(err.Error(), "pkexec failed") {
+		t.Fatalf("expected pkexec error: %v", err)
 	}
 }

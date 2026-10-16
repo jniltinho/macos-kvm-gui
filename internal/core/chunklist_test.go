@@ -21,15 +21,15 @@ func TestRealChunklistSignature(t *testing.T) {
 	}
 	chunks, err := parseChunklist(data, appleEFIKey)
 	if err != nil || len(chunks) == 0 {
-		t.Fatalf("chunklist real da Apple deve validar: %v", err)
+		t.Fatalf("real Apple chunklist must validate: %v", err)
 	}
-	data[40] ^= 1 // altera um hash: a assinatura deixa de bater
+	data[40] ^= 1 // change a hash: the signature no longer matches
 	if _, err := parseChunklist(data, appleEFIKey); err == nil {
-		t.Fatal("chunklist alterado deve falhar")
+		t.Fatal("modified chunklist must fail")
 	}
 }
 
-// buildChunklist cria um chunklist assinado com uma chave de teste.
+// buildChunklist builds a chunklist signed with a test key.
 func buildChunklist(t *testing.T, key *rsa.PrivateKey, img []byte, size int) []byte {
 	var body bytes.Buffer
 	var chunks []chunk
@@ -64,23 +64,23 @@ func TestVerifyImage(t *testing.T) {
 	cases := []struct {
 		name, content, wantErr string
 	}{
-		{"íntegra", string(img), ""},
-		{"adulterada", strings.Replace(string(img), "macOS", "MACOS", 1), "não confere"},
-		{"truncada", string(img[:len(img)-10]), "truncada"},
-		{"maior", string(img) + "x", "maior"},
+		{"intact", string(img), ""},
+		{"tampered", strings.Replace(string(img), "macOS", "MACOS", 1), "does not match"},
+		{"truncated", string(img[:len(img)-10]), "truncated"},
+		{"larger", string(img) + "x", "larger"},
 	}
 	for _, c := range cases {
 		write(t, dmg, c.content)
 		calls := 0
 		err := verifyImage(dmg, cnk, &key.PublicKey, func(int, int) { calls++ })
 		if c.wantErr == "" && (err != nil || calls == 0) {
-			t.Errorf("%s: %v (progresso %d)", c.name, err, calls)
+			t.Errorf("%s: %v (progress %d)", c.name, err, calls)
 		}
 		if c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)) {
-			t.Errorf("%s: esperado erro %q, veio %v", c.name, c.wantErr, err)
+			t.Errorf("%s: expected error %q, got %v", c.name, c.wantErr, err)
 		}
 	}
 	if err := verifyImage(dmg, cnk, appleEFIKey, nil); err == nil {
-		t.Error("chunklist assinado com outra chave deve falhar com a chave da Apple")
+		t.Error("chunklist signed with another key must fail with Apple's key")
 	}
 }

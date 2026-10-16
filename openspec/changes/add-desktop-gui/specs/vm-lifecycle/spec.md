@@ -2,113 +2,113 @@
 
 ## Purpose
 
-Permite configurar a VM do macOS e controlá-la (iniciar, desligar, forçar parada) sem editar scripts, acompanhando o que o QEMU reporta.
+Lets the user configure the macOS VM and control it (start, shut down, force stop) without editing scripts, while following what QEMU reports.
 
 ## ADDED Requirements
 
-### Requirement: Configuração persistente da VM
-O sistema SHALL permitir configurar workspace, versão do macOS, RAM (MiB), núcleos, vCPUs totais e porta SSH do host, e SHALL guardar esses valores entre execuções do app.
+### Requirement: Persistent VM configuration
+The system SHALL allow configuring the workspace, macOS version, RAM (MiB), cores, total vCPUs and host SSH port, and SHALL keep these values across app runs.
 
-#### Scenario: Valores mantidos
-- **WHEN** o usuário salva RAM de 8192 MiB e reabre o app
-- **THEN** o campo de RAM mostra 8192
+#### Scenario: Values kept
+- **WHEN** the user saves 8192 MiB of RAM and reopens the app
+- **THEN** the RAM field shows 8192
 
-#### Scenario: Primeira execução
-- **WHEN** não há configuração salva
-- **THEN** o app usa os padrões: workspace `~/OSX-KVM`, Sonoma, 8192 MiB, 4 núcleos, 8 vCPUs, porta 2222
+#### Scenario: First run
+- **WHEN** there is no saved configuration
+- **THEN** the app uses the defaults: workspace `~/OSX-KVM`, Sonoma, 8192 MiB, 4 cores, 8 vCPUs, port 2222
 
-### Requirement: Validação da configuração
-O sistema SHALL recusar salvar RAM abaixo de 4096 MiB, núcleos ou vCPUs menores que 1, vCPUs que não sejam múltiplo dos núcleos, porta fora de 1024–65535 e workspace que não seja caminho absoluto após expandir `~`.
+### Requirement: Configuration validation
+The system SHALL refuse to save RAM below 4096 MiB, cores or vCPUs below 1, vCPUs that are not a multiple of the cores, a port outside 1024–65535 and a workspace that is not an absolute path after expanding `~`.
 
-#### Scenario: Topologia impossível
-- **WHEN** o usuário informa 4 núcleos e 6 vCPUs
-- **THEN** o sistema recusa e indica o campo de vCPUs
+#### Scenario: Impossible topology
+- **WHEN** the user enters 4 cores and 6 vCPUs
+- **THEN** the system refuses and points to the vCPUs field
 
-#### Scenario: Porta inválida
-- **WHEN** o usuário informa a porta 80
-- **THEN** o sistema recusa e indica o intervalo permitido
+#### Scenario: Invalid port
+- **WHEN** the user enters port 80
+- **THEN** the system refuses and states the allowed range
 
-### Requirement: Perfil de hardware por versão
-O sistema SHALL escolher o modelo de CPU e a placa de rede a partir da versão do macOS: Penryn até Monterey, Skylake-Client de Ventura em diante, e vmxnet3 para High Sierra. Somente as versões validadas SHALL aparecer sem a marca "experimental".
+### Requirement: Per-version hardware profile
+The system SHALL choose the CPU model and network card from the macOS version: Penryn up to Monterey, Skylake-Client from Ventura on, and vmxnet3 for High Sierra. Only validated versions SHALL appear without the "experimental" marker.
 
 #### Scenario: Sonoma
-- **WHEN** a versão é Sonoma
-- **THEN** a VM usa CPU Skylake-Client e rede virtio
+- **WHEN** the version is Sonoma
+- **THEN** the VM uses the Skylake-Client CPU and virtio networking
 
 #### Scenario: High Sierra
-- **WHEN** a versão é High Sierra
-- **THEN** a VM usa CPU Penryn e rede vmxnet3 e a versão aparece como experimental
+- **WHEN** the version is High Sierra
+- **THEN** the VM uses the Penryn CPU and vmxnet3 networking and the version is shown as experimental
 
-### Requirement: Iniciar a VM
-O sistema SHALL iniciar o QEMU com KVM, máquina q35, OpenCore em modo snapshot, firmware OVMF com variáveis UEFI persistentes, disco do macOS, rede NAT e SSH encaminhado apenas de `127.0.0.1:<porta>` para a porta 22 do convidado.
+### Requirement: Start the VM
+The system SHALL start QEMU with KVM, q35 machine, OpenCore in snapshot mode, OVMF firmware with persistent UEFI variables, the macOS disk, NAT networking and SSH forwarded only from `127.0.0.1:<port>` to guest port 22.
 
-#### Scenario: Início com mídia de instalação
-- **WHEN** o usuário inicia a VM e `BaseSystem.img` existe
-- **THEN** o QEMU sobe com a mídia de instalação conectada e a janela da VM abre
+#### Scenario: Start with install media
+- **WHEN** the user clicks "Start" and `BaseSystem.img` exists
+- **THEN** QEMU starts with the install media attached and the VM window opens
 
-#### Scenario: Início sem mídia de instalação
-- **WHEN** o usuário inicia a VM e `BaseSystem.img` não existe
-- **THEN** o QEMU sobe apenas com o disco do macOS
+#### Scenario: Start without install media
+- **WHEN** the user clicks "Start" and `BaseSystem.img` does not exist
+- **THEN** QEMU starts with only the macOS disk
 
-#### Scenario: Disco ausente
-- **WHEN** o usuário tenta iniciar e `mac_hdd_ng.img` não existe
-- **THEN** o sistema não inicia o QEMU e orienta criar o disco
+#### Scenario: Missing disk
+- **WHEN** the user tries to start and `mac_hdd_ng.img` does not exist
+- **THEN** the system does not start QEMU and advises creating the disk
 
-#### Scenario: SSH restrito ao host
-- **WHEN** a VM está em execução com a porta 2222
-- **THEN** a porta 2222 aceita conexões apenas em `127.0.0.1`
+#### Scenario: SSH restricted to the host
+- **WHEN** the VM is running with port 2222
+- **THEN** port 2222 accepts connections only on `127.0.0.1`
 
-### Requirement: Persistência das variáveis UEFI
-O sistema SHALL criar, no primeiro início, uma cópia própria do arquivo de variáveis UEFI a partir de `OVMF_VARS-1920x1080.fd` e SHALL reutilizá-la nos inícios seguintes, sem nunca sobrescrevê-la.
+### Requirement: UEFI variable persistence
+The system SHALL create, on first start, its own copy of the UEFI variables file from `OVMF_VARS-1920x1080.fd` and SHALL reuse it on later starts, never overwriting it.
 
-#### Scenario: Segundo início
-- **WHEN** a VM já foi iniciada uma vez e é iniciada de novo
-- **THEN** o QEMU usa a mesma cópia de variáveis UEFI, com as alterações feitas pelo convidado preservadas
+#### Scenario: Second start
+- **WHEN** the VM has been started once and is started again
+- **THEN** QEMU uses the same UEFI variables copy, with changes made by the guest preserved
 
-### Requirement: Parada da VM
-O sistema SHALL oferecer desligamento gracioso (pedido ACPI de energia ao convidado), que só é dado como concluído quando o QEMU termina, e parada forçada do processo, que pede confirmação avisando sobre perda de dados.
+### Requirement: Stop the VM
+The system SHALL offer graceful shutdown ("Shut down (ACPI)", an ACPI power request to the guest), which is only considered complete when QEMU exits, and a forced process stop ("Force stop"), which asks for confirmation and warns about data loss.
 
-#### Scenario: Desligamento gracioso
-- **WHEN** o usuário aciona desligar com a VM em execução
-- **THEN** o convidado recebe o pedido e o estado continua "em execução" até o QEMU terminar, sem escalar sozinho para parada forçada
+#### Scenario: Graceful shutdown
+- **WHEN** the user clicks "Shut down (ACPI)" with the VM running
+- **THEN** the guest receives the request and the state stays "Running" until QEMU exits, without escalating to a force stop on its own
 
-#### Scenario: Parada forçada
-- **WHEN** o usuário confirma a parada forçada
-- **THEN** o processo QEMU é encerrado e o estado passa a parado
+#### Scenario: Force stop
+- **WHEN** the user confirms "Force stop"
+- **THEN** the QEMU process is terminated and the state becomes "Stopped"
 
-### Requirement: Acompanhamento do QEMU
-O sistema SHALL exibir o estado da VM (parada, em execução ou pausada por erro) e a saída do QEMU, e SHALL traduzir em mensagens claras as falhas conhecidas.
+### Requirement: QEMU monitoring
+The system SHALL display the VM state ("Stopped", "Running" or "Paused (error)") and the QEMU output, and SHALL translate known failures into clear messages.
 
-#### Scenario: KVM ocupado
-- **WHEN** o QEMU sai com `failed to initialize kvm: Device or resource busy`
-- **THEN** o estado volta a parado e o sistema informa que outro hypervisor está usando a virtualização
+#### Scenario: KVM busy
+- **WHEN** QEMU exits with `failed to initialize kvm: Device or resource busy`
+- **THEN** the state returns to "Stopped" and the system reports that another hypervisor is using virtualization
 
-#### Scenario: Erro de disco
-- **WHEN** o QEMU pausa o convidado por erro de I/O no disco, por exemplo por falta de espaço no host
-- **THEN** o estado passa a "pausada por erro" com a mensagem do erro, mesmo com o processo vivo
+#### Scenario: Disk error
+- **WHEN** QEMU pauses the guest due to a disk I/O error, for example lack of space on the host
+- **THEN** the state becomes "Paused (error)" with the error message, even with the process alive
 
-#### Scenario: Saída normal
-- **WHEN** o convidado desliga e o QEMU termina com código 0
-- **THEN** o estado volta a parado sem mensagem de erro
+#### Scenario: Normal exit
+- **WHEN** the guest shuts down and QEMU exits with code 0
+- **THEN** the state returns to "Stopped" with no error message
 
-#### Scenario: Fechar o app com a VM rodando
-- **WHEN** o usuário fecha a janela com a VM em execução
-- **THEN** o app não fecha e pede para desligar a VM antes
+#### Scenario: Closing the app with the VM running
+- **WHEN** the user closes the window with the VM running
+- **THEN** the app does not close and asks to shut down the VM first
 
-### Requirement: Recursos recomendados para o host
-O sistema SHALL oferecer uma ação que preenche núcleos, vCPUs e RAM com valores recomendados para o host: vCPUs iguais à metade das threads do host (par, entre 2 e 16), núcleos iguais à metade das vCPUs (mínimo 1) e RAM igual a um quarto da memória total, arredondada para baixo em múltiplos de 1024 MiB, entre 4096 e 16384 MiB. Sem GPU suportada, o vídeo é renderizado pela CPU.
+### Requirement: Recommended resources for the host
+The system SHALL offer an action ("Recommended for this host") that fills cores, vCPUs and RAM with values recommended for the host: vCPUs equal to half the host threads (even, between 2 and 16), cores equal to half the vCPUs (minimum 1) and RAM equal to a quarter of total memory, rounded down to a multiple of 1024 MiB, between 4096 and 16384 MiB. Without a supported GPU, video is rendered by the CPU.
 
-#### Scenario: Host de referência
-- **WHEN** o host tem 24 threads e 186 GiB de RAM
-- **THEN** os campos passam a 12 vCPUs, 6 núcleos e 16384 MiB, sem salvar até o usuário confirmar
+#### Scenario: Reference host
+- **WHEN** the host has 24 threads and 186 GiB of RAM
+- **THEN** the fields become 12 vCPUs, 6 cores and 16384 MiB, without saving until the user confirms
 
-#### Scenario: Host pequeno
-- **WHEN** o host tem 4 threads e 8 GiB de RAM
-- **THEN** os campos passam a 2 vCPUs, 1 núcleo e 4096 MiB
+#### Scenario: Small host
+- **WHEN** the host has 4 threads and 8 GiB of RAM
+- **THEN** the fields become 2 vCPUs, 1 core and 4096 MiB
 
-### Requirement: Orientação de desempenho de vídeo
-O sistema SHALL informar que a VM não tem aceleração gráfica (o macOS não tem driver para o vídeo virtual nem para GPUs NVIDIA) e SHALL listar os ajustes no macOS que reduzem o custo de renderização.
+### Requirement: Video performance guidance
+The system SHALL state that the VM has no graphics acceleration (macOS has no driver for the virtual video device or for NVIDIA GPUs) and SHALL list the macOS settings that reduce rendering cost.
 
-#### Scenario: Aba da VM
-- **WHEN** o usuário abre a aba da VM
-- **THEN** vê os ajustes "Reduce motion", "Reduce transparency" e animações do Dock, e a observação de que só uma GPU AMD suportada em passthrough traz aceleração
+#### Scenario: VM tab
+- **WHEN** the user opens the VM tab
+- **THEN** they see the "Reduce motion", "Reduce transparency" and Dock animation settings, and the note that only a supported AMD GPU in passthrough provides acceleration

@@ -11,7 +11,7 @@ func TestConfigRoundTripAndDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "config.json")
 	c, err := LoadConfig(path)
 	if err != nil || c != Defaults() {
-		t.Fatalf("sem arquivo deve dar padrões: %+v %v", c, err)
+		t.Fatalf("no file should yield defaults: %+v %v", c, err)
 	}
 	c.RAMMiB = 16384
 	if err := SaveConfig(path, c); err != nil {
@@ -19,7 +19,7 @@ func TestConfigRoundTripAndDefaults(t *testing.T) {
 	}
 	got, err := LoadConfig(path)
 	if err != nil || got.RAMMiB != 16384 {
-		t.Fatalf("ida e volta falhou: %+v %v", got, err)
+		t.Fatalf("round trip failed: %+v %v", got, err)
 	}
 }
 
@@ -29,7 +29,7 @@ func TestConfigValidate(t *testing.T) {
 		"cores":     func(c *Config) { c.Cores = 0 },
 		"vcpus":     func(c *Config) { c.Cores, c.VCPUs = 4, 6 },
 		"ssh_port":  func(c *Config) { c.SSHPort = 80 },
-		"workspace": func(c *Config) { c.Workspace = "relativo/dir" },
+		"workspace": func(c *Config) { c.Workspace = "relative/dir" },
 		"version":   func(c *Config) { c.Version = "lion" },
 	}
 	for field, mutate := range cases {
@@ -37,28 +37,28 @@ func TestConfigValidate(t *testing.T) {
 		mutate(&c)
 		var fe *FieldError
 		if err := c.Validate(); !errors.As(err, &fe) || fe.Field != field {
-			t.Errorf("%s: esperava FieldError do campo, veio %v", field, err)
+			t.Errorf("%s: expected a FieldError for the field, got %v", field, err)
 		}
 	}
 	if err := Defaults().Validate(); err != nil {
-		t.Fatalf("padrões devem ser válidos: %v", err)
+		t.Fatalf("defaults must be valid: %v", err)
 	}
 }
 
 func TestRecommended(t *testing.T) {
 	cases := []struct{ threads, memMiB, vcpus, cores, ram int }{
-		{24, 186 * 1024, 12, 6, 16384}, // host de referência
+		{24, 186 * 1024, 12, 6, 16384}, // reference host
 		{4, 8 * 1024, 2, 1, 4096},
 		{64, 512 * 1024, 16, 8, 16384},
-		{6, 24 * 1024, 2, 1, 6144}, // 6/2=3 vira par: 2
+		{6, 24 * 1024, 2, 1, 6144}, // 6/2=3 rounds down to even: 2
 	}
 	for _, tc := range cases {
 		c := Recommended(Defaults(), tc.threads, tc.memMiB)
 		if c.VCPUs != tc.vcpus || c.Cores != tc.cores || c.RAMMiB != tc.ram {
-			t.Errorf("%d threads/%d MiB: got %d vCPUs, %d núcleos, %d MiB", tc.threads, tc.memMiB, c.VCPUs, c.Cores, c.RAMMiB)
+			t.Errorf("%d threads/%d MiB: got %d vCPUs, %d cores, %d MiB", tc.threads, tc.memMiB, c.VCPUs, c.Cores, c.RAMMiB)
 		}
 		if err := c.Validate(); err != nil {
-			t.Errorf("recomendação inválida: %v", err)
+			t.Errorf("invalid recommendation: %v", err)
 		}
 	}
 }

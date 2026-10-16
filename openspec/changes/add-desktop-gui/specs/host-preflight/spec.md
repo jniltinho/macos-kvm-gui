@@ -2,70 +2,70 @@
 
 ## Purpose
 
-Garante que o host Linux tem o necessário para rodar macOS sob KVM e aponta, antes de iniciar a VM, cada problema com sua correção.
+Ensures the Linux host has what it needs to run macOS under KVM and, before the VM starts, points out each problem with its fix.
 
 ## ADDED Requirements
 
-### Requirement: Verificação de pré-requisitos
-O sistema SHALL verificar e exibir, cada item com estado OK, aviso, falha ou inconclusivo e uma dica de correção: VT-x/AMD-V na CPU, leitura e escrita em `/dev/kvm`, `qemu-system-x86_64` na versão 8.2.2 ou superior, `qemu-img`, `git`, `python3` e o valor de `ignore_msrs` do módulo kvm.
+### Requirement: Prerequisite checks
+The system SHALL check and display, each item with status OK, Warning, Failure or Inconclusive and a fix hint: VT-x/AMD-V on the CPU, read and write access to `/dev/kvm`, `qemu-system-x86_64` version 8.2.2 or later, `qemu-img`, `git`, `python3` and the kvm module's `ignore_msrs` value.
 
-#### Scenario: Host pronto
-- **WHEN** todos os pré-requisitos estão presentes e `ignore_msrs` vale `Y`
-- **THEN** todas as verificações aparecem como OK
+#### Scenario: Host ready
+- **WHEN** all prerequisites are present and `ignore_msrs` is `Y`
+- **THEN** all checks show as OK
 
-#### Scenario: Usuário sem acesso ao KVM
-- **WHEN** `/dev/kvm` existe mas o usuário não consegue abri-lo para leitura e escrita
-- **THEN** a verificação de KVM aparece como falha, com a dica de adicionar o usuário ao grupo `kvm`
+#### Scenario: User without KVM access
+- **WHEN** `/dev/kvm` exists but the user cannot open it for reading and writing
+- **THEN** the KVM check shows as Failure, with the hint to add the user to the `kvm` group
 
-#### Scenario: Ferramenta ausente
-- **WHEN** `qemu-img` não é encontrado no `PATH`
-- **THEN** a verificação correspondente aparece como falha e nomeia o pacote a instalar
+#### Scenario: Missing tool
+- **WHEN** `qemu-img` is not found in `PATH`
+- **THEN** the corresponding check shows as Failure and names the package to install
 
-#### Scenario: QEMU antigo
-- **WHEN** `qemu-system-x86_64 --version` informa versão menor que 8.2.2
-- **THEN** a verificação do QEMU aparece como falha e informa a versão mínima
+#### Scenario: Old QEMU
+- **WHEN** `qemu-system-x86_64 --version` reports a version lower than 8.2.2
+- **THEN** the QEMU check shows as Failure and states the minimum version
 
-### Requirement: Compatibilidade da CPU com a versão do macOS
-O sistema SHALL avisar quando a versão do macOS escolhida for Ventura ou posterior e a CPU do host não tiver as instruções SSE4.1 e AVX2.
+### Requirement: CPU compatibility with the macOS version
+The system SHALL warn when the chosen macOS version is Ventura or later and the host CPU lacks the SSE4.1 and AVX2 instructions.
 
-#### Scenario: CPU sem AVX2
-- **WHEN** a versão escolhida é Sonoma e as flags da CPU não incluem `avx2`
-- **THEN** a verificação de compatibilidade aparece como falha e indica uma versão até Monterey
+#### Scenario: CPU without AVX2
+- **WHEN** the chosen version is Sonoma and the CPU flags do not include `avx2`
+- **THEN** the compatibility check shows as Failure and suggests a version up to Monterey
 
-#### Scenario: Versão antiga
-- **WHEN** a versão escolhida é Monterey ou anterior
-- **THEN** a verificação de compatibilidade não exige AVX2
+#### Scenario: Older version
+- **WHEN** the chosen version is Monterey or earlier
+- **THEN** the compatibility check does not require AVX2
 
-### Requirement: Indício de hypervisor conflitante
-O sistema SHALL procurar processos de VM do VirtualBox ou do VMware e, se encontrar algum, SHALL mostrar um aviso de conflito potencial, sem encerrar processos nem descarregar módulos.
+### Requirement: Conflicting hypervisor indication
+The system SHALL look for VirtualBox or VMware VM processes and, if it finds any, SHALL show a potential conflict warning, without killing processes or unloading modules.
 
-#### Scenario: VM do VirtualBox ativa
-- **WHEN** existe um processo `VBoxHeadless` ou `VirtualBoxVM` em execução
-- **THEN** a verificação de conflito aparece como aviso e orienta desligar essa VM antes de iniciar o macOS
+#### Scenario: VirtualBox VM running
+- **WHEN** a `VBoxHeadless` or `VirtualBoxVM` process is running
+- **THEN** the conflict check shows as Warning and advises shutting down that VM before starting macOS
 
-#### Scenario: Módulo carregado sem VM ativa
-- **WHEN** o módulo `vboxdrv` está carregado mas nenhum processo de VM está rodando
-- **THEN** a verificação de conflito aparece como OK
+#### Scenario: Module loaded without a running VM
+- **WHEN** the `vboxdrv` module is loaded but no VM process is running
+- **THEN** the conflict check shows as OK
 
-#### Scenario: Processos não inspecionáveis
-- **WHEN** a lista de processos não pode ser lida
-- **THEN** a verificação de conflito aparece como inconclusiva
+#### Scenario: Processes not inspectable
+- **WHEN** the process list cannot be read
+- **THEN** the conflict check shows as Inconclusive
 
-### Requirement: Correção assistida de ignore_msrs
-O sistema SHALL oferecer uma ação que, com elevação de privilégio pedida ao sistema, ativa `ignore_msrs` no kernel em execução e grava um arquivo próprio em `/etc/modprobe.d/`, sem alterar arquivos existentes e nunca guardando a senha.
+### Requirement: Assisted ignore_msrs fix
+The system SHALL offer an action ("Fix ignore_msrs") that, with privilege elevation requested from the system, enables `ignore_msrs` in the running kernel and writes its own file in `/etc/modprobe.d/`, without changing existing files and never storing the password.
 
-#### Scenario: Correção aceita
-- **WHEN** o usuário aciona a correção e autoriza a elevação
-- **THEN** `/sys/module/kvm/parameters/ignore_msrs` passa a valer `Y`, `/etc/modprobe.d/macos-kvm-gui.conf` contém `options kvm ignore_msrs=1` e as verificações são refeitas
+#### Scenario: Fix accepted
+- **WHEN** the user triggers the fix and authorizes the elevation
+- **THEN** `/sys/module/kvm/parameters/ignore_msrs` becomes `Y`, `/etc/modprobe.d/macos-kvm-gui.conf` contains `options kvm ignore_msrs=1` and the checks are rerun
 
-#### Scenario: Elevação cancelada
-- **WHEN** o usuário cancela o pedido de elevação
-- **THEN** nada é alterado e o sistema informa que a correção foi cancelada
+#### Scenario: Elevation cancelled
+- **WHEN** the user cancels the elevation prompt
+- **THEN** nothing is changed and the system reports that the fix was cancelled
 
-#### Scenario: Falha parcial
-- **WHEN** a elevação é autorizada mas só uma das duas alterações foi aplicada
-- **THEN** o sistema informa qual alteração falhou, verificando o estado real de cada uma depois da execução
+#### Scenario: Partial failure
+- **WHEN** the elevation is authorized but only one of the two changes was applied
+- **THEN** the system reports which change failed, checking the actual state of each one after the run
 
-#### Scenario: Erro na elevação
-- **WHEN** o mecanismo de elevação retorna um erro que não é cancelamento
-- **THEN** o sistema mostra o erro retornado e nada é dado como aplicado sem verificação
+#### Scenario: Elevation error
+- **WHEN** the elevation mechanism returns an error that is not a cancellation
+- **THEN** the system shows the returned error and nothing is reported as applied without verification

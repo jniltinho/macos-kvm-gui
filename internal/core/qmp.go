@@ -15,9 +15,9 @@ const (
 	qmpDialBackoff = 100 * time.Millisecond
 )
 
-var ErrQMPClosed = errors.New("conexão QMP encerrada")
+var ErrQMPClosed = errors.New("QMP connection closed")
 
-// QMPEvent é um evento assíncrono do QEMU (STOP, RESUME, BLOCK_IO_ERROR, ...).
+// QMPEvent is an asynchronous QEMU event (STOP, RESUME, BLOCK_IO_ERROR, ...).
 type QMPEvent struct {
 	Name string         `json:"event"`
 	Data map[string]any `json:"data"`
@@ -33,16 +33,16 @@ type qmpMsg struct {
 	} `json:"error"`
 }
 
-// QMP é um cliente mínimo: uma conexão, um comando por vez, eventos por callback.
+// QMP is a minimal client: one connection, one command at a time, events via callback.
 type QMP struct {
 	conn    net.Conn
-	mu      sync.Mutex // serializa comandos
+	mu      sync.Mutex // serializes commands
 	replies chan qmpMsg
 	done    chan struct{}
 }
 
-// DialQMP espera o socket aparecer, negocia capacidades e passa a entregar eventos.
-// onDisconnect é chamado uma vez quando a conexão cai.
+// DialQMP waits for the socket to appear, negotiates capabilities and starts delivering events.
+// onDisconnect is called once when the connection drops.
 func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, error) {
 	var conn net.Conn
 	var err error
@@ -53,7 +53,7 @@ func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, er
 		time.Sleep(qmpDialBackoff)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("QMP indisponível: %w", err)
+		return nil, fmt.Errorf("QMP unavailable: %w", err)
 	}
 	dec := json.NewDecoder(conn)
 	conn.SetDeadline(time.Now().Add(qmpTimeout))
@@ -62,7 +62,7 @@ func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, er
 	}
 	if err := dec.Decode(&greeting); err != nil || greeting.QMP == nil {
 		conn.Close()
-		return nil, fmt.Errorf("greeting QMP inválido: %v", err)
+		return nil, fmt.Errorf("invalid QMP greeting: %v", err)
 	}
 	if _, err := conn.Write([]byte(`{"execute":"qmp_capabilities"}` + "\n")); err != nil {
 		conn.Close()
@@ -72,11 +72,11 @@ func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, er
 		var m qmpMsg
 		if err := dec.Decode(&m); err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("negociação QMP falhou: %w", err)
+			return nil, fmt.Errorf("QMP negotiation failed: %w", err)
 		}
 		if m.Error != nil {
 			conn.Close()
-			return nil, fmt.Errorf("negociação QMP recusada: %s", m.Error.Desc)
+			return nil, fmt.Errorf("QMP negotiation refused: %s", m.Error.Desc)
 		}
 		if m.Return != nil {
 			break
@@ -105,18 +105,18 @@ func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, er
 			}
 			select {
 			case q.replies <- m:
-			default: // resposta sem ninguém esperando (comando que já deu timeout)
+			default: // reply nobody is waiting for (command that already timed out)
 			}
 		}
 	}()
 	return q, nil
 }
 
-// Execute envia um comando e espera a resposta, com prazo de 5 s.
+// Execute sends a command and waits for the reply, with a 5 s deadline.
 func (q *QMP) Execute(cmd string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	select { // descarta resposta atrasada de um comando anterior
+	select { // drop a late reply from a previous command
 	case <-q.replies:
 	default:
 	}
@@ -134,7 +134,7 @@ func (q *QMP) Execute(cmd string) error {
 	case <-q.done:
 		return ErrQMPClosed
 	case <-time.After(qmpTimeout):
-		return fmt.Errorf("%s: sem resposta do QEMU em %s", cmd, qmpTimeout)
+		return fmt.Errorf("%s: no reply from QEMU within %s", cmd, qmpTimeout)
 	}
 }
 

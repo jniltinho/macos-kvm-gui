@@ -31,37 +31,37 @@ func TestBuildArgs(t *testing.T) {
 		withMedia bool
 		cpu, nic  string
 	}{
-		{"sonoma com mídia", "sonoma", true, "Skylake-Client", "virtio-net-pci"},
-		{"sonoma sem mídia", "sonoma", false, "Skylake-Client", "virtio-net-pci"},
+		{"sonoma with media", "sonoma", true, "Skylake-Client", "virtio-net-pci"},
+		{"sonoma without media", "sonoma", false, "Skylake-Client", "virtio-net-pci"},
 		{"high sierra", "high-sierra", false, "Penryn", "vmxnet3"},
 	}
 	for _, tc := range cases {
 		c.Version = tc.version
-		args := BuildArgs(c, w, "/run/q.sock", tc.withMedia)
+		args := BuildArgs(c, w, "/run/q.sock", tc.withMedia, nil)
 		if !strings.HasPrefix(argAfter(args, "-cpu", ""), tc.cpu+",") {
 			t.Errorf("%s: cpu %q", tc.name, argAfter(args, "-cpu", ""))
 		}
 		if argAfter(args, "-device", tc.nic+",netdev=net0") == "" {
-			t.Errorf("%s: NIC %s ausente", tc.name, tc.nic)
+			t.Errorf("%s: NIC %s missing", tc.name, tc.nic)
 		}
 		hasMedia := argAfter(args, "-drive", "id=InstallMedia") != ""
 		if hasMedia != tc.withMedia {
-			t.Errorf("%s: mídia=%v", tc.name, hasMedia)
+			t.Errorf("%s: media=%v", tc.name, hasMedia)
 		}
 		if got := argAfter(args, "-netdev", "user"); got != "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22" {
-			t.Errorf("%s: SSH deve ficar só em 127.0.0.1: %q", tc.name, got)
+			t.Errorf("%s: SSH must bind only to 127.0.0.1: %q", tc.name, got)
 		}
 		if got := argAfter(args, "-smp", ""); got != "8,sockets=1,cores=4,threads=2" {
 			t.Errorf("%s: smp %q", tc.name, got)
 		}
 		if got := argAfter(args, "-drive", "id=MacHDD"); !strings.HasSuffix(got, "file=/vm/a,,b/mac_hdd_ng.img") {
-			t.Errorf("%s: vírgula do caminho deve virar ,, : %q", tc.name, got)
+			t.Errorf("%s: comma in the path must become ,, : %q", tc.name, got)
 		}
 		if argAfter(args, "-drive", "if=pflash,format=raw,file=/vm/a,,b/"+VarsFile) == "" {
-			t.Errorf("%s: deve usar a NVRAM própria", tc.name)
+			t.Errorf("%s: must use the app's own NVRAM", tc.name)
 		}
 		if !slices.Contains(args, "id=OpenCoreBoot,if=none,snapshot=on,format=qcow2,file=/vm/a,,b/OpenCore/OpenCore.qcow2") {
-			t.Errorf("%s: OpenCore deve ser snapshot", tc.name)
+			t.Errorf("%s: OpenCore must be a snapshot", tc.name)
 		}
 	}
 }
@@ -72,33 +72,33 @@ func TestEnsureVarsNeverOverwrites(t *testing.T) {
 	if err := ensureVars(w); err != nil {
 		t.Fatal(err)
 	}
-	write(t, w.Path(VarsFile), "alterado-pelo-convidado")
+	write(t, w.Path(VarsFile), "modified-by-guest")
 	if err := ensureVars(w); err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := os.ReadFile(w.Path(VarsFile)); string(b) != "alterado-pelo-convidado" {
-		t.Fatalf("NVRAM sobrescrita: %q", b)
+	if b, _ := os.ReadFile(w.Path(VarsFile)); string(b) != "modified-by-guest" {
+		t.Fatalf("NVRAM overwritten: %q", b)
 	}
 }
 
 func TestExplainExit(t *testing.T) {
 	busy := []string{"ioctl(KVM_CREATE_VM) failed: 16 Device or resource busy", "qemu-system-x86_64: failed to initialize kvm: Device or resource busy"}
-	if m := explainExit(errors.New("exit status 1"), busy); !strings.Contains(m, "outro hypervisor") {
+	if m := explainExit(errors.New("exit status 1"), busy); !strings.Contains(m, "another hypervisor") {
 		t.Errorf("KVM busy: %q", m)
 	}
 	locked := []string{`qemu-system-x86_64: -device ide-hd,bus=sata.4,drive=MacHDD: Failed to get "write" lock`}
-	if m := explainExit(errors.New("exit status 1"), locked); !strings.Contains(m, "outro QEMU") {
-		t.Errorf("disco em uso: %q", m)
+	if m := explainExit(errors.New("exit status 1"), locked); !strings.Contains(m, "another QEMU") {
+		t.Errorf("disk in use: %q", m)
 	}
-	if m := explainExit(nil, []string{"tudo certo"}); m != "" {
-		t.Errorf("saída normal não tem mensagem: %q", m)
+	if m := explainExit(nil, []string{"all good"}); m != "" {
+		t.Errorf("normal exit has no message: %q", m)
 	}
 	if m := explainExit(errors.New("exit status 1"), []string{"boom"}); !strings.Contains(m, "boom") {
-		t.Errorf("erro genérico deve trazer a última linha: %q", m)
+		t.Errorf("generic error must include the last line: %q", m)
 	}
 }
 
-// fakeQMP é um servidor QMP mínimo: greeting, capabilities e respostas roteirizadas.
+// fakeQMP is a minimal QMP server: greeting, capabilities and scripted replies.
 func fakeQMP(t *testing.T, handle func(cmd string, enc *json.Encoder)) string {
 	sock := filepath.Join(t.TempDir(), "q.sock")
 	l, err := net.Listen("unix", sock)
@@ -137,13 +137,13 @@ func TestQMP(t *testing.T) {
 	sock := fakeQMP(t, func(cmd string, enc *json.Encoder) {
 		switch cmd {
 		case "system_powerdown":
-			// evento chega antes da resposta: o cliente precisa separar os dois
+			// the event arrives before the reply: the client must tell them apart
 			enc.Encode(map[string]any{"event": "POWERDOWN"})
 			enc.Encode(map[string]any{"return": map[string]any{}})
-		case "quebrado":
+		case "broken":
 			enc.Encode(map[string]any{"error": map[string]any{"class": "GenericError", "desc": "nope"}})
-		case "mudo":
-			// não responde: deve dar timeout
+		case "mute":
+			// no reply: must time out
 		}
 	})
 	q, err := DialQMP(sock, func(e QMPEvent) { events <- e }, func() { close(disconnected) })
@@ -154,23 +154,23 @@ func TestQMP(t *testing.T) {
 		t.Fatalf("powerdown: %v", err)
 	}
 	if e := <-events; e.Name != "POWERDOWN" {
-		t.Fatalf("evento: %v", e)
+		t.Fatalf("event: %v", e)
 	}
-	if err := q.Execute("quebrado"); err == nil || !strings.Contains(err.Error(), "nope") {
-		t.Fatalf("erro do QEMU deve ser repassado: %v", err)
+	if err := q.Execute("broken"); err == nil || !strings.Contains(err.Error(), "nope") {
+		t.Fatalf("QEMU error must be passed through: %v", err)
 	}
 	start := time.Now()
-	if err := q.Execute("mudo"); err == nil || time.Since(start) < qmpTimeout {
-		t.Fatalf("esperava timeout: %v", err)
+	if err := q.Execute("mute"); err == nil || time.Since(start) < qmpTimeout {
+		t.Fatalf("expected timeout: %v", err)
 	}
 	q.Execute("hangup")
 	select {
 	case <-disconnected:
 	case <-time.After(2 * time.Second):
-		t.Fatal("desconexão não foi notificada")
+		t.Fatal("disconnect was not reported")
 	}
 	if err := q.Execute("system_powerdown"); !errors.Is(err, ErrQMPClosed) {
-		t.Fatalf("após desconectar: %v", err)
+		t.Fatalf("after disconnect: %v", err)
 	}
 }
 
@@ -180,16 +180,16 @@ func TestVMEvents(t *testing.T) {
 	v := &VM{OnState: func(s VMState, m string) { states = append(states, s); msgs = append(msgs, m) }}
 	v.onEvent(QMPEvent{"BLOCK_IO_ERROR", map[string]any{"action": "report", "device": "MacHDD"}})
 	if len(states) != 0 {
-		t.Fatal("BLOCK_IO_ERROR sem action=stop não pausa")
+		t.Fatal("BLOCK_IO_ERROR without action=stop does not pause")
 	}
 	v.onEvent(QMPEvent{"BLOCK_IO_ERROR", map[string]any{"action": "stop", "device": "MacHDD", "operation": "write", "nospace": true}})
 	v.onEvent(QMPEvent{"STOP", nil})
 	v.onEvent(QMPEvent{"RESUME", nil})
 	if !slices.Equal(states, []VMState{Paused, Paused, Running}) {
-		t.Fatalf("estados: %v", states)
+		t.Fatalf("states: %v", states)
 	}
-	if !strings.Contains(msgs[1], "sem espaço") {
-		t.Fatalf("STOP após erro de disco deve manter a causa: %q", msgs[1])
+	if !strings.Contains(msgs[1], "out of space") {
+		t.Fatalf("STOP after a disk error must keep the cause: %q", msgs[1])
 	}
 }
 
@@ -198,6 +198,6 @@ func TestStartRefusesWithoutDisk(t *testing.T) {
 	c := Defaults()
 	c.Workspace = w.Dir
 	if err := (&VM{}).Start(c); err == nil || !strings.Contains(err.Error(), DiskFile) {
-		t.Fatalf("sem disco não pode iniciar: %v", err)
+		t.Fatalf("must not start without a disk: %v", err)
 	}
 }

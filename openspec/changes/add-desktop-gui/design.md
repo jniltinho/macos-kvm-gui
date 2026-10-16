@@ -2,49 +2,49 @@
 
 ## Context
 
-O OSX-KVM entrega shell scripts (`OpenCore-Boot.sh` com valores fixos no código), um downloader em Python (`fetch-macOS-v2.py`) e os binários de boot (OpenCore qcow2, OVMF). No host de referência (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2, OSX-KVM `4c378a4`) o fluxo manual funcionou assim: `qemu-img convert` converteu o DMG do Sonoma sem `dmg2img`; o CPU `Skylake-Client,-hle,-rtm` iniciou o Sonoma; e uma VM do VirtualBox rodando fez o QEMU falhar com `KVM_CREATE_VM ... busy`.
+OSX-KVM ships shell scripts (`OpenCore-Boot.sh` with hardcoded values), a Python downloader (`fetch-macOS-v2.py`) and the boot binaries (OpenCore qcow2, OVMF). On the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2, OSX-KVM `4c378a4`) the manual flow went like this: `qemu-img convert` converted the Sonoma DMG without `dmg2img`; the `Skylake-Client,-hle,-rtm` CPU booted Sonoma; and a running VirtualBox VM made QEMU fail with `KVM_CREATE_VM ... busy`.
 
-Uma revisão encontrou um problema no `fetch-macOS-v2.py`: no fluxo `-s`, o `verify_image()` chama `os.get_terminal_size()` sem tratar a falta de TTY, e o retorno de `action_download()` é descartado. Por isso, rodando com stdout em pipe, a verificação falha e o processo mesmo assim sai com código 0. Os requisitos estão nas specs; a motivação, em proposal.md.
+A review found a problem in `fetch-macOS-v2.py`: in the `-s` flow, `verify_image()` calls `os.get_terminal_size()` without handling a missing TTY, and the return value of `action_download()` is discarded. So with stdout piped, verification fails and the process still exits with code 0. Requirements are in the specs; motivation is in proposal.md.
 
 ## Goals / Non-Goals
 
 **Goals:**
-- Um binário Go que só invoca ferramentas já presentes no host (qemu, git, python3, pkexec).
-- Lógica testável (montagem de argumentos, validação, verificações, chunklist, QMP) separada da UI.
-- Nunca destruir um disco, uma mídia ou uma NVRAM existentes por efeito colateral.
+- A Go binary that only invokes tools already present on the host (qemu, git, python3, pkexec).
+- Testable logic (argument building, validation, checks, chunklist, QMP) separated from the UI.
+- Never destroy an existing disk, media or NVRAM as a side effect.
 
 **Non-Goals:**
-- Reconectar a uma VM iniciada fora do app ou em uma execução anterior.
-- Atualizar o clone do OSX-KVM (`git pull`) ou fixar uma revisão dele.
-- Reimplementar o protocolo de recovery da Apple em Go; só a verificação do chunklist.
-- Particionar o disco ou automatizar o instalador dentro do convidado.
-- Empacotamento (.deb, Flatpak, AppImage) e regeneração de initramfs.
+- Reattaching to a VM started outside the app or in a previous run.
+- Updating the OSX-KVM clone (`git pull`) or pinning a revision of it.
+- Reimplementing Apple's recovery protocol in Go; only chunklist verification.
+- Partitioning the disk or automating the installer inside the guest.
+- Packaging (.deb, Flatpak, AppImage) and initramfs regeneration.
 
 ## Decisions
 
-1. **Fyne v2 como toolkit.** Widgets em Go puro, binário único, sem runtime web. Operações longas rodam em goroutines e atualizam widgets via `fyne.Do` (Fyne ≥ 2.6). Alternativas descartadas: Wails (webkit2gtk e frontend JS, ou seja, duas stacks) e gotk4 (bindings GTK pesados). Custo: CGO e headers OpenGL/X11 no build.
-2. **Reusar o OSX-KVM em tempo de execução em vez de embutir.** O app clona o repositório no workspace e usa `OpenCore.qcow2`, OVMF e `fetch-macOS-v2.py` dali, sem redistribuir binários GPLv3 ou da Apple. Um diretório não vazio só é usado se estiver completo; caso contrário, nada é alterado.
-3. **Argumentos do QEMU gerados em Go.** O `OpenCore-Boot.sh` é portado para uma função pura `config → []string`, coberta por testes de tabela. Nas opções do QEMU, caminhos têm a vírgula escapada como `,,`. O OpenCore usa `snapshot=on`. O SSH usa `hostfwd=tcp:127.0.0.1:<porta>-:22`. A topologia é `-smp <vcpus>,sockets=1,cores=<c>,threads=<vcpus/c>`.
-4. **Perfil de hardware derivado da versão**, seguindo os comentários do upstream: Penryn até Monterey, Skylake-Client de Ventura em diante, vmxnet3 para High Sierra. Isso tira opções da UI e o risco de combinações inválidas. Só o Sonoma foi validado; as demais versões aparecem como experimentais.
-5. **NVRAM persistente por workspace.** No primeiro início, `OVMF_VARS-1920x1080.fd` é copiado para `macos-kvm-gui-vars.fd`, que nunca é sobrescrito. Não há opção de resolução: os VARS do upstream e o OpenCore já vêm em 1920x1080, e trocar de VARS perderia a NVRAM.
-6. **Download por `fetch-macOS-v2.py`, verificação em Go.** O script roda com `-s <versão>` dentro de `<workspace>/.macos-kvm-gui-staging/`, e seu código de saída não define sucesso. O Go lê o chunklist (header `CNKL`, assinatura RSA-2048 com a chave pública EFI da Apple, igual ao script), confere o SHA-256 de cada chunk do DMG e rejeita bytes sobrando. O progresso vem da saída dividida por `\r` ou `\n`, com o parse de `NN.N% downloaded`; a etapa é inferida pelas linhas `Saving ...chunklist` e `Saving ...dmg`.
-7. **Publicação atômica.** `qemu-img convert -p -f dmg -O raw` grava em staging, no mesmo filesystem do destino. Antes do rename, o marcador de versão antigo é apagado; em seguida um `rename` substitui `BaseSystem.img`. O rename é o ponto de commit: antes dele, qualquer falha preserva a mídia anterior. Depois dele, gravar `.macos-kvm-gui-media` é best-effort, e uma falha ali só deixa a versão como "desconhecida", nunca uma versão errada. O staging é sempre removido. Antes de começar, o app exige 4 GiB livres.
-8. **Lock por workspace com `flock`** em `$XDG_RUNTIME_DIR/macos-kvm-gui-<sha256(caminho)[:8]>.lock`. O lock fica **fora** do workspace, porque dentro dele o diretório deixaria de estar vazio e o `git clone` recusaria. Ele é mantido durante qualquer operação que altera o workspace e durante toda a execução da VM; uma segunda instância recebe "workspace em uso". O kernel solta o lock se o app morrer. A configuração é copiada no início de cada operação.
-9. **QMP com cliente mínimo próprio.** O socket fica em `os.MkdirTemp` (permissão 0700) dentro de `$XDG_RUNTIME_DIR`, ou do diretório temporário se ele não existir. O cliente tenta conectar até 50 vezes, a cada 100 ms, até o QEMU criar o socket. Depois lê o greeting, envia `qmp_capabilities` e mantém uma única conexão durante a execução. Uma goroutine leitora separa eventos (campo `event`) de respostas (`return`/`error`). Cada comando tem 5 s para escrever e receber a resposta. `BLOCK_IO_ERROR` com `action: "stop"` ou um evento `STOP` mudam o estado para "pausada por erro" (o app nunca pausa a VM por conta própria), e `RESUME` volta para "em execução". Se a conexão QMP cair com o processo vivo, o estado continua "em execução", o desligamento gracioso fica indisponível e a parada forçada continua disponível. `system_powerdown` não altera o estado.
-10. **Elevação só para `ignore_msrs`.** Um script constante, sem nada interpolado, roda via `pkexec /bin/sh -c '...'`. Ele grava `/sys/module/kvm/parameters/ignore_msrs` e `/etc/modprobe.d/macos-kvm-gui.conf`, um arquivo próprio. Saída 126 do pkexec significa cancelado; qualquer outro código diferente de zero é erro. Depois, o app relê os dois estados para detectar aplicação parcial. A persistência cobre o kvm carregado como módulo; initramfs fica fora de escopo e o README documenta isso.
-11. **Conflito de hypervisor como aviso.** O app procura `VBoxHeadless`, `VirtualBoxVM` e `vmware-vmx` em `/proc/*/comm`, e erro de leitura vira "inconclusivo". O diagnóstico definitivo é o erro do QEMU no start (decisão 9 e a tradução de erros).
-12. **Configuração em JSON** em `os.UserConfigDir()/macos-kvm-gui/config.json`, gravada de forma atômica (arquivo temporário e rename).
-13. **Layout do código:** `main.go` (Fyne) mais `internal/core` (config, host, media, chunklist, qmp, vm), com testes no próprio pacote. Para testar, `/proc` e `/sys`, o executor de comandos e o socket QMP são injetáveis.
+1. **Fyne v2 as the toolkit.** Pure Go widgets, single binary, no web runtime. Long operations run in goroutines and update widgets via `fyne.Do` (Fyne ≥ 2.6). Rejected alternatives: Wails (webkit2gtk plus a JS frontend, i.e. two stacks) and gotk4 (heavy GTK bindings). Cost: CGO and OpenGL/X11 headers at build time.
+2. **Reuse OSX-KVM at runtime instead of embedding it.** The app clones the repository into the workspace and uses `OpenCore.qcow2`, OVMF and `fetch-macOS-v2.py` from there, without redistributing GPLv3 or Apple binaries. A non-empty directory is used only if it is complete; otherwise nothing is changed.
+3. **QEMU arguments generated in Go.** `OpenCore-Boot.sh` is ported to a pure function `config → []string`, covered by table tests. In QEMU options, commas in paths are escaped as `,,`. OpenCore uses `snapshot=on`. SSH uses `hostfwd=tcp:127.0.0.1:<port>-:22`. The topology is `-smp <vcpus>,sockets=1,cores=<c>,threads=<vcpus/c>`.
+4. **Hardware profile derived from the version**, following upstream comments: Penryn up to Monterey, Skylake-Client from Ventura on, vmxnet3 for High Sierra. This removes options from the UI and the risk of invalid combinations. Only Sonoma has been validated; the other versions are shown as experimental.
+5. **Persistent NVRAM per workspace.** On first start, `OVMF_VARS-1920x1080.fd` is copied to `macos-kvm-gui-vars.fd`, which is never overwritten. There is no resolution option: the upstream VARS and OpenCore already ship at 1920x1080, and switching VARS would lose the NVRAM.
+6. **Download via `fetch-macOS-v2.py`, verification in Go.** The script runs with `-s <version>` inside `<workspace>/.macos-kvm-gui-staging/`, and its exit code does not define success. Go reads the chunklist (`CNKL` header, RSA-2048 signature with Apple's EFI public key, same as the script), checks the SHA-256 of each DMG chunk and rejects trailing bytes. Progress comes from output split on `\r` or `\n`, parsing `NN.N% downloaded`; the stage is inferred from the `Saving ...chunklist` and `Saving ...dmg` lines.
+7. **Atomic publish.** `qemu-img convert -p -f dmg -O raw` writes to staging, on the same filesystem as the destination. Before the rename, the old version marker is deleted; then a `rename` replaces `BaseSystem.img`. The rename is the commit point: before it, any failure preserves the previous media. After it, writing `.macos-kvm-gui-media` is best-effort, and a failure there only leaves the version as "unknown", never a wrong version. Staging is always removed. Before starting, the app requires 4 GiB free.
+8. **Per-workspace lock with `flock`** at `$XDG_RUNTIME_DIR/macos-kvm-gui-<sha256(path)[:8]>.lock`. The lock lives **outside** the workspace, because inside it the directory would no longer be empty and `git clone` would refuse. It is held during any operation that changes the workspace and for the whole VM run; a second instance gets "workspace in use". The kernel releases the lock if the app dies. The configuration is copied at the start of each operation.
+9. **QMP with a minimal in-house client.** The socket lives in `os.MkdirTemp` (mode 0700) under `$XDG_RUNTIME_DIR`, or the temp directory if it does not exist. The client tries to connect up to 50 times, every 100 ms, until QEMU creates the socket. It then reads the greeting, sends `qmp_capabilities` and keeps a single connection for the run. A reader goroutine separates events (`event` field) from responses (`return`/`error`). Each command has 5 s to write and receive the response. `BLOCK_IO_ERROR` with `action: "stop"` or a `STOP` event changes the state to "Paused (error)" (the app never pauses the VM on its own), and `RESUME` returns it to "Running". If the QMP connection drops while the process is alive, the state stays "Running", graceful shutdown becomes unavailable and force stop remains available. `system_powerdown` does not change the state.
+10. **Elevation only for `ignore_msrs`.** A constant script, with nothing interpolated, runs via `pkexec /bin/sh -c '...'`. It writes `/sys/module/kvm/parameters/ignore_msrs` and `/etc/modprobe.d/macos-kvm-gui.conf`, a file of its own. pkexec exit code 126 means cancelled; any other non-zero code is an error. Afterwards, the app rereads both states to detect partial application. Persistence covers kvm loaded as a module; initramfs is out of scope and the README documents this.
+11. **Hypervisor conflict as a warning.** The app looks for `VBoxHeadless`, `VirtualBoxVM` and `vmware-vmx` in `/proc/*/comm`, and a read error becomes "Inconclusive". The definitive diagnosis is the QEMU error at start (decision 9 and the error translation).
+12. **JSON configuration** at `os.UserConfigDir()/macos-kvm-gui/config.json`, written atomically (temp file and rename).
+13. **Code layout:** `main.go` (Fyne) plus `internal/core` (config, host, media, chunklist, qmp, vm), with tests in the same package. For testing, `/proc` and `/sys`, the command executor and the QMP socket are injectable.
 
 ## Risks / Trade-offs
 
-- [O upstream muda nomes de arquivos ou a saída do downloader] → Os caminhos ficam em constantes, a verificação do chunklist independe do script e, se o parse de progresso falhar, a barra fica indeterminada.
-- [App derrubado com a VM rodando] → O QEMU é filho do app e recebe SIGTERM via `Pdeathsig`. É uma perda equivalente à parada forçada, mas evita um QEMU órfão segurando o workspace sem lock. Como o `Pdeathsig` dispara quando morre a **thread** que criou o processo, `Start` e `Wait` rodam numa goroutine com `runtime.LockOSThread`, e essa thread vive enquanto o QEMU viver.
-- [Versões experimentais falham com o perfil derivado] → Ficam marcadas como experimentais na UI; o preflight verifica AVX2/SSE4.1 de Ventura em diante.
-- [qemu-img não suporta a compressão de algum DMG] → A conversão falha de forma segura (mídia anterior preservada) e o erro sugere instalar o `dmg2img`.
-- [qcow2 thin esgota o disco do host] → Aviso na criação e estado "pausada por erro" vindo do QMP.
-- [Build com CGO complica a distribuição] → Aceito nesta fase; o README lista os pacotes.
+- [Upstream changes file names or the downloader output] → Paths are constants, chunklist verification is independent of the script and, if progress parsing fails, the bar becomes indeterminate.
+- [App killed while the VM is running] → QEMU is a child of the app and receives SIGTERM via `Pdeathsig`. The loss is equivalent to a force stop, but it avoids an orphan QEMU holding the workspace without a lock. Since `Pdeathsig` fires when the **thread** that created the process dies, `Start` and `Wait` run in a goroutine with `runtime.LockOSThread`, and that thread lives as long as QEMU does.
+- [Experimental versions fail with the derived profile] → They are marked experimental in the UI; preflight checks AVX2/SSE4.1 from Ventura on.
+- [qemu-img does not support some DMG's compression] → Conversion fails safely (previous media preserved) and the error suggests installing `dmg2img`.
+- [Thin qcow2 exhausts the host disk] → Warning at creation and "Paused (error)" state from QMP.
+- [CGO build complicates distribution] → Accepted for this phase; the README lists the packages.
 
 ## Migration Plan
 
-Não se aplica: projeto novo. Um workspace OSX-KVM já existente (`~/OSX-KVM` com disco e mídia) é reaproveitado, porque os nomes dos arquivos são os do upstream. A NVRAM própria nasce no primeiro início feito pelo app.
+Not applicable: new project. An existing OSX-KVM workspace (`~/OSX-KVM` with disk and media) is reused, because the file names are the upstream ones. The app's own NVRAM is created on the first start done by the app.

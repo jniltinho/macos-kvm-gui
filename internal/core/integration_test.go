@@ -1,7 +1,7 @@
 //go:build integration
 
-// Teste com QEMU e KVM reais: go test -tags integration -run Real ./internal/core
-// Requer um clone do OSX-KVM em $OSX_KVM (padrão ~/OSX-KVM), usado só para leitura.
+// Test with real QEMU and KVM: go test -tags integration -run Real ./internal/core
+// Requires an OSX-KVM clone at $OSX_KVM (default ~/OSX-KVM), used read-only.
 package core
 
 import (
@@ -19,7 +19,7 @@ func copyFile(t *testing.T, src, dst string) {
 	os.MkdirAll(filepath.Dir(dst), 0o755)
 	in, err := os.Open(src)
 	if err != nil {
-		t.Skip("OSX-KVM não encontrado: ", err)
+		t.Skip("OSX-KVM not found: ", err)
 	}
 	defer in.Close()
 	out, err := os.Create(dst)
@@ -38,7 +38,7 @@ func waitState(t *testing.T, v *VM, want VMState) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	t.Fatalf("estado %v, esperado %v", v.State(), want)
+	t.Fatalf("state %v, expected %v", v.State(), want)
 }
 
 func TestRealQEMULifecycle(t *testing.T) {
@@ -47,7 +47,7 @@ func TestRealQEMULifecycle(t *testing.T) {
 		home, _ := os.UserHomeDir()
 		src = filepath.Join(home, "OSX-KVM")
 	}
-	w := NewWorkspace(filepath.Join(t.TempDir(), "ws,com,virgula"))
+	w := NewWorkspace(filepath.Join(t.TempDir(), "ws,with,comma"))
 	for _, f := range RequiredFiles {
 		copyFile(t, filepath.Join(src, f), w.Path(f))
 	}
@@ -66,15 +66,15 @@ func TestRealQEMULifecycle(t *testing.T) {
 	}
 	waitState(t, v, Running)
 	if !exists(w.Path(VarsFile)) {
-		t.Fatal("NVRAM própria não foi criada")
+		t.Fatal("the app's own NVRAM was not created")
 	}
 	if _, err := w.Lock(); err != ErrBusy {
-		t.Fatalf("workspace deve ficar travado com a VM rodando: %v", err)
+		t.Fatalf("workspace must stay locked while the VM runs: %v", err)
 	}
 	if err := v.Start(c); err == nil {
-		t.Fatal("segundo start deve ser recusado")
+		t.Fatal("second start must be refused")
 	}
-	// o QMP conecta em segundo plano; o powerdown precisa ser aceito pelo QEMU
+	// QMP connects in the background; QEMU must accept the powerdown
 	var err error
 	for range 50 {
 		if err = v.Powerdown(); err == nil {
@@ -86,7 +86,7 @@ func TestRealQEMULifecycle(t *testing.T) {
 		t.Fatalf("powerdown via QMP: %v", err)
 	}
 	if v.State() != Running {
-		t.Fatal("powerdown não pode mudar o estado sozinho")
+		t.Fatal("powerdown must not change the state by itself")
 	}
 	if err := v.Kill(); err != nil {
 		t.Fatal(err)
@@ -94,13 +94,13 @@ func TestRealQEMULifecycle(t *testing.T) {
 	waitState(t, v, Stopped)
 	unlock, err := w.Lock()
 	if err != nil {
-		t.Fatalf("lock deve ser solto quando o QEMU sai: %v", err)
+		t.Fatalf("lock must be released when QEMU exits: %v", err)
 	}
 	unlock()
-	time.Sleep(100 * time.Millisecond) // OnState(Stopped) roda logo após o estado mudar
+	time.Sleep(100 * time.Millisecond) // OnState(Stopped) runs right after the state changes
 	mu.Lock()
 	defer mu.Unlock()
-	if last := msgs[len(msgs)-1]; last != "Parada forçada pelo usuário." {
-		t.Fatalf("parada forçada pedida não é erro: %q", last)
+	if last := msgs[len(msgs)-1]; last != "Stopped by the user (forced)." {
+		t.Fatalf("a requested forced stop is not an error: %q", last)
 	}
 }

@@ -1,4 +1,4 @@
-// macos-kvm-gui: interface desktop para instalar e rodar macOS no KVM usando o OSX-KVM.
+// macos-kvm-gui: desktop app to install and run macOS on KVM using OSX-KVM.
 package main
 
 import (
@@ -19,23 +19,34 @@ import (
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
 )
 
-const manualSteps = `**Passos manuais dentro da VM (primeira instalação)**
+const manualSteps = `**Manual steps inside the VM (first install)**
 
-1. No menu do OpenCore, escolha **macOS Base System**.
-2. Abra o **Disk Utility**, ative *View › Show All Devices*, selecione o disco **QEMU HARDDISK** e use **Erase** (APFS, GUID).
-3. Feche o Disk Utility e escolha **Reinstall macOS**. A VM reinicia algumas vezes: no OpenCore escolha **macOS Installer** e, depois, o disco instalado.
-4. Quando o macOS já iniciar pelo disco, remova a mídia de instalação aqui para liberar espaço.`
+1. In the OpenCore menu, choose **macOS Base System**.
+2. Open **Disk Utility**, enable *View › Show All Devices*, select the **QEMU HARDDISK** disk and use **Erase** (APFS, GUID).
+3. Close Disk Utility and choose **Reinstall macOS**. The VM restarts a few times: in OpenCore pick **macOS Installer**, then the installed disk.
+4. Once macOS boots from the disk, remove the install media here to free space.`
 
-const videoTips = `**Desempenho de vídeo**
+const videoTips = `**Video performance**
 
-A VM não tem aceleração gráfica: o macOS não tem driver para o vídeo virtual nem para GPUs NVIDIA, então a tela é desenhada pela CPU. Para ficar mais fluido:
+The VM has no graphics acceleration: macOS has no driver for the emulated display or for NVIDIA GPUs, so the CPU draws the screen. To make it smoother:
 
-1. Use **Recomendado para este host** na aba Configuração (mais vCPUs e RAM).
-2. No macOS, em *System Settings › Accessibility › Display*, ative **Reduce motion** e **Reduce transparency**.
-3. Em *Desktop & Dock*, escolha minimizar com **Scale** e desligue **Animate opening applications**.
-4. Prefira um papel de parede estático e mantenha 1920x1080.
+1. Use **Recommended for this host** in the Settings tab (more vCPUs and RAM).
+2. In macOS, under *System Settings › Accessibility › Display*, turn on **Reduce motion** and **Reduce transparency**.
+3. Under *Desktop & Dock*, minimize with **Scale** and turn off **Animate opening applications**.
+4. Use a static wallpaper (the default Sonoma wallpaper is animated and stays blank without Metal) and keep 1920x1080.
 
-Aceleração de verdade só com uma GPU AMD suportada pelo macOS (por exemplo RX 580 ou RX 6600) em passthrough VFIO.`
+Real acceleration needs a macOS-supported AMD GPU passed through with VFIO: see the GPU tab.`
+
+const gpuNotes = `**GPU passthrough (VFIO)**
+
+Gives the VM a real AMD GPU, the only way to get Metal. The GPU's display output then goes to a monitor plugged into that card; the QEMU window stays for keyboard and mouse.
+
+- Supported: RX 460–590, Vega 56/64, Radeon VII, RX 5500/5600/5700, RX 6600/6600 XT, RX 6800/6800 XT/6900 XT.
+- Not supported: RX 7000, RX 6400/6500, NVIDIA, Intel and AMD Ryzen iGPUs.
+- The host must show its screen on another GPU (set the integrated GPU as primary display in the BIOS).
+- **Reserve** writes the VFIO settings and needs a host reboot; **Release** undoes it.
+- Polaris, Vega and RX 5000 cards may need a host reboot after each VM restart (AMD reset bug). Navi cards may need ` + "`agdpmod=pikera`" + ` in OpenCore's boot-args.
+- Untested on real hardware: the reference host has no supported AMD card.`
 
 type ui struct {
 	win     fyne.Window
@@ -45,20 +56,24 @@ type ui struct {
 	vm      *core.VM
 	busy    bool
 
-	checks       *fyne.Container
-	installInfo  *widget.Label
-	stage        *widget.Label
-	bar          *widget.ProgressBar
-	barInf       *widget.ProgressBarInfinite
-	diskSize     *widget.Entry
-	vmState      *widget.Label
-	log          *widget.TextGrid
-	logScroll    *container.Scroll
-	logLines     []string
-	actionsOnOff []*widget.Button // desligados durante operações longas
+	checks      *fyne.Container
+	installInfo *widget.Label
+	stage       *widget.Label
+	bar         *widget.ProgressBar
+	barInf      *widget.ProgressBarInfinite
+	diskSize    *widget.Entry
+	vmState     *widget.Label
+	log         *widget.TextGrid
+	logScroll   *container.Scroll
+	logLines    []string
+	gpuList     *fyne.Container
+	gpuSelect   *widget.Select
+	gpuStatus   *widget.Label
+	gpus        []core.GPU
 
 	btnPrepare, btnDownload, btnDisk, btnRemove *widget.Button
 	btnStart, btnPowerdown, btnKill             *widget.Button
+	btnReserve, btnRelease                      *widget.Button
 }
 
 func main() {
@@ -83,16 +98,17 @@ func main() {
 
 	tabs := container.NewAppTabs(
 		container.NewTabItemWithIcon("Host", theme.ComputerIcon(), u.hostTab()),
-		container.NewTabItemWithIcon("Configuração", theme.SettingsIcon(), u.configTab()),
-		container.NewTabItemWithIcon("Instalação", theme.DownloadIcon(), u.installTab()),
+		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), u.configTab()),
+		container.NewTabItemWithIcon("Install", theme.DownloadIcon(), u.installTab()),
 		container.NewTabItemWithIcon("VM", theme.MediaPlayIcon(), u.vmTab()),
+		container.NewTabItemWithIcon("GPU", theme.ColorPaletteIcon(), u.gpuTab()),
 		container.NewTabItemWithIcon("Log", theme.ListIcon(), u.logTab()),
 	)
 	u.win.SetContent(tabs)
-	u.win.Resize(fyne.NewSize(820, 600))
+	u.win.Resize(fyne.NewSize(860, 620))
 	u.win.SetCloseIntercept(func() {
 		if u.vm.State() != core.Stopped {
-			dialog.ShowInformation("VM em execução", "Desligue a VM antes de fechar o app.", u.win)
+			dialog.ShowInformation("VM running", "Shut down the VM before closing the app.", u.win)
 			return
 		}
 		u.win.Close()
@@ -104,7 +120,7 @@ func main() {
 	u.win.ShowAndRun()
 }
 
-// workspace usa a configuração salva; cada operação recebe uma cópia.
+// workspace uses the saved configuration; each operation gets its own copy.
 func (u *ui) workspace() (core.Workspace, error) {
 	dir, err := u.cfg.WorkspaceDir()
 	return core.NewWorkspace(dir), err
@@ -119,7 +135,9 @@ func (u *ui) appendLog(s string) {
 	u.logScroll.ScrollToBottom()
 }
 
-// run executa fn fora da thread da UI, com os botões de ação desligados.
+func (u *ui) logAsync(s string) { fyne.Do(func() { u.appendLog(s) }) }
+
+// run executes fn off the UI thread, with the action buttons disabled.
 func (u *ui) run(name string, fn func() error, onOK func()) {
 	u.busy = true
 	u.refresh()
@@ -133,7 +151,7 @@ func (u *ui) run(name string, fn func() error, onOK func()) {
 			u.barInf.Hide()
 			u.stage.SetText("")
 			if err != nil {
-				u.appendLog("erro: " + err.Error())
+				u.appendLog("error: " + err.Error())
 				dialog.ShowError(fmt.Errorf("%s: %w", name, err), u.win)
 			} else {
 				u.appendLog("ok: " + name)
@@ -144,6 +162,17 @@ func (u *ui) run(name string, fn func() error, onOK func()) {
 			u.refresh()
 		})
 	}()
+}
+
+// saveConfig validates, persists and applies a new configuration.
+func (u *ui) saveConfig(c core.Config) bool {
+	if err := core.SaveConfig(u.cfgPath, c); err != nil {
+		dialog.ShowError(err, u.win)
+		return false
+	}
+	u.cfg = c
+	u.refresh()
+	return true
 }
 
 func statusIcon(s core.Status) fyne.Resource {
@@ -160,18 +189,18 @@ func statusIcon(s core.Status) fyne.Resource {
 
 func (u *ui) hostTab() fyne.CanvasObject {
 	u.checks = container.NewVBox()
-	recheck := widget.NewButtonWithIcon("Verificar de novo", theme.ViewRefreshIcon(), u.refreshChecks)
-	fix := widget.NewButtonWithIcon("Corrigir ignore_msrs", theme.SettingsIcon(), func() {
+	recheck := widget.NewButtonWithIcon("Check again", theme.ViewRefreshIcon(), u.refreshChecks)
+	fix := widget.NewButtonWithIcon("Fix ignore_msrs", theme.SettingsIcon(), func() {
 		go func() {
 			err := u.host.FixIgnoreMSRs()
 			fyne.Do(func() {
 				switch {
 				case errors.Is(err, core.ErrCancelled):
-					dialog.ShowInformation("ignore_msrs", "Correção cancelada: nada foi alterado.", u.win)
+					dialog.ShowInformation("ignore_msrs", "Cancelled: nothing was changed.", u.win)
 				case err != nil:
 					dialog.ShowError(err, u.win)
 				default:
-					dialog.ShowInformation("ignore_msrs", "ignore_msrs ativado e persistido em /etc/modprobe.d/macos-kvm-gui.conf.", u.win)
+					dialog.ShowInformation("ignore_msrs", "ignore_msrs enabled and persisted in /etc/modprobe.d/macos-kvm-gui.conf.", u.win)
 				}
 				u.refreshChecks()
 			})
@@ -195,7 +224,7 @@ func (u *ui) refreshChecks() {
 
 func versionLabel(v core.Version) string {
 	if core.ProfileFor(v.Short).Experimental {
-		return v.Name + " — experimental"
+		return v.Name + " (experimental)"
 	}
 	return v.Name
 }
@@ -221,28 +250,29 @@ func (u *ui) configTab() fyne.CanvasObject {
 
 	form := widget.NewForm(
 		widget.NewFormItem("Workspace", ws),
-		widget.NewFormItem("Versão do macOS", version),
+		widget.NewFormItem("macOS version", version),
 		widget.NewFormItem("RAM (MiB)", ram),
-		widget.NewFormItem("Núcleos", cores),
+		widget.NewFormItem("Cores", cores),
 		widget.NewFormItem("vCPUs (total)", vcpus),
-		widget.NewFormItem("Porta SSH (127.0.0.1)", port),
+		widget.NewFormItem("SSH port (127.0.0.1)", port),
 	)
-	form.SubmitText = "Salvar"
+	form.SubmitText = "Save"
 	form.OnSubmit = func() {
 		if u.vm.State() != core.Stopped {
-			dialog.ShowInformation("Configuração", "Desligue a VM antes de mudar a configuração.", u.win)
+			dialog.ShowInformation("Settings", "Shut down the VM before changing the settings.", u.win)
 			return
 		}
-		c := core.Config{Workspace: strings.TrimSpace(ws.Text), Version: short[version.Selected]}
+		c := u.cfg // keeps fields edited elsewhere, such as the GPU
+		c.Workspace, c.Version = strings.TrimSpace(ws.Text), short[version.Selected]
 		var bad string
 		for _, f := range []struct {
 			name string
 			e    *widget.Entry
 			dst  *int
-		}{{"RAM", ram, &c.RAMMiB}, {"Núcleos", cores, &c.Cores}, {"vCPUs", vcpus, &c.VCPUs}, {"Porta SSH", port, &c.SSHPort}} {
+		}{{"RAM", ram, &c.RAMMiB}, {"Cores", cores, &c.Cores}, {"vCPUs", vcpus, &c.VCPUs}, {"SSH port", port, &c.SSHPort}} {
 			n, err := strconv.Atoi(strings.TrimSpace(f.e.Text))
 			if err != nil && bad == "" {
-				bad = f.name + ": informe um número inteiro"
+				bad = f.name + ": enter a whole number"
 			}
 			*f.dst = n
 		}
@@ -250,23 +280,19 @@ func (u *ui) configTab() fyne.CanvasObject {
 			dialog.ShowError(errors.New(bad), u.win)
 			return
 		}
-		if err := core.SaveConfig(u.cfgPath, c); err != nil {
-			dialog.ShowError(err, u.win)
-			return
+		if u.saveConfig(c) {
+			dialog.ShowInformation("Settings", "Settings saved.", u.win)
 		}
-		u.cfg = c
-		u.refresh()
-		dialog.ShowInformation("Configuração", "Configuração salva.", u.win)
 	}
-	recommend := widget.NewButtonWithIcon("Recomendado para este host", theme.ComputerIcon(), func() {
+	recommend := widget.NewButtonWithIcon("Recommended for this host", theme.ComputerIcon(), func() {
 		r := core.Recommended(u.cfg, runtime.NumCPU(), u.host.MemTotalMiB())
 		ram.SetText(strconv.Itoa(r.RAMMiB))
 		cores.SetText(strconv.Itoa(r.Cores))
 		vcpus.SetText(strconv.Itoa(r.VCPUs))
 	})
-	note := widget.NewLabel("Sem GPU suportada o macOS desenha a tela na CPU: mais vCPUs deixam o vídeo mais fluido. " +
-		"O botão acima só preenche os campos; clique em Salvar para aplicar. " +
-		"CPU e placa de rede são escolhidas pela versão do macOS. Só o Sonoma foi validado de ponta a ponta.")
+	note := widget.NewLabel("Without a supported GPU, macOS draws the screen on the CPU: more vCPUs make video smoother. " +
+		"The button above only fills in the fields; click Save to apply. " +
+		"The CPU model and network card follow the macOS version. Only Sonoma has been validated end to end.")
 	note.Wrapping = fyne.TextWrapWord
 	return container.NewVBox(form, container.NewHBox(recommend), note)
 }
@@ -281,23 +307,23 @@ func (u *ui) installTab() fyne.CanvasObject {
 	u.barInf.Stop()
 	u.barInf.Hide()
 
-	u.btnPrepare = widget.NewButtonWithIcon("Preparar workspace (clonar OSX-KVM)", theme.FolderNewIcon(), func() {
+	u.btnPrepare = widget.NewButtonWithIcon("Prepare workspace (clone OSX-KVM)", theme.FolderNewIcon(), func() {
 		w, err := u.workspace()
 		if err != nil {
 			dialog.ShowError(err, u.win)
 			return
 		}
-		u.showInfinite("Clonando OSX-KVM")
-		u.run("Preparar workspace", func() error { return w.Prepare(context.Background(), u.logAsync) }, nil)
+		u.showInfinite("Cloning OSX-KVM")
+		u.run("Prepare workspace", func() error { return w.Prepare(context.Background(), u.logAsync) }, nil)
 	})
-	u.btnDownload = widget.NewButtonWithIcon("Baixar recovery do macOS", theme.DownloadIcon(), func() {
+	u.btnDownload = widget.NewButtonWithIcon("Download macOS recovery", theme.DownloadIcon(), func() {
 		w, err := u.workspace()
 		if err != nil {
 			dialog.ShowError(err, u.win)
 			return
 		}
 		version := u.cfg.Version
-		u.run("Baixar recovery ("+version+")", func() error {
+		u.run("Download recovery ("+version+")", func() error {
 			return w.DownloadMedia(context.Background(), version, func(p core.Progress) {
 				fyne.Do(func() { u.showProgress(p) })
 			}, u.logAsync)
@@ -305,7 +331,7 @@ func (u *ui) installTab() fyne.CanvasObject {
 	})
 	u.diskSize = widget.NewEntry()
 	u.diskSize.SetText("80")
-	u.btnDisk = widget.NewButtonWithIcon("Criar disco", theme.StorageIcon(), func() {
+	u.btnDisk = widget.NewButtonWithIcon("Create disk", theme.StorageIcon(), func() {
 		w, err := u.workspace()
 		if err != nil {
 			dialog.ShowError(err, u.win)
@@ -313,22 +339,22 @@ func (u *ui) installTab() fyne.CanvasObject {
 		}
 		size, err := strconv.Atoi(strings.TrimSpace(u.diskSize.Text))
 		if err != nil {
-			dialog.ShowError(errors.New("tamanho do disco: informe um número inteiro de GiB"), u.win)
+			dialog.ShowError(errors.New("disk size: enter a whole number of GiB"), u.win)
 			return
 		}
 		var warning string
-		u.run("Criar disco", func() (err error) {
+		u.run("Create disk", func() (err error) {
 			warning, err = w.CreateDisk(context.Background(), size)
 			return err
 		}, func() {
 			if warning != "" {
-				dialog.ShowInformation("Disco criado com aviso", warning, u.win)
+				dialog.ShowInformation("Disk created with a warning", warning, u.win)
 			}
 		})
 	})
-	u.btnRemove = widget.NewButtonWithIcon("Remover mídia de instalação", theme.DeleteIcon(), func() {
-		dialog.ShowConfirm("Remover mídia",
-			"Confirme que o macOS já inicia pelo disco instalado. A BaseSystem.img será apagada.", func(ok bool) {
+	u.btnRemove = widget.NewButtonWithIcon("Remove install media", theme.DeleteIcon(), func() {
+		dialog.ShowConfirm("Remove install media",
+			"Confirm that macOS already boots from the installed disk. BaseSystem.img will be deleted.", func(ok bool) {
 				if !ok {
 					return
 				}
@@ -338,17 +364,16 @@ func (u *ui) installTab() fyne.CanvasObject {
 					return
 				}
 				var freed int64
-				u.run("Remover mídia", func() (err error) {
+				u.run("Remove install media", func() (err error) {
 					freed, err = w.RemoveMedia()
 					return err
 				}, func() {
-					dialog.ShowInformation("Mídia removida", fmt.Sprintf("%.2f GiB liberados.", float64(freed)/(1<<30)), u.win)
+					dialog.ShowInformation("Install media removed", fmt.Sprintf("%.2f GiB freed.", float64(freed)/(1<<30)), u.win)
 				})
 			}, u.win)
 	})
-	u.actionsOnOff = append(u.actionsOnOff, u.btnPrepare, u.btnDownload, u.btnDisk, u.btnRemove)
 
-	disk := container.NewBorder(nil, nil, widget.NewLabel("Tamanho (GiB, mín. 40):"), u.btnDisk, u.diskSize)
+	disk := container.NewBorder(nil, nil, widget.NewLabel("Size (GiB, min. 40):"), u.btnDisk, u.diskSize)
 	return container.NewVScroll(container.NewVBox(
 		u.installInfo,
 		u.btnPrepare,
@@ -360,8 +385,6 @@ func (u *ui) installTab() fyne.CanvasObject {
 		widget.NewRichTextFromMarkdown(manualSteps),
 	))
 }
-
-func (u *ui) logAsync(s string) { fyne.Do(func() { u.appendLog(s) }) }
 
 func (u *ui) showInfinite(stage string) {
 	u.stage.SetText(stage)
@@ -375,7 +398,7 @@ func (u *ui) showProgress(p core.Progress) {
 		u.showInfinite(p.Stage)
 		return
 	}
-	u.stage.SetText(fmt.Sprintf("%s — %.1f%%", p.Stage, p.Pct))
+	u.stage.SetText(fmt.Sprintf("%s: %.1f%%", p.Stage, p.Pct))
 	u.barInf.Stop()
 	u.barInf.Hide()
 	u.bar.Show()
@@ -384,26 +407,26 @@ func (u *ui) showProgress(p core.Progress) {
 
 func (u *ui) vmTab() fyne.CanvasObject {
 	u.vmState = widget.NewLabel("")
-	u.btnStart = widget.NewButtonWithIcon("Iniciar", theme.MediaPlayIcon(), func() {
+	u.btnStart = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), func() {
 		if err := u.vm.Start(u.cfg); err != nil {
 			dialog.ShowError(err, u.win)
 		}
 		u.refresh()
 	})
-	u.btnPowerdown = widget.NewButtonWithIcon("Desligar (ACPI)", theme.LogoutIcon(), func() {
+	u.btnPowerdown = widget.NewButtonWithIcon("Shut down (ACPI)", theme.LogoutIcon(), func() {
 		go func() {
 			err := u.vm.Powerdown()
 			fyne.Do(func() {
 				if err != nil {
 					dialog.ShowError(err, u.win)
 				} else {
-					u.appendLog("[VM] pedido de desligamento enviado ao macOS")
+					u.appendLog("[VM] shutdown request sent to macOS")
 				}
 			})
 		}()
 	})
-	u.btnKill = widget.NewButtonWithIcon("Forçar parada", theme.CancelIcon(), func() {
-		dialog.ShowConfirm("Forçar parada", "Equivale a puxar o cabo de energia: dados não salvos no macOS serão perdidos. Continuar?",
+	u.btnKill = widget.NewButtonWithIcon("Force stop", theme.CancelIcon(), func() {
+		dialog.ShowConfirm("Force stop", "This is like pulling the power cord: unsaved data in macOS will be lost. Continue?",
 			func(ok bool) {
 				if ok {
 					if err := u.vm.Kill(); err != nil {
@@ -422,18 +445,128 @@ func (u *ui) vmTab() fyne.CanvasObject {
 	))
 }
 
+const noGPU = "None (emulated display)"
+
+func (u *ui) gpuTab() fyne.CanvasObject {
+	u.gpuList = container.NewVBox()
+	u.gpuStatus = widget.NewLabel("")
+	u.gpuStatus.Wrapping = fyne.TextWrapWord
+	u.gpuSelect = widget.NewSelect(nil, func(choice string) {
+		addr := ""
+		if choice != noGPU {
+			addr, _, _ = strings.Cut(choice, " ")
+		}
+		if addr == u.cfg.GPU {
+			return
+		}
+		c := u.cfg
+		c.GPU = addr
+		u.saveConfig(c)
+	})
+	u.btnReserve = widget.NewButtonWithIcon("Reserve for VFIO", theme.ConfirmIcon(), func() {
+		g, ok := u.chosenGPU()
+		if !ok {
+			dialog.ShowInformation("GPU", "Choose an eligible GPU first.", u.win)
+			return
+		}
+		dialog.ShowConfirm("Reserve GPU", "vfio-pci will claim "+g.Name+" at the next boot, so the host can no longer use it. "+
+			"The host must show its screen on another GPU. A host reboot is required. Continue?", func(ok bool) {
+			if ok {
+				u.privileged("Reserve GPU", func() error { return u.host.ReserveGPU(g) })
+			}
+		}, u.win)
+	})
+	u.btnRelease = widget.NewButtonWithIcon("Release reservation", theme.CancelIcon(), func() {
+		u.privileged("Release GPU", u.host.ReleaseGPU)
+	})
+	return container.NewVScroll(container.NewVBox(
+		u.gpuList,
+		widget.NewSeparator(),
+		container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM:"), nil, u.gpuSelect),
+		container.NewHBox(u.btnReserve, u.btnRelease),
+		u.gpuStatus,
+		widget.NewSeparator(),
+		widget.NewRichTextFromMarkdown(gpuNotes),
+	))
+}
+
+func (u *ui) chosenGPU() (core.GPU, bool) {
+	for _, g := range u.gpus {
+		if g.Addr == u.cfg.GPU && g.Eligible {
+			return g, true
+		}
+	}
+	return core.GPU{}, false
+}
+
+func (u *ui) privileged(name string, fn func() error) {
+	go func() {
+		err := fn()
+		fyne.Do(func() {
+			switch {
+			case errors.Is(err, core.ErrCancelled):
+				dialog.ShowInformation(name, "Cancelled: nothing was changed.", u.win)
+			case err != nil:
+				dialog.ShowError(err, u.win)
+			default:
+				dialog.ShowInformation(name, "Done. Reboot the host to apply.", u.win)
+			}
+			u.refresh()
+		})
+	}()
+}
+
+func (u *ui) refreshGPUs() {
+	u.gpus = u.host.GPUs()
+	u.gpuList.RemoveAll()
+	options := []string{noGPU}
+	selected := noGPU
+	for _, g := range u.gpus {
+		icon := theme.ErrorIcon()
+		text := fmt.Sprintf("%s  %s [%s]\n%s · driver %s · IOMMU group %s", g.Addr, g.Name, g.ID, g.Compat, g.Driver, g.Group)
+		if g.Eligible {
+			icon = theme.ConfirmIcon()
+			text += "\n→ can be passed to the VM"
+		} else {
+			text += "\n→ " + g.Reason
+		}
+		l := widget.NewLabel(text)
+		l.Wrapping = fyne.TextWrapWord
+		u.gpuList.Add(container.NewBorder(nil, nil, widget.NewIcon(icon), nil, l))
+		if g.Eligible || g.Addr == u.cfg.GPU {
+			opt := g.Addr + " " + g.Name
+			options = append(options, opt)
+			if g.Addr == u.cfg.GPU {
+				selected = opt
+			}
+		}
+	}
+	if len(u.gpus) == 0 {
+		u.gpuList.Add(widget.NewLabel("No PCI display adapter found."))
+	}
+	u.gpuSelect.SetOptions(options)
+	u.gpuSelect.SetSelected(selected)
+
+	status := "No GPU is reserved for VFIO."
+	if ids := u.host.ReservedIDs(); ids != "" {
+		status = "Reserved for vfio-pci: " + ids + ". If you just changed this, reboot the host."
+	}
+	u.gpuStatus.SetText(status)
+}
+
 func (u *ui) logTab() fyne.CanvasObject {
 	u.log = widget.NewTextGrid()
 	u.logScroll = container.NewScroll(u.log)
 	return u.logScroll
 }
 
-// refresh recalcula textos e botões a partir do estado real do disco e da VM.
+// refresh recomputes texts and buttons from the real state of the disk and the VM.
 func (u *ui) refresh() {
-	if u.installInfo == nil {
+	if u.installInfo == nil || u.gpuList == nil {
 		return
 	}
 	u.refreshChecks()
+	u.refreshGPUs()
 	state := u.vm.State()
 	running := state != core.Stopped
 	free := !u.busy && !running
@@ -442,27 +575,27 @@ func (u *ui) refresh() {
 	var lines []string
 	st := core.WorkspaceIncomplete
 	if err != nil {
-		lines = append(lines, "Workspace inválido: "+err.Error())
+		lines = append(lines, "Invalid workspace: "+err.Error())
 	} else {
 		var missing []string
 		st, missing = w.Classify()
 		switch st {
 		case core.WorkspaceEmpty:
-			lines = append(lines, "Workspace "+w.Dir+": vazio (clique em Preparar)")
+			lines = append(lines, "Workspace "+w.Dir+": empty (click Prepare)")
 		case core.WorkspaceReady:
-			lines = append(lines, "Workspace "+w.Dir+": pronto")
+			lines = append(lines, "Workspace "+w.Dir+": ready")
 		default:
-			lines = append(lines, "Workspace "+w.Dir+": não é um OSX-KVM completo; faltam "+strings.Join(missing, ", "))
+			lines = append(lines, "Workspace "+w.Dir+": not a complete OSX-KVM; missing "+strings.Join(missing, ", "))
 		}
 		if w.HasMedia() {
-			lines = append(lines, fmt.Sprintf("Mídia de instalação: %s (%.2f GiB)", w.MediaVersion(), float64(core.Allocated(w.Path(core.MediaFile)))/(1<<30)))
+			lines = append(lines, fmt.Sprintf("Install media: %s (%.2f GiB)", w.MediaVersion(), float64(core.Allocated(w.Path(core.MediaFile)))/(1<<30)))
 		} else {
-			lines = append(lines, "Mídia de instalação: ausente")
+			lines = append(lines, "Install media: none")
 		}
 		if w.HasDisk() {
-			lines = append(lines, fmt.Sprintf("Disco do macOS: %.2f GiB ocupados no host", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30)))
+			lines = append(lines, fmt.Sprintf("macOS disk: %.2f GiB used on the host", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30)))
 		} else {
-			lines = append(lines, "Disco do macOS: ainda não criado")
+			lines = append(lines, "macOS disk: not created yet")
 		}
 	}
 	u.installInfo.SetText(strings.Join(lines, "\n"))
@@ -482,8 +615,20 @@ func (u *ui) refresh() {
 	enable(u.btnStart, free && ready && w.HasDisk())
 	enable(u.btnPowerdown, state == core.Running)
 	enable(u.btnKill, running)
+	_, eligible := u.chosenGPU()
+	enable(u.btnReserve, !running && eligible)
+	enable(u.btnRelease, !running && u.host.ReservedIDs() != "")
+	if running {
+		u.gpuSelect.Disable()
+	} else {
+		u.gpuSelect.Enable()
+	}
 
 	p := core.ProfileFor(u.cfg.Version)
-	u.vmState.SetText(fmt.Sprintf("Estado: %s\nmacOS %s · %d MiB · %d vCPUs (%d núcleos) · CPU %s · SSH: ssh -p %d usuario@127.0.0.1",
-		state, u.cfg.Version, u.cfg.RAMMiB, u.cfg.VCPUs, u.cfg.Cores, strings.SplitN(p.CPU, ",", 2)[0], u.cfg.SSHPort))
+	display := "emulated display"
+	if u.cfg.GPU != "" {
+		display = "GPU " + u.cfg.GPU
+	}
+	u.vmState.SetText(fmt.Sprintf("State: %s\nmacOS %s · %d MiB · %d vCPUs (%d cores) · CPU %s · %s · SSH: ssh -p %d user@127.0.0.1",
+		state, u.cfg.Version, u.cfg.RAMMiB, u.cfg.VCPUs, u.cfg.Cores, strings.SplitN(p.CPU, ",", 2)[0], display, u.cfg.SSHPort))
 }
