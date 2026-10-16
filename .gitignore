@@ -5,3 +5,4 @@ internal/core/testdata/ocvalidate
 
 # Local reference captures (VirtualBox), not published
 docs/prints/
+.claude/worktrees/
