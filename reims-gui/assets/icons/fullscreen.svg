@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <defs>
+    <linearGradient id="fullscreen-frame" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#a5dafa"/>
+      <stop offset="1" stop-color="#4177a2"/>
+    </linearGradient>
+    <linearGradient id="fullscreen-screen" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#9ce8ff"/>
+      <stop offset="1" stop-color="#509ec8"/>
+    </linearGradient>
+    <linearGradient id="fullscreen-arrows" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#a9e7ff"/>
+      <stop offset=".42" stop-color="#5cb7ef"/>
+      <stop offset=".5" stop-color="#348fcd"/>
+      <stop offset="1" stop-color="#236daa"/>
+    </linearGradient>
+  </defs>
+  <path d="M6 6H26V25H6Z" fill="url(#fullscreen-frame)" stroke="#285b88"/>
+  <path d="M8 8H24V22H8Z" fill="url(#fullscreen-screen)"/>
+  <path d="M8 8H24L8 19Z" fill="#e4fbff" fill-opacity="0.48"/>
+  <path d="M13 25H19V27H23V29H9V27H13Z" fill="#376b96"/>
+  <path d="M1 1H11V4H6L12 10 10 12 4 6V11H1ZM31 1V11H28V6L22 12 20 10 26 4H21V1ZM1 31V21H4V26L10 20 12 22 6 28H11V31ZM31 31H21V28H26L20 22 22 20 28 26V21H31Z" fill="url(#fullscreen-arrows)" stroke="#205b91" stroke-width="0.75"/>
+  <path d="M2 2H10V3H3V10H2ZM22 2H30V10H29V3H22Z" fill="#d6f4ff"/>
+</svg>
