@@ -49,6 +49,13 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 rmcp = { version = "=3.5.1", features = ["server", "transport-io"] }
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 dirs = "=7.0.0"
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+tar = { version = "=0.4.46", default-features = false }
+flate2 = "=1.1.10"
+hex = "=0.4.3"
+rcgen = "=0.14.10"
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
+tempfile = "=3.27.0"
 
 [profile.release]
 lto = "thin"
