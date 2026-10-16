@@ -1,3 +1,5 @@
+<p align="center"><img src="internal/assets/logo/logo.svg" width="96" alt="macos-kvm-gui logo"></p>
+
 # macos-kvm-gui
 
 Desktop app (Go + [Fyne](https://fyne.io)) to install and run macOS on KVM, in a single binary that carries its own OpenCore and OVMF. It started as a GUI for [OSX-KVM](https://github.com/kholia/OSX-KVM) and still works with existing OSX-KVM disks.

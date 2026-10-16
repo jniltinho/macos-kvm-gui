@@ -191,7 +191,7 @@ func TestRecoveryCanceled(t *testing.T) {
 // Names in the server's URLs must never reach the file system.
 func TestRecoveryIgnoresServerFileNames(t *testing.T) {
 	newFakeRecovery(t) // restores recoveryBaseURL on cleanup
-	var u string // the fake server's own address; r.Host is osrecovery.apple.com by protocol
+	var u string       // the fake server's own address; r.Host is osrecovery.apple.com by protocol
 	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/InstallationPayload/RecoveryImage" {
 			io.WriteString(w, "AP: x\nAU: "+u+"/dl/%2e%2e\nAH: x\nAT: t\nCU: "+u+"/dl/%2e%2e%2f%2e%2e%2fvictim\nCH: x\nCT: t\n")

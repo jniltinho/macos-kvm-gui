@@ -11,26 +11,26 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/jniltinho/macos-kvm-gui/internal/assets"
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
 )
 
+var logo = fyne.NewStaticResource("logo.svg", assets.Logo)
+
 const homeLab = "For home lab use. macOS is Apple's software: its license only allows it on Apple-branded hardware, so make sure your use complies with it."
 
-const manualSteps = `**Manual steps inside the VM (first install)**
-
-1. In the OpenCore menu, choose **macOS Base System**.
+const manualSteps = `1. In the OpenCore menu, choose **macOS Base System**.
 2. Open **Disk Utility**, enable *View › Show All Devices*, select the **QEMU HARDDISK** disk and use **Erase** (APFS, GUID).
 3. Close Disk Utility and choose **Reinstall macOS**. The VM restarts a few times: in OpenCore pick **macOS Installer**, then the installed disk.
 4. Once macOS boots from the disk, remove the install media here to free space.`
 
-const videoTips = `**Video performance**
-
-The VM has no graphics acceleration: macOS has no driver for the emulated display or for NVIDIA GPUs, so the CPU draws the screen. To make it smoother:
+const videoTips = `The VM has no graphics acceleration: macOS has no driver for the emulated display or for NVIDIA GPUs, so the CPU draws the screen. To make it smoother:
 
 1. Use **Recommended for this host** in the Settings tab (more vCPUs and RAM).
 2. In macOS, under *System Settings › Accessibility › Display*, turn on **Reduce motion** and **Reduce transparency**.
@@ -39,9 +39,7 @@ The VM has no graphics acceleration: macOS has no driver for the emulated displa
 
 Real acceleration needs a macOS-supported AMD GPU passed through with VFIO: see the GPU tab.`
 
-const gpuNotes = `**GPU passthrough (VFIO)**
-
-Gives the VM a real AMD GPU, the only way to get Metal. The GPU's display output then goes to a monitor plugged into that card; the QEMU window stays for keyboard and mouse.
+const gpuNotes = `Gives the VM a real AMD GPU, the only way to get Metal. The GPU's display output then goes to a monitor plugged into that card; the QEMU window stays for keyboard and mouse.
 
 - Supported: RX 460–590, Vega 56/64, Radeon VII, RX 5500/5600/5700, RX 6600/6600 XT, RX 6800/6800 XT/6900 XT.
 - Not supported: RX 7000, RX 6400/6500, NVIDIA, Intel and AMD Ryzen iGPUs.
@@ -72,6 +70,9 @@ type ui struct {
 	gpuSelect   *widget.Select
 	gpuStatus   *widget.Label
 	gpus        []core.GPU
+	header      *widget.Label // VM state chip in the header
+	subtitle    *widget.Label
+	bigState    *widget.Label
 
 	btnPrepare, btnDownload, btnDisk, btnRemove *widget.Button
 	btnStart, btnPowerdown, btnKill             *widget.Button
@@ -80,6 +81,8 @@ type ui struct {
 
 func main() {
 	a := app.NewWithID("io.github.jniltinho.macos-kvm-gui")
+	a.Settings().SetTheme(appTheme{theme.DefaultTheme()})
+	a.SetIcon(logo)
 	u := &ui{win: a.NewWindow("macOS KVM"), host: core.SystemHost(), vm: &core.VM{}}
 	u.cfgPath, _ = core.ConfigPath()
 	cfg, err := core.LoadConfig(u.cfgPath)
@@ -99,15 +102,16 @@ func main() {
 	}
 
 	tabs := container.NewAppTabs(
-		container.NewTabItemWithIcon("Host", theme.ComputerIcon(), u.hostTab()),
-		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), u.configTab()),
-		container.NewTabItemWithIcon("Install", theme.DownloadIcon(), u.installTab()),
 		container.NewTabItemWithIcon("VM", theme.MediaPlayIcon(), u.vmTab()),
+		container.NewTabItemWithIcon("Install", theme.DownloadIcon(), u.installTab()),
+		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), u.configTab()),
+		container.NewTabItemWithIcon("Host", theme.ComputerIcon(), u.hostTab()),
 		container.NewTabItemWithIcon("GPU", theme.ColorPaletteIcon(), u.gpuTab()),
 		container.NewTabItemWithIcon("Log", theme.ListIcon(), u.logTab()),
 	)
-	u.win.SetContent(tabs)
-	u.win.Resize(fyne.NewSize(860, 620))
+	tabs.SetTabLocation(container.TabLocationLeading)
+	u.win.SetContent(container.NewBorder(u.headerBar(), nil, nil, nil, tabs))
+	u.win.Resize(fyne.NewSize(1000, 700))
 	u.win.SetCloseIntercept(func() {
 		if u.vm.State() != core.Stopped {
 			dialog.ShowInformation("VM running", "Shut down the VM before closing the app.", u.win)
@@ -120,6 +124,33 @@ func main() {
 		dialog.ShowError(err, u.win)
 	}
 	u.win.ShowAndRun()
+}
+
+// headerBar shows the app name, the workspace and a VM state chip.
+func (u *ui) headerBar() fyne.CanvasObject {
+	title := widget.NewLabel("macOS KVM")
+	title.TextStyle = fyne.TextStyle{Bold: true}
+	title.SizeName = theme.SizeNameSubHeadingText
+	u.subtitle = widget.NewLabel("")
+	u.subtitle.TextStyle = fyne.TextStyle{Italic: true}
+	u.header = widget.NewLabel("")
+	u.header.TextStyle = fyne.TextStyle{Bold: true}
+	icon := canvas.NewImageFromResource(logo)
+	icon.FillMode = canvas.ImageFillContain
+	icon.SetMinSize(fyne.NewSquareSize(32))
+	left := container.NewHBox(icon, title, u.subtitle)
+	return container.NewVBox(container.NewBorder(nil, nil, left, u.header), widget.NewSeparator())
+}
+
+// section is a titled card; every tab is built from these.
+func section(title, subtitle string, content ...fyne.CanvasObject) fyne.CanvasObject {
+	return widget.NewCard(title, subtitle, container.NewVBox(content...))
+}
+
+func wrapped(text string) *widget.Label {
+	l := widget.NewLabel(text)
+	l.Wrapping = fyne.TextWrapWord
+	return l
 }
 
 // workspace uses the saved configuration; each operation gets its own copy.
@@ -177,6 +208,18 @@ func (u *ui) saveConfig(c core.Config) bool {
 	return true
 }
 
+func statusImportance(s core.Status) widget.Importance {
+	switch s {
+	case core.OK:
+		return widget.SuccessImportance
+	case core.Warn:
+		return widget.WarningImportance
+	case core.Fail:
+		return widget.DangerImportance
+	}
+	return widget.LowImportance
+}
+
 func statusIcon(s core.Status) fyne.Resource {
 	switch s {
 	case core.OK:
@@ -208,22 +251,29 @@ func (u *ui) hostTab() fyne.CanvasObject {
 			})
 		}()
 	})
-	notice := widget.NewLabel(homeLab)
-	notice.Wrapping = fyne.TextWrapWord
+	notice := wrapped(homeLab)
 	notice.Importance = widget.WarningImportance
-	return container.NewBorder(notice, container.NewHBox(recheck, fix), nil, nil, container.NewVScroll(u.checks))
+	return container.NewVScroll(container.NewVBox(
+		section("Host checks", "Everything should be green before starting the VM",
+			u.checks, container.NewHBox(recheck, fix)),
+		section("Home lab", "", notice),
+	))
 }
 
 func (u *ui) refreshChecks() {
 	u.checks.RemoveAll()
 	for _, c := range u.host.Checks(u.cfg.Version) {
-		text := c.Name + ": " + c.Detail
+		name := widget.NewLabel(c.Name)
+		name.TextStyle = fyne.TextStyle{Bold: true}
+		status := widget.NewLabel(c.Status.String())
+		status.Importance = statusImportance(c.Status)
+		detail := wrapped(c.Detail)
 		if c.Hint != "" {
-			text += "\n→ " + c.Hint
+			detail.SetText(c.Detail + " — " + c.Hint)
 		}
-		l := widget.NewLabel(text)
-		l.Wrapping = fyne.TextWrapWord
-		u.checks.Add(container.NewBorder(nil, nil, widget.NewIcon(statusIcon(c.Status)), nil, l))
+		detail.TextStyle = fyne.TextStyle{Italic: true}
+		row := container.NewBorder(nil, nil, container.NewHBox(widget.NewIcon(statusIcon(c.Status)), name), status, detail)
+		u.checks.Add(row)
 	}
 }
 
@@ -295,11 +345,14 @@ func (u *ui) configTab() fyne.CanvasObject {
 		cores.SetText(strconv.Itoa(r.Cores))
 		vcpus.SetText(strconv.Itoa(r.VCPUs))
 	})
-	note := widget.NewLabel("Without a supported GPU, macOS draws the screen on the CPU: more vCPUs make video smoother. " +
-		"The button above only fills in the fields; click Save to apply. " +
+	note := wrapped("Without a supported GPU, macOS draws the screen on the CPU: more vCPUs make video smoother. " +
+		"Recommended only fills in the fields; click Save to apply. " +
 		"The CPU model and network card follow the macOS version. Only Sonoma has been validated end to end.")
-	note.Wrapping = fyne.TextWrapWord
-	return container.NewVBox(form, container.NewHBox(recommend), note)
+	note.TextStyle = fyne.TextStyle{Italic: true}
+	return container.NewVScroll(container.NewVBox(
+		section("Virtual machine", "Saved in ~/.config/macos-kvm-gui/config.json", form),
+		section("Resources", "", container.NewHBox(recommend), note),
+	))
 }
 
 func (u *ui) installTab() fyne.CanvasObject {
@@ -378,16 +431,15 @@ func (u *ui) installTab() fyne.CanvasObject {
 			}, u.win)
 	})
 
+	u.btnDownload.Importance = widget.HighImportance
 	disk := container.NewBorder(nil, nil, widget.NewLabel("Size (GiB, min. 40):"), u.btnDisk, u.diskSize)
 	return container.NewVScroll(container.NewVBox(
-		u.installInfo,
-		u.btnPrepare,
-		u.btnDownload,
-		u.stage, u.bar, u.barInf,
-		disk,
-		u.btnRemove,
-		widget.NewSeparator(),
-		widget.NewRichTextFromMarkdown(manualSteps),
+		section("Status", "", u.installInfo),
+		section("1 · Workspace", "Creates the folder and extracts the built-in OpenCore and OVMF", container.NewHBox(u.btnPrepare)),
+		section("2 · macOS recovery", "Downloaded from Apple, signature and hashes verified", container.NewHBox(u.btnDownload), u.stage, u.bar, u.barInf),
+		section("3 · Disk", "Thin qcow2: it only takes the space macOS uses", disk),
+		section("4 · Install inside the VM", "", widget.NewRichTextFromMarkdown(manualSteps)),
+		section("5 · Clean up", "After macOS boots from the disk", container.NewHBox(u.btnRemove)),
 	))
 }
 
@@ -440,13 +492,15 @@ func (u *ui) vmTab() fyne.CanvasObject {
 				}
 			}, u.win)
 	})
+	u.btnStart.Importance = widget.HighImportance
 	u.btnPowerdown.Importance = widget.WarningImportance
 	u.btnKill.Importance = widget.DangerImportance
+	u.bigState = widget.NewLabel("")
+	u.bigState.TextStyle = fyne.TextStyle{Bold: true}
+	u.bigState.SizeName = theme.SizeNameHeadingText
 	return container.NewVScroll(container.NewVBox(
-		u.vmState,
-		container.NewHBox(u.btnStart, u.btnPowerdown, u.btnKill),
-		widget.NewSeparator(),
-		widget.NewRichTextFromMarkdown(videoTips),
+		section("macOS", "", u.bigState, u.vmState, container.NewHBox(u.btnStart, u.btnPowerdown, u.btnKill)),
+		section("Video performance", "", widget.NewRichTextFromMarkdown(videoTips)),
 	))
 }
 
@@ -485,13 +539,10 @@ func (u *ui) gpuTab() fyne.CanvasObject {
 		u.privileged("Release GPU", u.host.ReleaseGPU)
 	})
 	return container.NewVScroll(container.NewVBox(
-		u.gpuList,
-		widget.NewSeparator(),
-		container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM:"), nil, u.gpuSelect),
-		container.NewHBox(u.btnReserve, u.btnRelease),
-		u.gpuStatus,
-		widget.NewSeparator(),
-		widget.NewRichTextFromMarkdown(gpuNotes),
+		section("Display adapters", "Only macOS-supported AMD GPUs can be passed to the VM", u.gpuList),
+		section("Passthrough", "", container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM:"), nil, u.gpuSelect),
+			container.NewHBox(u.btnReserve, u.btnRelease), u.gpuStatus),
+		section("About GPU passthrough", "", widget.NewRichTextFromMarkdown(gpuNotes)),
 	))
 }
 
@@ -527,17 +578,20 @@ func (u *ui) refreshGPUs() {
 	options := []string{noGPU}
 	selected := noGPU
 	for _, g := range u.gpus {
-		icon := theme.ErrorIcon()
-		text := fmt.Sprintf("%s  %s [%s]\n%s · driver %s · IOMMU group %s", g.Addr, g.Name, g.ID, g.Compat, g.Driver, g.Group)
+		icon, verdict := theme.ErrorIcon(), widget.NewLabel("Not eligible")
+		verdict.Importance = widget.DangerImportance
+		reason := g.Reason
 		if g.Eligible {
-			icon = theme.ConfirmIcon()
-			text += "\n→ can be passed to the VM"
-		} else {
-			text += "\n→ " + g.Reason
+			icon, reason = theme.ConfirmIcon(), "Can be passed to the VM"
+			verdict.SetText("Eligible")
+			verdict.Importance = widget.SuccessImportance
 		}
-		l := widget.NewLabel(text)
-		l.Wrapping = fyne.TextWrapWord
-		u.gpuList.Add(container.NewBorder(nil, nil, widget.NewIcon(icon), nil, l))
+		name := wrapped(g.Name)
+		name.TextStyle = fyne.TextStyle{Bold: true}
+		meta := wrapped(fmt.Sprintf("%s · %s · %s · driver %s · IOMMU group %s", g.Addr, g.ID, g.Compat, g.Driver, g.Group))
+		meta.TextStyle = fyne.TextStyle{Italic: true}
+		why := wrapped(reason)
+		u.gpuList.Add(container.NewBorder(nil, nil, widget.NewIcon(icon), verdict, container.NewVBox(name, meta, why)))
 		if g.Eligible || g.Addr == u.cfg.GPU {
 			opt := g.Addr + " " + g.Name
 			options = append(options, opt)
@@ -562,12 +616,12 @@ func (u *ui) refreshGPUs() {
 func (u *ui) logTab() fyne.CanvasObject {
 	u.log = widget.NewTextGrid()
 	u.logScroll = container.NewScroll(u.log)
-	return u.logScroll
+	return widget.NewCard("QEMU and app log", "Last 1000 lines", u.logScroll)
 }
 
 // refresh recomputes texts and buttons from the real state of the disk and the VM.
 func (u *ui) refresh() {
-	if u.installInfo == nil || u.gpuList == nil {
+	if u.installInfo == nil || u.gpuList == nil || u.header == nil {
 		return
 	}
 	u.refreshChecks()
@@ -624,11 +678,18 @@ func (u *ui) refresh() {
 		u.gpuSelect.Enable()
 	}
 
+	u.subtitle.SetText(u.cfg.Workspace)
+	u.header.SetText("● " + state.String())
+	importance := map[core.VMState]widget.Importance{core.Running: widget.SuccessImportance, core.Paused: widget.WarningImportance}[state]
+	u.header.Importance, u.bigState.Importance = importance, importance
+	u.bigState.SetText(state.String())
+	u.header.Refresh()
+
 	p := core.ProfileFor(u.cfg.Version)
 	display := "emulated display"
 	if u.cfg.GPU != "" {
 		display = "GPU " + u.cfg.GPU
 	}
-	u.vmState.SetText(fmt.Sprintf("State: %s\nmacOS %s · %d MiB · %d vCPUs (%d cores) · CPU %s · %s · SSH: ssh -p %d user@127.0.0.1",
-		state, u.cfg.Version, u.cfg.RAMMiB, u.cfg.VCPUs, u.cfg.Cores, strings.SplitN(p.CPU, ",", 2)[0], display, u.cfg.SSHPort))
+	u.vmState.SetText(fmt.Sprintf("macOS %s · %d MiB RAM · %d vCPUs (%d cores) · CPU %s · %s\nSSH: ssh -p %d user@127.0.0.1",
+		u.cfg.Version, u.cfg.RAMMiB, u.cfg.VCPUs, u.cfg.Cores, strings.SplitN(p.CPU, ",", 2)[0], display, u.cfg.SSHPort))
 }

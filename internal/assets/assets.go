@@ -9,3 +9,8 @@ import "embed"
 //
 //go:embed all:files config.plist.tmpl
 var FS embed.FS
+
+// Logo is the app icon (original artwork, BSD-3-Clause like the app).
+//
+//go:embed logo/logo.svg
+var Logo []byte
