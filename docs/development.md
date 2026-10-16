@@ -17,7 +17,7 @@ make build-prod     # stripped, -trimpath, main.version from VERSION
 
 Boot assets are committed; a normal build does not fetch them. An empty Go module cache may still require network access for dependencies. Running the app also needs `qemu-system-x86` and `pkexec`; see [requirements](getting-started.md#requirements).
 
-`make package VERSION=v0.X.Y` builds the production binary and calls `scripts/package.sh`, producing a Linux-amd64 `.tar.gz`, `.deb` and one `.sha256` per artifact in `dist/`. Packaging needs `dpkg-deb`, `tar` and `sha256sum`. The tarball includes the binary, README and licenses; the `.deb` installs the binary, desktop entry and SVG icon. It declares glibc 2.38+, desktop runtime libraries and QEMU/pkexec dependencies. This is not a cross-platform package target. `make clean` removes `dist/`.
+`make package VERSION=v0.X.Y` builds the production binary and calls `scripts/package.sh`, producing a Linux-amd64 `.tar.gz`, `.deb`, `.rpm` and one `.sha256` per artifact in `dist/`. Packaging needs `dpkg-deb`, `rpmbuild` (the `rpm` package on Ubuntu), `tar` and `sha256sum`. The `.rpm` is built from the same tree as the `.deb` and requires Fedora's `qemu-system-x86`, `qemu-img` and `polkit`. The tarball includes the binary, README and licenses; the `.deb` installs the binary, desktop entry and SVG icon. It declares glibc 2.38+, desktop runtime libraries and QEMU/pkexec dependencies. This is not a cross-platform package target. `make clean` removes `dist/`.
 
 ## Tests and validation
 
@@ -94,7 +94,7 @@ Read changes in context: `add-desktop-gui` describes the original clone/Python d
 | Workflow | Trigger and work |
 | --- | --- |
 | [CI](../.github/workflows/ci.yml) | Pushes to `main` and pull requests. Ubuntu 24.04; Go from `go.mod`; install native headers and `qemu-utils`; `make test`, `make build-prod`. Separate Node 24 job validates OpenSpec 1.14.2 with `--all --strict`. New runs cancel earlier runs for the same ref. |
-| [Release](../.github/workflows/release.yml) | Pushes of `v*` tags. Ubuntu 24.04, America/Sao_Paulo timezone, Go from `go.mod`, native dependencies, `make test`, then `make package VERSION=${GITHUB_REF_NAME}`. Publishes a GitHub Release with generated notes and `.tar.gz`, `.deb`, `.sha256` attachments. |
+| [Release](../.github/workflows/release.yml) | Pushes of `v*` tags. Ubuntu 24.04, America/Sao_Paulo timezone, Go from `go.mod`, native dependencies, `make test`, then `make package VERSION=${GITHUB_REF_NAME}`. Publishes a GitHub Release with generated notes and `.tar.gz`, `.deb`, `.rpm`, `.sha256` attachments. |
 
 Neither workflow runs the real-QEMU integration target, a macOS installation or a real-GPU test. Release does not run the separate OpenSpec job. Builds use committed boot assets rather than refetching them; tests may fetch `ocvalidate` on a fresh runner.
 

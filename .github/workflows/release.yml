@@ -26,12 +26,12 @@ jobs:
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols qemu-utils
+          sudo apt-get install -y gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev wayland-protocols qemu-utils rpm
 
       - name: Test
         run: make test
 
-      # Builds the binary with the tag as its version, then the .tar.gz, the .deb and their SHA-256 files.
+      # Builds the binary with the tag as its version, then the .tar.gz, the .deb, the .rpm and their SHA-256 files.
       - name: Build and Package
         run: make package VERSION=${GITHUB_REF_NAME}
 
@@ -43,6 +43,7 @@ jobs:
           files: |
             dist/*.tar.gz
             dist/*.deb
+            dist/*.rpm
             dist/*.sha256
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

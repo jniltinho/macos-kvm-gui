@@ -13,7 +13,7 @@
   sudo apt install qemu-system-x86 qemu-utils pkexec
   ```
 
-- A graphical desktop and the OpenGL/window-system libraries needed by Fyne. Release packages require **glibc 2.38+** (Ubuntu 24.04+, Debian 13+); the `.deb` declares its runtime dependencies.
+- A graphical desktop and the OpenGL/window-system libraries needed by Fyne. Release packages require **glibc 2.38+** (Ubuntu 24.04+, Debian 13+, Fedora 39+); the `.deb` and `.rpm` declare their runtime dependencies.
 - At least **4096 MiB guest RAM**; the default is 8192 MiB. Leave resources for the host. Ventura and later require host SSE4.1 and AVX2.
 - A writable workspace with room for recovery and macOS. Recovery preparation checks for at least **4 GiB free**, but downloads, conversion and the installed system need additional space. The virtual disk minimum is **40 GiB**, with **80 GiB** prefilled in the UI; it grows on the host as used.
 - Internet access for Apple's recovery download and the installer inside macOS.
@@ -22,11 +22,12 @@ No OSX-KVM clone, Git or Python is needed at runtime. OpenCore, its kexts and OV
 
 ## Install a release
 
-Download a `.deb` or `.tar.gz` and its matching `.sha256` from [GitHub Releases](https://github.com/jniltinho/macos-kvm-gui/releases). Replace `X.Y.Z` below with the release version. Check the selected artifact before installing:
+Download a `.deb`, `.rpm` or `.tar.gz` and its matching `.sha256` from [GitHub Releases](https://github.com/jniltinho/macos-kvm-gui/releases). Replace `X.Y.Z` below with the release version. Check the selected artifact before installing:
 
 ```sh
 sha256sum -c macos-kvm-gui_X.Y.Z_amd64.deb.sha256
-# Or, for the tarball:
+# Or, for the RPM or the tarball:
+sha256sum -c macos-kvm-gui-X.Y.Z-1.x86_64.rpm.sha256
 sha256sum -c macos-kvm-gui-vX.Y.Z-linux-amd64.tar.gz.sha256
 ```
 
@@ -36,6 +37,15 @@ sha256sum -c macos-kvm-gui-vX.Y.Z-linux-amd64.tar.gz.sha256
 sudo apt install ./macos-kvm-gui_X.Y.Z_amd64.deb
 macos-kvm-gui
 ```
+
+**RPM package (Fedora 39+):**
+
+```sh
+sudo dnf install ./macos-kvm-gui-X.Y.Z-1.x86_64.rpm
+macos-kvm-gui
+```
+
+It pulls in `qemu-system-x86`, `qemu-img` and `polkit`. RHEL, Rocky and AlmaLinux ship only `qemu-kvm`, without `qemu-system-x86_64`, so `dnf` refuses the package there.
 
 The menu entry is **macOS KVM**. Do not run the app as root: only host fixes and GPU reservation request elevation through `pkexec`.
 

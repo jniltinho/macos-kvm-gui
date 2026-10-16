@@ -71,6 +71,7 @@ The workflow attaches:
 |---|---|
 | `macos-kvm-gui-vX.Y.Z-linux-amd64.tar.gz` | binary, README, LICENSE, THIRD_PARTY_NOTICES.md |
 | `macos-kvm-gui_X.Y.Z_amd64.deb` | `/usr/bin/macos-kvm-gui`, menu entry, scalable icon; depends on qemu-system-x86, qemu-utils, pkexec |
+| `macos-kvm-gui-X.Y.Z-1.x86_64.rpm` | same files as the `.deb`; requires qemu-system-x86, qemu-img, polkit (Fedora 39+) |
 | `*.sha256` | one per artifact |
 
 ### 4. Replace the generated notes
@@ -96,12 +97,13 @@ cat > /tmp/release-notes-$NEXT.md <<'EOF'
 ## Install
 
 ```sh
-sudo apt install ./macos-kvm-gui_X.Y.Z_amd64.deb   # menu entry "macOS KVM"
+sudo apt install ./macos-kvm-gui_X.Y.Z_amd64.deb   # Ubuntu 24.04+, Debian 13+
+sudo dnf install ./macos-kvm-gui-X.Y.Z-1.x86_64.rpm   # Fedora 39+
 # or
 tar -xzf macos-kvm-gui-vX.Y.Z-linux-amd64.tar.gz && ./macos-kvm-gui-vX.Y.Z-linux-amd64/macos-kvm-gui
 ```
 
-Requires Linux x86_64 with glibc 2.38+ (Ubuntu 24.04+, Debian 13+) and KVM.
+Requires Linux x86_64 with glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Fedora 39+) and KVM.
 
 **Validated:** <what was booted end to end, e.g. macOS Sonoma 14.8.9 on Ubuntu 24.04 / QEMU 8.2.2>
 
@@ -119,7 +121,7 @@ gh release download "$NEXT" -D /tmp/check-$NEXT && (cd /tmp/check-$NEXT && sha25
 
 Check that:
 - the title is `$NEXT`;
-- four assets are attached: the `.tar.gz`, the `.deb` and one `.sha256` for each;
+- six assets are attached: the `.tar.gz`, the `.deb`, the `.rpm` and one `.sha256` for each;
 - the checksums pass and the binary opens (`./macos-kvm-gui` shows "macOS KVM vX.Y.Z" in the title bar);
 - the Full Changelog link covers the right range.
 

@@ -41,10 +41,11 @@ Sonoma 14 is validated end to end; High Sierra through Tahoe are experimental. M
 ## Quick start
 
 ```sh
-sudo apt install ./macos-kvm-gui_*_amd64.deb   # adds "macOS KVM" to the applications menu
+sudo apt install ./macos-kvm-gui_*_amd64.deb      # Ubuntu 24.04+, Debian 13+
+sudo dnf install ./macos-kvm-gui-*.x86_64.rpm     # Fedora 39+
 ```
 
-Needs Linux x86_64 with glibc 2.38+ (Ubuntu 24.04+, Debian 13+), VT-x/AMD-V, `qemu-system-x86`, `qemu-utils` and `pkexec`. Then open **macOS KVM**, make the **Host** checks green, click **New**, and **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**. Full walkthrough: [getting started](docs/getting-started.md).
+Both add "macOS KVM" to the applications menu. Needs Linux x86_64 with glibc 2.38+, VT-x/AMD-V, `qemu-system-x86`, `qemu-utils` and `pkexec`. Then open **macOS KVM**, make the **Host** checks green, click **New**, and **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**. Full walkthrough: [getting started](docs/getting-started.md).
 
 ## Documentation
 
