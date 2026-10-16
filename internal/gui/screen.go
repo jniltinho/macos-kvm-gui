@@ -41,7 +41,11 @@ type screen struct {
 	onFrame func(*image.RGBA)
 }
 
-const screenIdle = "The VM screen appears here while it runs. Click it to type."
+const (
+	screenIdle  = "The VM screen appears here while it runs. Click it to type."
+	screenReims = "The screen is in the Reims vGPU window.\n\nThis VM runs on Reims vGPU, which draws macOS in its own window on the host's GPU:\n" +
+		"type and click there. The Preview in Details follows it."
+)
 
 func newScreen() *screen {
 	s := &screen{img: canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 1, 1))), hint: widget.NewLabel(screenIdle), pressed: map[string]core.KeyCode{}}

@@ -92,11 +92,18 @@ func (u *ui) settingsDialog() {
 	// Display.
 	display := widget.NewSelect([]string{displayAppLabel, displayWindowLabel}, nil)
 	display.SetSelected(map[bool]string{true: displayAppLabel, false: displayWindowLabel}[c.InApp()])
-	displayPage := widget.NewForm(
+	graphics, reimsBox := graphicsSelect(display)
+	graphics.SetSelected(graphicsLabel(c))
+	gpuNote := note("GPU passthrough is set for this VM: choose " + noGPU + " in the GPU tab to use Reims vGPU.")
+	gpuNote.Hidden = c.GPU == ""
+	if c.GPU != "" { // core refuses both; the GPU tab's choice is disabled the other way round
+		graphics.Disable()
+	}
+	displayPage := container.NewVBox(widget.NewForm(
 		widget.NewFormItem("Shown", display),
-		widget.NewFormItem("Graphics Controller", widget.NewLabel("VMware SVGA")),
+		widget.NewFormItem("Graphics Controller", graphics),
 		widget.NewFormItem("Resolution", widget.NewLabel("1920x1080 (set in OpenCore)")),
-	)
+	), gpuNote, reimsBox)
 
 	// Storage: read-only here; the Install tab creates the disk and manages the media.
 	disk, media := "not created yet", "Empty"
@@ -167,6 +174,7 @@ func (u *ui) settingsDialog() {
 		n.Name = strings.TrimSpace(name.Text)
 		n.Version = short[version.Selected]
 		n.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
+		n.Graphics = graphicsValue(graphics.Selected, c.Graphics)
 		var err error
 		if n.RAMMiB, err = ramValue(); err != nil {
 			return fmt.Errorf("Base Memory: %w", err)
@@ -270,4 +278,82 @@ func note(s string) *widget.Label {
 	l := wrapped(s)
 	l.TextStyle = fyne.TextStyle{Italic: true}
 	return l
+}
+
+const (
+	graphicsSVGALabel  = "VMware SVGA"
+	graphicsReimsLabel = "Reims vGPU (experimental)"
+)
+
+func graphicsLabel(c core.Config) string {
+	if c.Reims() {
+		return graphicsReimsLabel
+	}
+	return graphicsSVGALabel
+}
+
+// graphicsValue is Config.Graphics for a Graphics choice, keeping an explicit vmware-svga.
+func graphicsValue(label, old string) string {
+	if label == graphicsReimsLabel {
+		return core.GraphicsReims
+	}
+	if old == core.GraphicsReims {
+		return ""
+	}
+	return old
+}
+
+// METAL_ERROR_MODE 5, set once per macOS install: without it the desktop never appears on Reims vGPU.
+const (
+	metalDesktopCmd  = "sudo defaults write /Library/Preferences/.GlobalPreferences METAL_ERROR_MODE -int 5"
+	metalRecoveryCmd = `cd /Volumes/*Data/Library/Preferences
+defaults write "$PWD/.GlobalPreferences" METAL_ERROR_MODE -int 5
+chmod 644 .GlobalPreferences.plist
+reboot`
+)
+
+// graphicsSelect is the Graphics Controller choice and the Reims vGPU guidance it shows when
+// Reims is selected; display (the Shown choice) does not apply to Reims VMs and is disabled.
+func graphicsSelect(display *widget.Select) (*widget.Select, fyne.CanvasObject) {
+	cmd := func(text string) fyne.CanvasObject {
+		e := widget.NewEntry()
+		if strings.Contains(text, "\n") {
+			e = widget.NewMultiLineEntry()
+			e.SetMinRowsVisible(4)
+		}
+		e.SetText(text)
+		e.TextStyle = fyne.TextStyle{Monospace: true}
+		copyBtn := widget.NewButtonWithIcon("Copy", theme.ContentCopyIcon(), func() {
+			fyne.CurrentApp().Clipboard().SetContent(text)
+		})
+		return container.NewBorder(nil, nil, nil, container.NewVBox(copyBtn), e)
+	}
+	missing := wrapped("Reims vGPU is not installed on this host: install it or build it in the Host tab.")
+	missing.Importance = widget.WarningImportance
+	box := container.NewVBox(
+		note("Upstream measured macOS 26 (Tahoe) guests only; this project validated macOS Sequoia 15.8.1 (Apple Paravirtualized Graphics, Metal, 1920x1080). "+
+			"Other versions are untested. Switching back to VMware SVGA keeps the VM as it was."),
+		note("The screen opens in its own Reims vGPU window: the Screen tab is not used, the Preview still updates."),
+		missing,
+		widget.NewLabelWithStyle("Set METAL_ERROR_MODE once per macOS install, or the desktop never appears", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		caption("On a working desktop (before switching), in Terminal:"),
+		cmd(metalDesktopCmd),
+		caption("On a new install, from the recovery's Utilities › Terminal (after macOS is installed):"),
+		cmd(metalRecoveryCmd),
+		note("Displays wider than 2048 pixels need ReimsVgpu.kext, which the app does not ship (list it under kexts in settings.yaml)."),
+	)
+	sel := widget.NewSelect([]string{graphicsSVGALabel, graphicsReimsLabel}, func(l string) {
+		on := l == graphicsReimsLabel
+		box.Hidden = !on
+		if on {
+			_, err := core.ReimsQEMU()
+			missing.Hidden = err == nil
+			display.Disable()
+		} else {
+			display.Enable()
+		}
+		box.Refresh()
+	})
+	box.Hide()
+	return sel, box
 }
