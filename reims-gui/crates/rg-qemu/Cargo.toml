@@ -13,3 +13,9 @@ workspace = true
 rg-core.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true
+tokio.workspace = true
+parking_lot.workspace = true
+rustix.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
