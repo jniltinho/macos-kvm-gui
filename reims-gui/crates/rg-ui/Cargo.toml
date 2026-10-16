@@ -1,0 +1,15 @@
+[package]
+name = "rg-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rg-core.workspace = true
+egui.workspace = true
+eframe.workspace = true
