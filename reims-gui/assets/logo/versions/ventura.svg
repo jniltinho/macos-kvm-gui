@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="ve-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#F2AA94"/><stop offset="0.5" stop-color="#BD6686"/><stop offset="1.0" stop-color="#61365F"/>
+    </linearGradient>
+    <linearGradient id="ve-sea" x1="80" y1="288" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#F59EAA"/><stop offset="1.0" stop-color="#B95C83"/>
+    </linearGradient>
+    <linearGradient id="ve-sun" x1="148" y1="116" x2="364" y2="332" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#FFF3CC"/><stop offset="0.5" stop-color="#FFD09C"/><stop offset="1.0" stop-color="#FFA58F"/>
+    </linearGradient>
+    <linearGradient id="ve-edge" x1="148" y1="116" x2="256" y2="232" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".65"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ve-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#ve-sea)" d="M80 288H432V404H80Z"/>
+  <path fill="url(#ve-sun)" d="M148.3 232A108 108 0 1 1 363.7 232ZM150.7 248H361.3A108 108 0 0 1 350.7 276H161.3A108 108 0 0 1 150.7 248ZM172.1 292H339.9A108 108 0 0 1 256 332A108 108 0 0 1 172.1 292Z"/>
+  <path fill="url(#ve-edge)" d="M148.3 232A108 108 0 0 1 256 116V120A104 104 0 0 0 152.3 232Z"/>
+</svg>

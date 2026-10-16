@@ -49,6 +49,9 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 rmcp = { version = "=3.5.1", features = ["server", "transport-io"] }
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 dirs = "=7.0.0"
+ureq = { version = "=3.4.2", default-features = false, features = ["rustls"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+include_dir = "=0.7.4"
 
 [profile.release]
 lto = "thin"
