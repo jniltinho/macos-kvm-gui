@@ -22,7 +22,7 @@ Running macOS under KVM usually means cloning repositories, running Python downl
 - **Explains what's wrong.** The Host tab checks KVM, QEMU, `ignore_msrs` (one-click fix) and conflicting VirtualBox/VMware VMs. QEMU errors become plain messages.
 - **Careful with your data.** It never overwrites a disk, the NVRAM or existing media. A lock keeps two operations or two app instances from touching the same VM folder, it refuses to start a disk another QEMU already uses, and the SSH forward is only reachable from `127.0.0.1`.
 - **Packages for Ubuntu, Debian and Fedora.** Each release has a `.deb`, an `.rpm` (Fedora 39+) and a `.tar.gz`, with SHA-256 files.
-- **GPU passthrough** *(experimental)*. It can hand a macOS-supported AMD GPU to the VM for real Metal acceleration, and it refuses setups that would leave your host without a display.
+- **GPU passthrough** *(experimental)*. It can hand a macOS-supported AMD GPU to the VM for real Metal acceleration, and it refuses setups that would leave your host without a display. NVIDIA Kepler cards work natively up to Big Sur and, with **root-patch mode** and OpenCore Legacy Patcher inside macOS, on Monterey to Sequoia.
 
 ## How it works
 

@@ -19,6 +19,7 @@ The app owns one QEMU child process per instance; it is not a libvirt frontend a
 | `internal/core/network.go` | Network adapters: models and the macOS driver matrix, MAC validation and generation, QEMU arguments, bridge discovery and the `bridge.conf` ACL check, the SSH port check, the qcow2 virtual size. |
 | `internal/core/vms.go`, `bundle.go`, `running.go` | The VM list and preferences in SQLite, the Workspace, move, export/import bundles and detecting a running QEMU (also one started outside the app or by the MCP server) through `/proc`, with its sockets and attached disc; `CheckRunDir` accepts only sockets of this user in a private 0700 run directory. |
 | `internal/core/host.go`, `gpu.go` | Host checks, sysfs PCI/DRM/IOMMU discovery, GPU guards and constant privileged scripts. |
+| `internal/core/rootpatch.go` | Root-patch mode for NVIDIA Kepler: OCLP 2.5.1's Kepler ID list, the four kexts downloaded from OCLP's pinned commit (SHA-256), and the config.plist parts (SIP 0x803, kexts, boot-args, `revblock`); a marker in the VM folder makes the first boot with the mode off delete the lowered NVRAM values. |
 | `internal/core/workspace.go` | Workspace lock, staging, disk creation and media removal. |
 | `internal/core/recovery.go`, `chunklist.go` | Apple recovery protocol and signed chunklist/image verification. |
 | `internal/core/boot.go` | Asset extraction, SMBIOS identity and OpenCore template rendering. |

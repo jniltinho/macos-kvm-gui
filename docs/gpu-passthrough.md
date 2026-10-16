@@ -4,7 +4,7 @@
 
 **Untested on real hardware.** The reference host has no supported AMD card. Unit tests cover detection, refusals, privileged command construction and QEMU arguments, not a working passthrough installation. Do not buy hardware solely on the strength of this app's allow-list. Keep a working host display and console recovery route.
 
-Passthrough gives macOS a physical AMD GPU for acceleration/Metal. This is different from improving QEMU's unaccelerated framebuffer. It is optional; for initial installation use **None (emulated display)**.
+Passthrough gives macOS a physical AMD GPU, or an NVIDIA Kepler GPU (see [NVIDIA Kepler and root-patch mode](#nvidia-kepler-and-root-patch-mode)), for acceleration/Metal. This is different from improving QEMU's unaccelerated framebuffer. It is optional; for initial installation use **None (emulated display)**.
 
 [![GPU passthrough](diagrams/gpu-passthrough.png)](diagrams/gpu-passthrough.svg)
 
@@ -23,9 +23,11 @@ Compatibility is a **vendor/device-ID allow-list**, not a model-name match or a 
 
 The guards compare **release families only**; they do not inspect the installed guest's point version. The selected version in Settings must match your guest.
 
+NVIDIA Kepler GPUs (vendor `10de`) are accepted by an explicit device-ID list, OCLP 2.5.1's `kepler_ids` (160 IDs: GK104, GK106, GK107, GK110/GK110B, GK180, GK208/GK208B, GK210), never by marketing name: a GT 730 can be Fermi (`0f02`) and a GTX 745/750/750 Ti is Maxwell (`1380`–`1382`). They work natively up to Big Sur and need root-patch mode from Monterey to Sequoia; the VM refuses to start otherwise.
+
 Refused by the app:
 
-- Every NVIDIA (`10de`) and Intel (`8086`) GPU, regardless of historical macOS support.
+- NVIDIA GPUs other than Kepler (Fermi, Maxwell, Pascal and newer: GTX 750, 900, 10, 16, RTX) and every Intel (`8086`) GPU.
 - Navi 24 `743f` (RX 6400/6500) and RDNA3 `744c`, `7448`, `747e`, `7480` (RX 7000).
 - Patch-dependent IDs: `699f` (Lexa), `6fdf` (RX 580 2048SP), `73af`/`73a5` (Navi 21 XTXH/RX 6950 XT), `73df` (RX 6700/6750), `73ef` (RX 6650 XT). The app does not provide device-ID spoofing or NootRX.
 - Other AMD IDs are **unknown**, hence ineligible, including Ryzen iGPUs. NootedRed is not bundled or configured; it is not a supported VM workaround here.
@@ -97,10 +99,35 @@ If the host no longer reaches its desktop:
 
 The reservation scripts assume Debian/Ubuntu's `update-initramfs`, `flock` and a functioning polkit authentication agent. Other initramfs tooling is not implemented.
 
+## NVIDIA Kepler and root-patch mode
+
+Apple dropped the Kepler drivers after Big Sur. OpenCore Legacy Patcher (OCLP) puts them back inside macOS ("Post-Install Root Patch"), which needs OpenCore settings the app does not use by default. **Root-patch mode** (GPU tab, per VM, off by default, experimental; CLI `config set root-patch=true`) turns them on, for **Monterey 12 to Sequoia 15** only (Big Sur needs nothing; Tahoe is left out until OCLP supports it in a stable release). It matches OCLP 2.5.1's own profile for Kepler:
+
+| Setting | Value |
+| --- | --- |
+| `csr-active-config` | `0x803` (`AwgAAA==`): unsigned kexts, writable system volume, unauthenticated root |
+| Kexts (from OCLP 2.5.1, after Lilu) | AMFIPass 1.4.1 (instead of disabling AMFI), RSRHelper 1.0.2, RestrictEvents 1.1.7, KDKlessWorkaround 1.0.0 (MinKernel 22.3.0) |
+| boot-args | `ipc_control_port_options=0 -nokcmismatchpanic` |
+| NVRAM `revblock` | `media` (RestrictEvents blocks `mediaanalysisd`, which hangs these GPUs) |
+
+The four kexts are **downloaded when the mode is turned on**, from OCLP's repository at the 2.5.1 commit, each archive checked against its SHA-256, into `<Workspace>/.kexts/oclp-2.5.1/`; they are not part of the app's release. `SecureBootModel` is already `Disabled` in every VM, and the app's KVM quirks and Mac model stay.
+
+Inside macOS, with the card passed through:
+
+1. Turn **FileVault off** and keep a backup of the VM's folder (disk, `OVMF_VARS` and the `macos-kvm-gui` folder).
+2. Install OCLP and open it. **Never use "Build and Install OpenCore"**: the app's OpenCore and Mac model must stay.
+3. **Post-Install Root Patch › Start Root Patching**, then restart. On Sequoia OCLP downloads MetallibSupportPkg, so the VM needs internet.
+4. **Every macOS update removes the patch**: turn automatic downloads off, update on purpose, then root-patch again.
+5. To stop: **Revert Root Patches** in OCLP, restart, then turn the mode off. The app asks to confirm that (the CLI needs `--root-patch-reverted`), because remaining root patches can prevent macOS from booting once its protections are restored.
+
+Turning the mode off removes the kexts and boot arguments, and the next start deletes the lowered `csr-active-config` and `revblock` from NVRAM (OpenCore's NVRAM Add never replaces an existing value), so SIP is fully on again. A VM that never had the mode keeps exactly its earlier configuration, including any SIP value set with `csrutil`.
+
+**Validated without a Kepler card** (the reference host has none): on Sequoia 15.8.1 with the mode on, `csrutil status` reports the custom configuration (Kext Signing and Filesystem Protections off), `csr-active-config` is `03080000`, `revblock` is `media`, the boot-args are set and AMFIPass, RSRHelper, RestrictEvents and KDKlessWorkaround are loaded; after turning it off, SIP is enabled, `csr-active-config` is `00000000`, `revblock` is gone and none of the kexts load. The root patch itself and Metal on a real Kepler card are untested.
+
 ## Known issues
 
 - Polaris, Vega and RX 5000 cards can encounter the AMD reset bug after guest shutdown/restart; a host reboot may be needed. `vendor-reset` is an external, manual option, not managed by this app.
 - Navi black screens can relate to board policy; `agdpmod=pikera` is already generated when a GPU is selected, but it does not guarantee a working board or driver.
 - The physical AMD display and emulated console are separate displays. The QEMU window is not a mirror of the GPU output.
-- No ROM-file configuration, device-ID spoofing, physical USB-controller passthrough, ACS override or NVIDIA enablement is provided.
+- No ROM-file configuration, device-ID spoofing, physical USB-controller passthrough or ACS override is provided. NVIDIA support is limited to Kepler with root-patch mode; the app never runs OCLP.
 - Unit-test success does not validate PCI isolation, GPU reset, firmware, monitor routing or Metal on real hardware. **Full passthrough remains untested.**

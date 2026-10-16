@@ -11,6 +11,8 @@ The app embeds the files below, built by `scripts/fetch-assets.sh` from the sour
 | OVMF (`OVMF_CODE_4M.fd`, `OVMF_VARS_4M.fd`) | Debian [`ovmf`](https://packages.debian.org/source/edk2) package, from [TianoCore EDK II](https://github.com/tianocore/edk2) | BSD-2-Clause-Patent and others; full text in `internal/assets/files/ovmf/copyright` |
 | Recovery download protocol (`internal/core/recovery.go`, ported to Go) | acidanthera's [macrecovery](https://github.com/acidanthera/OpenCorePkg/tree/master/Utilities/macrecovery), Copyright (c) 2019 vit9696 | BSD-3-Clause |
 
+Not embedded, downloaded at run time only when a VM's root-patch mode is turned on: AMFIPass, RSRHelper, RestrictEvents and KDKlessWorkaround, from [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher)'s repository at the 2.5.1 commit (`payloads/Kexts`), checked against pinned SHA-256 sums. RestrictEvents is acidanthera's (BSD-3-Clause); OCLP's repository is under its own license (BSD-style, Copyright (c) 2020-2025 Dhinak G, Mykola Grymalyuk and individual contributors). This product includes software developed by Dortania and OpenCore Legacy Patcher contributors.
+
 The apple-smc key string passed to QEMU (`isa-applesmc,osk=…`) and the macOS recovery images downloaded from Apple's servers are not part of this project.
 
 ## OpenCorePkg license

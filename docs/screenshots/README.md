@@ -1,6 +1,6 @@
 # Screenshots
 
-Screens of macOS KVM with the light theme. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
+Screens of macOS KVM with the light theme, and a few with the dark one at the end. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
 
 ## Details
 
@@ -18,13 +18,19 @@ Like VirtualBox's wizard in expert mode: four folding sections for the name, fol
 
 ![Install tab](install.png)
 
-The guided install as a stepper: the header shows how many of the five steps are done, and each step is a card with a badge (its number, a green check once done), its state (Done, Next, Waiting) and its action. The next step gets a blue stripe and the highlighted button; finished steps hide their controls. The download progress shows inside its step, and the steps to follow inside macOS fold away.
+The guided install as a stepper: the header shows how many of the five steps are done, and each step is a card with a badge (its number, a green check once done), its state (Done, Next, Waiting) and its action. The next step gets a blue stripe and the highlighted button; finished steps hide their controls. The download progress shows inside its step, and the steps to follow inside macOS fold away. Step 2 also downloads the full installer (here macOS 15.8.1 is cached), and step 4 says the **Install mode**: Offline, from the disc OFFLINE, or Online.
+
+## Offline installers
+
+![File › Offline installers](offline-installers.png)
+
+File › Offline installers lists every cached full installer with its size and the VMs that use it, and deletes them.
 
 ## Settings
 
 ![Settings window](settings.png)
 
-The VM's Settings window: General, System (Motherboard, Processor and Acceleration tabs), Display, Storage, Audio, Network (Adapter 1–4 tabs: NAT or bridged, adapter type, MAC address) and USB. Nothing is saved until OK. The Workspace and the theme are in File › Preferences.
+The VM's Settings window, here on Storage (the disk, the install media with **Remove…**, and OpenCore): General, System (Motherboard, Processor and Acceleration tabs), Display, Storage, Audio, Network (Adapter 1–4 tabs: NAT or bridged, adapter type, MAC address) and USB. Nothing is saved until OK. The Workspace and the theme are in File › Preferences.
 
 ## Host
 
@@ -36,13 +42,23 @@ The host checks in the same style: a summary and the **Check again** and **Set u
 
 ![GPU tab](gpu.png)
 
-The GPU for the VM and the VFIO reservation at the top, then one card per display adapter with its macOS compatibility, driver, IOMMU group and why it can or cannot be passed to the VM. On this host none is eligible: NVIDIA cards and the Ryzen iGPU have no macOS driver. See [GPU passthrough](../gpu-passthrough.md).
+The GPU for the VM and the VFIO reservation at the top, then one card per display adapter with its macOS compatibility, driver, IOMMU group and why it can or cannot be passed to the VM. On this host none is eligible: the RTX 4070 and the Tesla V100 are not Kepler, and the Ryzen iGPU has no macOS driver. Below them, **Root-patch mode** for an NVIDIA Kepler card on Monterey to Sequoia, with the steps inside macOS. See [GPU passthrough](../gpu-passthrough.md).
 
 ## Log
 
 ![Log tab](log.png)
 
 The QEMU command line and output, together with the app's own messages (last 1000 lines).
+
+## Dark theme
+
+![Details, dark theme](details-dark.png)
+
+![Install, dark theme](install-dark.png)
+
+![GPU, dark theme](gpu-dark.png)
+
+File › Preferences › Theme switches between Light, Dark and System right away.
 
 ## Updating these screenshots
 
@@ -51,7 +67,7 @@ Build with `make build`, run `./dist/macos-kvm-gui`, resize the window to 1280x8
 ```sh
 WID=$(xdotool search --name '^macOS KVM' | head -1)
 xdotool windowsize --sync "$WID" 1280 820
-import -window "$WID" docs/screenshots/<tab>.png
+import -window "$WID" docs/screenshots/<tab>.png      # MKG_THEME=dark for the -dark ones
 ```
 
 Keep personal paths and data out of the captures: run a separate instance with `XDG_CONFIG_HOME` pointing to an empty folder and a short Workspace such as `~/VMs` (`macos-kvm-gui workspace set ~/VMs`), so the captures show no personal VM.
