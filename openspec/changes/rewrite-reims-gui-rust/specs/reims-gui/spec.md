@@ -15,7 +15,7 @@
 
 #### Scenario: Package installs on its release
 - **WHEN** the 26.04 `.deb` is installed in a clean `ubuntu:26.04` container with apt
-- **THEN** its dependencies resolve and `reims-gui --version` runs
+- **THEN** its dependencies resolve and `reims-gui --self-test` opens the GUI under Xvfb, renders a frame and exits 0
 
 ### Requirement: Single binary
 One executable SHALL provide the GUI (no arguments, or `gui`), the CLI subcommands of the Go app with the same names, flags and output meaning, and the MCP server (`reims-gui mcp`) with the same tools.
@@ -35,6 +35,10 @@ One executable SHALL provide the GUI (no arguments, or `gui`), the CLI subcomman
 - **WHEN** a VM created by the Go app is opened in `reims-gui`
 - **THEN** it lists, boots and keeps its NVRAM, identity, disk and settings
 
+#### Scenario: Both apps at once
+- **WHEN** the Go app runs a VM and `reims-gui` is opened
+- **THEN** `reims-gui` shows it running, can shut it down over its control socket, and refuses to start it a second time
+
 ### Requirement: Same GUI
 The GUI SHALL keep the Go app's structure: File/Machine/Help menus, the toolbar (New, Import, Settings, Remove, Start, Shut down, Force stop, Window, Full screen), the VM list with state, the Details, Screen, Install, Host, GPU and Log tabs, the Settings dialog pages, the New VM wizard, Preferences, Offline installers, light/dark/system themes and modal dialogs with depth (rounded corners and shadow).
 
@@ -50,19 +54,27 @@ For a Reims vGPU VM started by the app, the guest display SHALL appear inside th
 - **THEN** no separate Reims window stays on the desktop and the Screen tab shows the guest at its frame rate
 
 #### Scenario: Wayland session
-- **WHEN** the desktop session is Wayland
+- **WHEN** the desktop session is Wayland with XWayland available
 - **THEN** the app runs through XWayland and the embedding still works
+
+#### Scenario: Dialog over the screen
+- **WHEN** a dialog or menu opens over the Screen tab of a running embedded VM
+- **THEN** the embedded window is hidden until the dialog closes, and clicks on the dialog never reach the guest
+
+#### Scenario: Guest changes mode
+- **WHEN** the guest changes its display mode
+- **THEN** the embedded display stays the size of the tab
 
 #### Scenario: Embedding unavailable
 - **WHEN** no X server is reachable
-- **THEN** the Reims window opens on its own as today and the Screen tab says so
+- **THEN** the app runs on Wayland, the Reims window opens on its own with SDL's native backend and the Screen tab says so
 
-### Requirement: VNC screen for VMware SVGA
-VMs on VMware SVGA SHALL show their screen in the Screen tab through QEMU's VNC Unix socket, with keyboard (scancodes, any layout), pointer, full screen and detach, as the Go app does.
+### Requirement: Screen for VMware SVGA
+VMs on VMware SVGA SHALL show their screen in the Screen tab: with X11, QEMU's own window embedded like Reims (native scancodes for any layout); without X11, QEMU's VNC socket drawn by the app. The VNC socket SHALL always exist for the Preview and MCP.
 
 #### Scenario: SVGA VM
-- **WHEN** a VMware SVGA VM starts with display in the app
-- **THEN** the Screen tab shows it over VNC and keys typed there reach macOS
+- **WHEN** a VMware SVGA VM starts with display in the app on an X11 or XWayland session
+- **THEN** the Screen tab shows QEMU's window, and an ABNT2 key, keypad Enter and keypad Divide reach macOS as their own keys
 
 ### Requirement: Reims-first defaults
 New VMs SHALL default to Reims vGPU for macOS Sequoia and Tahoe when its QEMU is installed and the host checks pass, and the Host tab SHALL install the prebuilt Reims package or build it in Docker, as the Go app does.
@@ -79,8 +91,8 @@ New VMs SHALL default to Reims vGPU for macOS Sequoia and Tahoe when its QEMU is
 - **THEN** every Go feature has a Rust counterpart with a test or a recorded manual check
 
 ### Requirement: License
-`reims-gui` SHALL be licensed GPL-2.0-or-later OR LGPL-3.0-or-later and SHALL keep the notices of code copied from reims-vgpu, rustXterm and PhotoCraft in `reims-gui/THIRD_PARTY_NOTICES.md`.
+`reims-gui` source SHALL be GPL-2.0-or-later OR LGPL-3.0-or-later; its binaries SHALL be distributed under GPL-3.0-or-later with every dependency's license text, the notices of code copied from reims-vgpu, rustXterm and PhotoCraft, and the corresponding source attached to each release.
 
-#### Scenario: Notices
-- **WHEN** a release is built
-- **THEN** its `.deb` and `.tar.gz` contain the license and the third-party notices
+#### Scenario: Release contents
+- **WHEN** a release is published
+- **THEN** it has the packages, a source archive with vendored crates and the build Dockerfile, and the packages contain the license texts and notices

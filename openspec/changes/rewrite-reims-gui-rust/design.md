@@ -35,27 +35,32 @@ The Go app (about 18k lines: `internal/core`, `internal/gui`, `internal/mcp`, `c
 | 2 | `rg-qemu` | QEMU argument building (SVGA and Reims), process runtime and logs, running-VM detection, QMP client, RFB client, input key mapping | `vm.go`, `running.go`, `qmp.go`, `vnc.go`, reims-ctl `qemu.rs`/`qmp.rs`/`runtime.rs`/`view/keys.rs` |
 | 2 | `rg-reims` | Reims packages (manifest, install, Docker build, activation, pruning) | `reimspkg.go`, `reims/` |
 | 2 | `rg-x11` | X11 embedding of QEMU's Reims window (x11rb) | new |
+| 3 | `rg-ops` | orchestration that spans crates: workspace preparation (rg-core + rg-assets), media download (rg-macos), export/delete/move with running checks (rg-qemu), VM start (checks, kext downloads, args, process) — so lower crates never call upward | `workspace.go` Prepare, `media`, `bundle.go`/`vms.go` running checks, `vm.go` Start |
 | 3 | `rg-ui` | the egui app: shell, theme, tabs, dialogs, wizard, Screen (VNC texture or X11 embed) | `internal/gui`, rustXterm `crates/ui`, PhotoCraft `ui-egui` (copied, trimmed) |
-| 3 | `rg-agent` | clap CLI and `rmcp` MCP server | `cmd/`, `internal/mcp` |
-| 4 | `apps/reims-gui` | the binary | `main.go` |
+| 4 | `rg-agent` | clap CLI and `rmcp` MCP server | `cmd/`, `internal/mcp` |
+| 5 | `apps/reims-gui` | the binary | `main.go` |
 
 Each crate exposes a small public API; the scaffold commits stub signatures first so crates can be built in parallel.
 
 ### D2. GUI toolkit: egui/eframe 0.36.2 on wgpu
 Both GUI bases use it; it does per-frame textures well (Screen), runs on X11 and Wayland, and has `egui_kittest` for screenshot tests. Immediate mode means the wizard and dialogs are explicit state machines ("dialogs as data", PhotoCraft). Alternatives: GTK4 (gtk4-rs; good dma-buf story for phase 2, but no reusable base here), iced, slint — rejected for lack of a base and the user's ask to reuse these projects.
 
-### D3. Reims display inside the window (phase 1: X11 embedding)
-- QEMU for a Reims VM runs with `SDL_VIDEO_DRIVER=x11` (and `DISPLAY` from the app), so its Reims window is an X11 window even on Wayland desktops (through XWayland).
-- The app itself runs on X11 when embedding is enabled: before eframe starts it drops `WAYLAND_DISPLAY` from its own environment if `DISPLAY` is set, so winit picks X11/XWayland.
-- `rg-x11` (x11rb): finds the Reims window by `_NET_WM_PID` = the QEMU pid and title "Reims vGPU" (polling until it maps, up to 30 s), creates a child container window of the app's X11 window (from eframe's `raw-window-handle`), `ReparentWindow`s the Reims window into it, and every frame moves/resizes the container to the Screen tab's rectangle in physical pixels (hidden when the tab is not visible). A click in the area gives the Reims window input focus (`SetInputFocus`); the library's own capture (Ctrl+Alt+Super to release) keeps working. On VM stop the window disappears with QEMU.
-- If no X server is reachable, or embedding fails, the Reims window stays standalone (today's behavior) and the tab says so.
-- Alternatives: VNC (readback too slow), `-display dbus` (same readback; apple-gfx has no GL scanout), Wayland embedding (no cross-process embedding in Wayland), in-process library (impossible). Phase 2 adds a dma-buf "remote sink" in our fork of `reims-vgpu-window`, already built in our Docker packages.
+### D3. QEMU's display inside the window (phase 1: X11 embedding)
+- **Backend choice, no environment mutation.** At startup the app probes X11 (connect with x11rb to `$DISPLAY`). If it works, eframe runs on X11 (`NativeOptions.event_loop_builder` with winit's `with_x11()`, as PhotoCraft does), so the app has an X11 window id (raw-window-handle) even on Wayland desktops (XWayland). If not, the app runs natively on Wayland and embedding is off.
+- **QEMU's window.** Only when embedding is on, QEMU gets `SDL_VIDEO_DRIVER=x11` (Reims, SDL3) or `-display gtk,show-menubar=off,show-tabs=off` with `GDK_BACKEND=x11` (VMware SVGA); the app's own environment is never modified. Without X11, Reims VMs keep their standalone window and SVGA VMs the VNC screen.
+- **Finding it.** `rg-x11` waits (up to 30 s) for a top-level window whose `_NET_WM_PID` is the QEMU child's PID and whose title starts with `Reims vGPU` (the library changes the rest of the title while running; port suffixes are kept) or, for GTK, QEMU's window; the PID comes from the start result.
+- **Embedding.** It creates a container child of the app's X11 window, reparents QEMU's window into it, and every frame sets the container and the child to the Screen tab's rectangle in physical pixels (both position and size; `ConfigureWindow` on the child too). It watches the child's ConfigureNotify: when the guest changes mode and the library calls `SDL_SetWindowSize`, the app sets it back to the tab size (the library scales the guest to its window on the GPU). The tab letterboxes nothing: the library fits the guest.
+- **Overlays.** Any egui modal, menu or popup intersecting the Screen rectangle unmaps the container (and releases keyboard capture by sending the library's release chord is not needed: unmapping drops focus) until it closes; the app keeps an "overlay open" flag each frame. Switching tab, minimizing or showing another VM also unmaps it.
+- **Input.** A click in the area gives QEMU's window input focus (`SetInputFocus`); keyboard and pointer go natively to SDL/GTK (raw scancodes preserved), and the library's capture and Ctrl+Alt+Super release keep working. Focus returns to the app on unmap.
+- **Restart.** On VM stop the child disappears with QEMU; a new start re-embeds.
+- **Fallback.** If finding or reparenting fails, the window stays standalone and the tab says so.
+- Alternatives: VNC (GPU readback too slow), `-display dbus` (same readback; apple-gfx has no GL scanout), Wayland embedding (no cross-process embedding), in-process library (impossible). Phase 2 adds a dma-buf remote sink in our fork of `reims-vgpu-window`.
 
-### D4. VNC for VMware SVGA
-Port the Go RFB client (Raw, DesktopSize, Extended Key Event, pacing) to `rg-qemu` rather than rustXterm's vendored vnc-rs: it is small, known to work with QEMU's server, and keeps scancodes for any keyboard layout. The Screen widget follows rustXterm's `desktop.rs` (texture `set_partial` on dirty rects, letterbox fit, keyboard grab).
+### D4. VMware SVGA screen and the VNC client
+With X11, SVGA VMs are embedded like Reims VMs (QEMU's GTK window, D3), because egui merges keys QEMU needs as distinct scancodes (keypad Enter/Divide, ISO and JIS keys; the Go app used raw X11 keycodes). The Go RFB client (Raw, DesktopSize, Extended Key Event, pacing) is ported to `rg-qemu` for the Preview, MCP screen capture and input, and as the Screen fallback without X11 (rustXterm's `desktop.rs` texture pattern), where the egui key mapping is documented as lossy for those keys.
 
-### D5. Data compatibility
-Same paths and formats: `os.UserConfigDir()/macos-kvm-gui/` (DB, `settings.yaml`, `.env` fallback), Workspace layout, JSON export and `.tar` bundles. The DB code ports the Go migrations verbatim; tests open a database written by the Go app (fixtures generated by the Go tests).
+### D5. Data and runtime compatibility
+Frozen protocols, so both apps can run at once: the workspace flock file (`$XDG_RUNTIME_DIR` or temp, `macos-kvm-gui-<hex(sha256(realpath(dir)))[:8]>.lock`), the private run directories `macos-kvm-gui-*` with `qmp.sock`, `qmp-control.sock` and `vnc.sock`, running-VM detection through `/proc` for either app's QEMU, legacy (null) vs empty network lists. Tests compute the Go values for sample inputs and run Go and Rust against one Workspace. Same paths and formats: `os.UserConfigDir()/macos-kvm-gui/` (DB, `settings.yaml`, `.env` fallback), Workspace layout, JSON export and `.tar` bundles. The DB code ports the Go migrations verbatim; tests open a database written by the Go app (fixtures generated by the Go tests).
 
 ### D6. Async and processes
 tokio multi-thread runtime owned by a `Backend` (rustXterm pattern) between UI and core; the UI never blocks and gets events over bounded channels, requesting repaints. Long operations (downloads, builds, VM runs) are tasks with progress events shown in the Log tab, like Go's `u.run`.
@@ -65,18 +70,18 @@ clap with the same command tree and flags as `cmd/`; MCP on `rmcp` 3.5 over stdi
 
 ### D8. Build, packaging, CI
 - `reims-gui/docker/Dockerfile`: `ubuntu:${UBUNTU}` (24.04 or 26.04) with build deps and the pinned Rust toolchain; `reims-gui/scripts/cargo-docker.sh <release> <cmd>` runs cargo as the user with the source mounted and caches in `reims-gui/target/` (rustXterm pattern).
-- `reims-gui/scripts/build.sh <release>`: release build in that release's image (so the binary links that release's glibc and libraries), strip, `.tar.gz` (binary, license, notices, README), `.deb` built with `dpkg-deb` (Depends computed with `dpkg-shlibdeps` in the container; `qemu-system-x86`, `qemu-utils` recommended), `.sha256` files.
+- `reims-gui/scripts/build.sh <release>`: release build in that release's image (so the binary links that release's glibc and libraries), strip, `.tar.gz` (binary, license, notices, README), `.deb` built with `dpkg-deb`: Depends from `dpkg-shlibdeps` plus the libraries winit/wgpu load at runtime, resolved per image (libx11-6, libx11-xcb1, libxcursor1, libxi6, libxrandr2, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-cursor0, libvulkan1, libegl1, libgl1; t64 names where the release has them), `qemu-system-x86` and `qemu-utils` as Depends; `.sha256` files. The package test installs it in a clean `ubuntu:<release>` container and opens the GUI under Xvfb with lavapipe (`--self-test` renders one frame and exits).
 - CI (`reims-gui-ci.yml`): fmt, clippy, tests in the 24.04 image; build both releases. Release (`reims-gui-release.yml`): on `reims-gui-v*` tags, both releases' packages to a GitHub Release.
 
 ### D9. License
-`reims-gui` takes reims-ctl code, so it is `GPL-2.0-or-later OR LGPL-3.0-or-later`; rustXterm (MIT) and PhotoCraft (MIT OR Apache-2.0) code keep their notices. PhotoCraft's brand mark and names are not copied; Lucide icons (ISC), Inter/JetBrains Mono (OFL) keep their licenses.
+Source files are `GPL-2.0-or-later OR LGPL-3.0-or-later` (reims-ctl's terms). The linked binary includes Apache-2.0-only crates (e.g. `rmcp`), incompatible with GPLv2, so **releases are distributed under GPL-3.0-or-later**; each release attaches the corresponding source (`git archive` of the tag plus `cargo vendor` output and the build Dockerfile) and every dependency's license text (`cargo about` or an equivalent generated `THIRD_PARTY_LICENSES`). rustXterm (MIT) and PhotoCraft (MIT OR Apache-2.0) code keep their notices. PhotoCraft's brand mark and names are not copied; Lucide icons (ISC), Inter/JetBrains Mono (OFL) keep their licenses.
 
 ### D10. Parallel work
 After the scaffold (workspace, crate stubs with the APIs from D1, Docker image, CI skeleton), one agent per crate works in its own worktree on its own crate only, building and testing in Docker with its own `CARGO_TARGET_DIR`. Integration (wiring the UI to real crates, live tests on the Nilton VM, docs, screenshots) follows.
 
 ## Risks / Trade-offs
 
-- [X11 reparenting is fragile: focus, keyboard grab, window manager fights, HiDPI] → phase 1 tests on GNOME (24.04/26.04, Wayland session via XWayland) and on this X11 KDE host; a standalone-window fallback stays; phase 2 removes the dependency.
+- [X11 reparenting is fragile: focus, keyboard grab, window manager fights, HiDPI, fractional scaling, compositor shortcuts on Wayland] → release gates: manual checks on this X11 KDE host and on GNOME Wayland sessions of 24.04 and 26.04 (embedding, keyboard capture and release, guest mode change, overlay hiding, VM restart, monitor move between DPIs), recorded in `PARITY.md`; acceptance: the embedded Reims display keeps at least 90% of the standalone window's frame rate (measured with the library's `REIMS_VGPU_STATS=1`). A standalone-window fallback stays; phase 2 removes the dependency.
 - [Parity of an 18k-line app] → `PARITY.md` checklist generated from the Go code and specs, checked per item; the Go app stays until it is all checked.
 - [GPL obligations] → source is public in this repository; notices shipped in packages.
 - [Very new toolchain and pinned dependencies] → Docker image pins them; upgrades are deliberate.
