@@ -122,3 +122,24 @@ func TestSettingsAndKextsBeforeStart(t *testing.T) {
 		t.Fatalf("vm start downloads first: %v %s", err, out)
 	}
 }
+
+func TestReimsCommands(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("MKG_REIMS_QEMU", "")
+	t.Cleanup(func() { reimsRelease = "" })
+	if _, err := run(t, "reims", "build", "--release", "22.04"); err == nil || !strings.Contains(err.Error(), "24.04 and 26.04") {
+		t.Fatalf("an unsupported release: %v", err)
+	}
+	if _, err := run(t, "reims", "status"); err == nil || !strings.Contains(err.Error(), "not installed") {
+		t.Fatalf("nothing installed: %v", err)
+	}
+	qemu := filepath.Join(t.TempDir(), "20261016-212623-c099dd5a-ubuntu24.04", "bin", "qemu-system-x86_64")
+	os.MkdirAll(filepath.Dir(qemu), 0o755)
+	os.WriteFile(qemu, []byte("#!/bin/sh\necho 'name \"apple-gfx-pci\", bus PCI'\n"), 0o755)
+	t.Setenv("MKG_REIMS_QEMU", qemu)
+	out, err := run(t, "reims", "status")
+	if err != nil || !strings.Contains(out, "commit: c099dd5a") || !strings.Contains(out, "apple-gfx-pci: yes") {
+		t.Fatalf("status: %v\n%s", err, out)
+	}
+}

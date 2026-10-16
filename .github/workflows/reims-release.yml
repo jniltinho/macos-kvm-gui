@@ -1,0 +1,89 @@
+name: Reims vGPU packages
+
+# Builds Reims vGPU's QEMU at the commit internal/core/reims/Dockerfile pins, for each Ubuntu
+# release the app supports, and publishes the packages `macos-kvm-gui reims install` downloads,
+# with their corresponding source, on a release of their own. Tag: reims-<7-digit commit>.
+# After a release, internal/core/reims/manifest.json takes the published SHA-256 files.
+
+on:
+  push:
+    tags:
+      - 'reims-*'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      matrix:
+        release: ['24.04', '26.04']
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check the tag against the pinned commit
+        run: |
+          commit="$(sed -n 's/^ARG REIMS_COMMIT=\([0-9a-f]\{7\}\).*/\1/p' internal/core/reims/Dockerfile)"
+          test "$GITHUB_REF_NAME" = "reims-$commit" || { echo "the tag must be reims-$commit"; exit 1; }
+
+      # The image (about 4.5 GB) and the build (about 3 GB) do not fit the runner's free space.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Build image
+        run: docker build --progress=plain --build-arg UBUNTU=${{ matrix.release }} -t reims-build:${{ matrix.release }} - < internal/core/reims/Dockerfile
+
+      - name: Build QEMU
+        run: |
+          mkdir -p work
+          docker run --rm -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" -v "$PWD/work:/build" reims-build:${{ matrix.release }}
+
+      - name: Package
+        run: scripts/reims-package.sh pkg "$(readlink -f work/share/reims-ctl/qemu/current)" ${{ matrix.release }} dist
+
+      - name: Check the package in a clean ubuntu:${{ matrix.release }}
+        run: |
+          mkdir check
+          tar -xzf dist/*.tar.gz -C check
+          docker run --rm -v "$PWD/check:/q:ro" ubuntu:${{ matrix.release }} bash -c '
+            apt-get update -qq && apt-get install -y -qq --no-install-recommends libglib2.0-0t64 libpixman-1-0 \
+              libslirp0 libfdt1 libgtk-3-0t64 libpipewire-0.3-0t64 libpulse0 libasound2t64 libvulkan1 libgbm1 >/dev/null
+            /q/bin/qemu-system-x86_64 -device help | grep -F "\"apple-gfx-pci\""'
+
+      - name: Source archive
+        if: matrix.release == '24.04'
+        run: scripts/reims-package.sh src reims-build:${{ matrix.release }} dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reims-${{ matrix.release }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          make_latest: false # the app's own releases stay "latest"
+          body: |
+            Reims vGPU's QEMU (https://github.com/steelbrain/reims-vgpu) built for Ubuntu 24.04 and 26.04, which `macos-kvm-gui reims install` downloads. The source archive is the corresponding source of these binaries (GPL-2.0); see THIRD_PARTY_NOTICES.md.
+          files: |
+            dist/*.tar.gz
+            dist/*.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

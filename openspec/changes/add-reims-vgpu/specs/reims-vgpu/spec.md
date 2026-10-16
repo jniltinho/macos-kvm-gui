@@ -25,7 +25,7 @@ A VM SHALL NOT have both `reims-vgpu` and a passed-through GPU.
 - **THEN** saving fails with an error saying to choose one of them
 
 ### Requirement: Reims QEMU build
-The app SHALL NOT build, download or ship Reims vGPU at runtime. A VM with `reims-vgpu` SHALL run the `qemu-system-x86_64` of the user's Reims install: `reims_qemu` in `settings.yaml` when set, otherwise the app's build `<Workspace>/.reims/qemu/current/bin/qemu-system-x86_64`, otherwise an upstream install at `$XDG_DATA_HOME/reims-ctl/qemu/current/bin/qemu-system-x86_64`. The binary SHALL list `apple-gfx-pci` among its devices. Other VMs SHALL keep using the system QEMU.
+The app SHALL NOT embed or ship Reims vGPU; it installs it only when the user asks (Package install, Docker build). A VM with `reims-vgpu` SHALL run the `qemu-system-x86_64` of the user's Reims install: `reims_qemu` in `settings.yaml` when set, otherwise the app's build `<Workspace>/.reims/qemu/current/bin/qemu-system-x86_64`, otherwise an upstream install at `$XDG_DATA_HOME/reims-ctl/qemu/current/bin/qemu-system-x86_64`. The binary SHALL list `apple-gfx-pci` among its devices. Other VMs SHALL keep using the system QEMU.
 
 #### Scenario: Not installed
 - **WHEN** a VM with `reims-vgpu` starts and no Reims QEMU build is found
@@ -36,7 +36,7 @@ The app SHALL NOT build, download or ship Reims vGPU at runtime. A VM with `reim
 - **THEN** the VM does not start and the error names the binary
 
 ### Requirement: Prebuilt packages
-This repository SHALL publish, on a release tagged `reims-<commit>`, one package per supported Ubuntu release (24.04, 26.04) named `reims-qemu-<commit>-ubuntu<release>-x86_64.tar.zst` with a `.sha256` file, built from upstream at that commit in an `ubuntu:<release>` container and stripped, and the corresponding source `reims-vgpu-src-<commit>.tar.zst` (upstream, its `vendor/qemu` and the vendored Rust crates) with the license texts, in the same release.
+This repository SHALL publish, on a release tagged `reims-<commit>`, one package per supported Ubuntu release (24.04, 26.04) named `reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz` with a `.sha256` file, built from upstream at that commit in an `ubuntu:<release>` container and stripped, and the corresponding source `reims-vgpu-src-<commit>.tar.gz` (upstream, its `vendor/qemu` with the meson subprojects its build fetches, and the vendored Rust crates, SDL3's source among them) with the license texts, in the same release.
 
 #### Scenario: Release
 - **WHEN** a `reims-<commit>` tag is pushed
