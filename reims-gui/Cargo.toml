@@ -49,6 +49,8 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 rmcp = { version = "=3.5.1", features = ["server", "transport-io"] }
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 dirs = "=7.0.0"
+x11rb = "=0.13.2"
+sdl3 = { version = "=0.20.0", features = ["build-from-source-static"] }
 
 [profile.release]
 lto = "thin"
