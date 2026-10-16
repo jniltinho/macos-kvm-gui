@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -18,7 +19,7 @@ func TestBundleRoundTrip(t *testing.T) {
 	if err := w.PrepareBoot(c, false); err != nil {
 		t.Fatal(err)
 	}
-	write(t, w.Path(DiskFile), strings.Repeat("d", 3<<20))
+	qcow2(t, w.Path(DiskFile), "")
 	write(t, w.Path(MediaFile), "media")
 	e, err := CreateVM(c)
 	if err != nil {
@@ -56,6 +57,47 @@ func TestBundleRoundTrip(t *testing.T) {
 	// Importing into a folder that already has files is refused.
 	if _, err := ImportBundle(context.Background(), dst, ws2, nil); err == nil {
 		t.Fatal("a non-empty workspace must be refused")
+	}
+}
+
+// qcow2 creates a small qcow2 disk, optionally on top of a backing file.
+func qcow2(t *testing.T, path, backing string) {
+	t.Helper()
+	args := []string{"create", "-q", "-f", "qcow2"}
+	if backing != "" {
+		args = append(args, "-b", backing, "-F", "raw")
+	}
+	if out, err := exec.Command("qemu-img", append(args, path, "64M")...).CombinedOutput(); err != nil {
+		t.Skipf("qemu-img unavailable: %v %s", err, out)
+	}
+}
+
+func TestBundleRejectsDiskWithBackingFile(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	secret := filepath.Join(t.TempDir(), "host-file")
+	write(t, secret, "host data")
+	c := Defaults()
+	c.Name, c.Workspace = "Crafted", filepath.Join(t.TempDir(), "src")
+	w := NewWorkspace(c.Workspace)
+	if err := w.PrepareBoot(c, false); err != nil {
+		t.Fatal(err)
+	}
+	qcow2(t, w.Path(DiskFile), secret)
+	e, err := CreateVM(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "crafted.tar")
+	if err := ExportBundle(context.Background(), e, dst, nil); err != nil {
+		t.Fatal(err)
+	}
+	ws := filepath.Join(t.TempDir(), "imported")
+	if _, err := ImportBundle(context.Background(), dst, ws, nil); err == nil || !strings.Contains(err.Error(), "standalone") {
+		t.Fatalf("a disk that references host files must be refused: %v", err)
+	}
+	if exists(filepath.Join(ws, DiskFile)) {
+		t.Fatal("the refused disk must be removed")
 	}
 }
 

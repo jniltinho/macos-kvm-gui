@@ -3,6 +3,7 @@ package gui
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -159,17 +160,16 @@ func (u *ui) exportVMDialog() {
 	kind.SetSelected(full)
 	note := wrapped("The full bundle has everything the VM needs to run on another host; it is about as big as the disk. OpenCore and OVMF are rebuilt by the app at start.")
 	note.TextStyle = fyne.TextStyle{Italic: true}
-	dialog.ShowCustomConfirm("Export "+e.DisplayName(), "Choose file", "Cancel", container.NewVBox(kind, note), func(ok bool) {
+	dialog.ShowCustomConfirm("Export "+e.DisplayName(), "Choose…", "Cancel", container.NewVBox(kind, note), func(ok bool) {
 		if !ok {
 			return
 		}
 		isFull := kind.Selected == full
-		save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
-			if err != nil || w == nil {
-				return
-			}
-			path := w.URI().Path()
-			if !isFull {
+		if !isFull {
+			save := dialog.NewFileSave(func(w fyne.URIWriteCloser, err error) {
+				if err != nil || w == nil {
+					return
+				}
 				defer w.Close()
 				b, err := core.ExportVM(e)
 				if err == nil {
@@ -179,32 +179,53 @@ func (u *ui) exportVMDialog() {
 					dialog.ShowError(err, u.win)
 					return
 				}
-				dialog.ShowInformation("Export", "Settings saved to "+path, u.win)
+				dialog.ShowInformation("Export", "Settings saved to "+w.URI().Path(), u.win)
+			}, u.win)
+			save.SetFileName(core.Slug(e.DisplayName()) + ".json")
+			save.Resize(fyne.NewSize(900, 600))
+			save.Show()
+			return
+		}
+		// A folder, not a save dialog: Fyne's save dialog truncates the chosen file before the
+		// export starts, while ExportBundle replaces an older bundle only once the new one is complete.
+		pick := dialog.NewFolderOpen(func(dir fyne.ListableURI, err error) {
+			if err != nil || dir == nil {
 				return
 			}
-			w.Close() // ExportBundle writes through its own temporary file
-			bar := widget.NewProgressBar()
-			prog := dialog.NewCustomWithoutButtons("Exporting "+e.DisplayName(), container.NewVBox(wrapped(path), bar), u.win)
-			prog.Show()
-			go func() {
-				err := core.ExportBundle(context.Background(), e, path, func(done, total int64) {
-					fyne.Do(func() { bar.SetValue(float64(done) / float64(max(total, 1))) })
-				})
-				fyne.Do(func() {
-					prog.Hide()
-					if err != nil {
-						dialog.ShowError(err, u.win)
-						return
+			path := filepath.Join(dir.Path(), core.Slug(e.DisplayName())+".tar")
+			if _, err := os.Stat(path); err == nil {
+				dialog.ShowConfirm("Export", path+" already exists. Replace it once the new bundle is complete?", func(ok bool) {
+					if ok {
+						u.exportBundle(e, path)
 					}
-					dialog.ShowInformation("Export", e.DisplayName()+" exported to "+path, u.win)
-				})
-			}()
+				}, u.win)
+				return
+			}
+			u.exportBundle(e, path)
 		}, u.win)
-		name := core.Slug(e.DisplayName()) + map[bool]string{true: ".tar", false: ".json"}[isFull]
-		save.SetFileName(name)
-		save.Resize(fyne.NewSize(900, 600))
-		save.Show()
+		pick.Resize(fyne.NewSize(900, 600))
+		pick.Show()
 	}, u.win)
+}
+
+// exportBundle writes e's full bundle to path with a progress dialog.
+func (u *ui) exportBundle(e core.VMEntry, path string) {
+	bar := widget.NewProgressBar()
+	prog := dialog.NewCustomWithoutButtons("Exporting "+e.DisplayName(), container.NewVBox(wrapped(path), bar), u.win)
+	prog.Show()
+	go func() {
+		err := core.ExportBundle(context.Background(), e, path, func(done, total int64) {
+			fyne.Do(func() { bar.SetValue(float64(done) / float64(max(total, 1))) })
+		})
+		fyne.Do(func() {
+			prog.Hide()
+			if err != nil {
+				dialog.ShowError(err, u.win)
+				return
+			}
+			dialog.ShowInformation("Export", e.DisplayName()+" exported to "+path, u.win)
+		})
+	}()
 }
 
 // importVMDialog adds a VM from a settings file (.json) or a full bundle (.tar).

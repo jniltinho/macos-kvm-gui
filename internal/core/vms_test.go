@@ -100,6 +100,33 @@ func TestVMsDatabase(t *testing.T) {
 	}
 }
 
+func TestFindVMPrefersID(t *testing.T) {
+	vms := []VMEntry{{ID: "beta", Config: Config{Name: "alpha"}}, {ID: "alpha", Config: Config{Name: "Zebra"}}}
+	if e, _ := FindVM(vms, "alpha"); e.ID != "alpha" {
+		t.Fatalf("an id must win over another VM's name, got %s", e.ID)
+	}
+	if e, _ := FindVM(vms, "ZEBRA"); e.ID != "alpha" {
+		t.Fatal("names match case-insensitively")
+	}
+}
+
+func TestLockFollowsSymlinks(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	unlock, err := NewWorkspace(real).Lock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	if _, err := NewWorkspace(link).Lock(); !errors.Is(err, ErrBusy) {
+		t.Fatalf("a symlink to a locked folder must be busy too: %v", err)
+	}
+}
+
 func TestMoveVM(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
@@ -140,5 +167,37 @@ func TestMoveVM(t *testing.T) {
 	}
 	if _, err := MoveVM(got, filepath.Join(dst, "inner")); err == nil {
 		t.Fatal("moving into itself must be refused")
+	}
+}
+
+func TestMigrationRetriesAfterAFailedImport(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	dir := filepath.Join(cfg, "macos-kvm-gui", "vms")
+	os.MkdirAll(dir, 0o755)
+	os.WriteFile(filepath.Join(dir, "a.json"), []byte(`{"name":"A","workspace":"/tmp/a"}`), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.json"), []byte(`{broken`), 0o644)
+	if _, err := ListVMs(); err == nil {
+		t.Fatal("a malformed legacy file must stop the import")
+	}
+	os.WriteFile(filepath.Join(dir, "b.json"), []byte(`{"name":"B","workspace":"/tmp/b"}`), 0o644)
+	vms, err := ListVMs()
+	if err != nil || len(vms) != 2 {
+		t.Fatalf("the import must be retried once the file is fixed: %v %+v", err, vms)
+	}
+}
+
+func TestRealPathResolvesSymlinksBeforeDotDot(t *testing.T) {
+	base := t.TempDir()
+	os.MkdirAll(filepath.Join(base, "srv", "subdir"), 0o755)
+	os.MkdirAll(filepath.Join(base, "srv", "mac"), 0o755)
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(filepath.Join(base, "srv", "subdir"), alias); err != nil {
+		t.Fatal(err)
+	}
+	real, _ := filepath.EvalSymlinks(base)
+	want := filepath.Join(real, "srv", "mac", DiskFile) // the disk need not exist yet
+	if got := realPath(alias + "/../mac/" + DiskFile); got != want {
+		t.Fatalf("alias/.. must follow the symlink first: got %s, want %s", got, want)
 	}
 }

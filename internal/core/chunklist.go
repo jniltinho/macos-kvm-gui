@@ -59,7 +59,7 @@ func parseChunklist(data []byte, key *rsa.PublicKey) ([]chunk, error) {
 		return nil, fmt.Errorf("chunklist truncated: %w", err)
 	}
 	if string(h.Magic[:]) != "CNKL" || h.HeaderSize != headerSize || h.FileVersion != 1 || h.ChunkMethod != 1 ||
-		h.ChunkCount == 0 || h.ChunkOffset != headerSize || h.SignatureOffset != headerSize+chunkSize*h.ChunkCount {
+		h.ChunkCount == 0 || h.ChunkCount > uint64(len(data))/chunkSize || h.ChunkOffset != headerSize || h.SignatureOffset != headerSize+chunkSize*h.ChunkCount {
 		return nil, errors.New("chunklist has an invalid header")
 	}
 	if h.SignatureMethod != 1 {

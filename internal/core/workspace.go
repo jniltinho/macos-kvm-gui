@@ -46,7 +46,7 @@ func (w Workspace) Lock() (unlock func(), err error) {
 	if base == "" {
 		base = os.TempDir()
 	}
-	sum := sha256.Sum256([]byte(filepath.Clean(w.Dir)))
+	sum := sha256.Sum256([]byte(realPath(w.Dir)))
 	f, err := os.OpenFile(filepath.Join(base, "macos-kvm-gui-"+hex.EncodeToString(sum[:8])+".lock"), os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, err
@@ -246,6 +246,19 @@ func (w Workspace) MediaVersion() string {
 
 func (w Workspace) HasMedia() bool { return exists(w.Path(MediaFile)) }
 func (w Workspace) HasDisk() bool  { return exists(w.Path(DiskFile)) }
+
+// realPath resolves symlinks so two spellings of one folder get one lock; a missing path is
+// resolved as far as it exists. Symlinks are resolved before "..", as the kernel does, so the
+// path is not cleaned first.
+func realPath(p string) string {
+	if r, err := filepath.EvalSymlinks(p); err == nil {
+		return r
+	}
+	if dir, base := filepath.Split(p); dir != "" && dir != p {
+		return filepath.Join(realPath(dir), base)
+	}
+	return filepath.Clean(p)
+}
 
 func exists(p string) bool {
 	_, err := os.Stat(p)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
@@ -130,10 +131,19 @@ func (p *progressReader) Read(b []byte) (int, error) {
 
 // ImportBundle unpacks a bundle into workspace (which must not exist or be empty) and adds the
 // VM. A name already in use gets " (imported)" appended. On any error nothing is left behind.
-func ImportBundle(ctx context.Context, src, workspace string, progress func(done, total int64)) (VMEntry, error) {
+func ImportBundle(ctx context.Context, src, workspace string, progress func(done, total int64)) (e VMEntry, err error) {
 	if !filepath.IsAbs(workspace) {
 		return VMEntry{}, &FieldError{"workspace", "must be an absolute path"}
 	}
+	// The lock keeps two imports into the same folder from cleaning up each other's files.
+	err = NewWorkspace(workspace).withLock(func() error {
+		e, err = importBundle(ctx, src, workspace, progress)
+		return err
+	})
+	return e, err
+}
+
+func importBundle(ctx context.Context, src, workspace string, progress func(done, total int64)) (VMEntry, error) {
 	if err := requireEmpty(workspace); err != nil {
 		return VMEntry{}, err
 	}
@@ -203,6 +213,10 @@ func ImportBundle(ctx context.Context, src, workspace string, progress func(done
 		cleanup()
 		return VMEntry{}, errors.New("the bundle has no macOS disk")
 	}
+	if err := checkStandaloneDisk(filepath.Join(workspace, DiskFile)); err != nil {
+		cleanup()
+		return VMEntry{}, err
+	}
 	c := m.Config
 	c.Workspace, c.GPU = workspace, "" // a GPU address from another host means nothing here
 	e, err := CreateVM(c)
@@ -216,6 +230,31 @@ func ImportBundle(ctx context.Context, src, workspace string, progress func(done
 		return VMEntry{}, err
 	}
 	return e, nil
+}
+
+// checkStandaloneDisk refuses a qcow2 that points at other files (a backing file or an external
+// data file): a crafted bundle could otherwise make QEMU read or write host files.
+func checkStandaloneDisk(path string) error {
+	out, err := exec.Command("qemu-img", "info", "--output=json", "-U", path).Output()
+	if err != nil {
+		return fmt.Errorf("checking the imported disk: %w", err)
+	}
+	var info struct {
+		Format  string `json:"format"`
+		Backing string `json:"backing-filename"`
+		Spec    struct {
+			Data struct {
+				DataFile string `json:"data-file"`
+			} `json:"data"`
+		} `json:"format-specific"`
+	}
+	if err := json.Unmarshal(out, &info); err != nil {
+		return fmt.Errorf("checking the imported disk: %w", err)
+	}
+	if info.Format != "qcow2" || info.Backing != "" || info.Spec.Data.DataFile != "" {
+		return errors.New("the bundle's disk is not a standalone qcow2 (it references other files): refusing it")
+	}
+	return nil
 }
 
 // ImportSettings adds a VM from a settings file: an export, a --config file or a workspace

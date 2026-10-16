@@ -84,3 +84,16 @@ func TestVerifyImage(t *testing.T) {
 		t.Error("chunklist signed with another key must fail with Apple's key")
 	}
 }
+
+func TestChunklistHugeCountDoesNotPanic(t *testing.T) {
+	data := make([]byte, headerSize+256) // 292 bytes, as the overflowing header claims
+	copy(data, "CNKL")
+	binary.LittleEndian.PutUint32(data[4:], headerSize)
+	data[8], data[9], data[10] = 1, 1, 1            // file version, chunk method, signature method
+	binary.LittleEndian.PutUint64(data[12:], 1<<62) // chunk count: the offset sum overflows
+	binary.LittleEndian.PutUint64(data[20:], headerSize)
+	binary.LittleEndian.PutUint64(data[28:], headerSize) // 36 + 36<<62 wraps to 36
+	if _, err := parseChunklist(data, &rsa.PublicKey{}); err == nil {
+		t.Fatal("an impossible chunk count must be refused")
+	}
+}

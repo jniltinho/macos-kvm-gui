@@ -47,7 +47,7 @@ func DBPath() (string, error) {
 }
 
 const schemaV1 = `
-CREATE TABLE vms (
+CREATE TABLE IF NOT EXISTS vms (
 	id         TEXT PRIMARY KEY,
 	name       TEXT NOT NULL UNIQUE COLLATE NOCASE,
 	workspace  TEXT NOT NULL,
@@ -61,7 +61,7 @@ CREATE TABLE vms (
 	created_at TEXT NOT NULL DEFAULT (datetime('now')),
 	updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
 
 // openDB opens the database, creating and migrating it as needed. WAL and a busy timeout let
 // the app and the CLI use it at the same time.
@@ -83,11 +83,17 @@ func openDB() (*sql.DB, error) {
 		return nil, fmt.Errorf("database %s: %w", path, err)
 	}
 	if v == 0 {
-		if _, err := db.Exec(schemaV1 + `PRAGMA user_version = 1;`); err != nil {
+		if _, err := db.Exec(schemaV1); err != nil {
 			db.Close()
 			return nil, fmt.Errorf("creating %s: %w", path, err)
 		}
+		// The version is set only after the old files are imported, so a failed import is
+		// retried on the next start (imported files were renamed and are not read twice).
 		if err := importFiles(db); err != nil {
+			db.Close()
+			return nil, err
+		}
+		if _, err := db.Exec(`PRAGMA user_version = 1`); err != nil {
 			db.Close()
 			return nil, err
 		}
@@ -276,6 +282,9 @@ var workspaceFiles = []string{DiskFile, MediaFile, mediaMarker, stagingDir, Boot
 func DeleteVM(e VMEntry, purge bool) ([]string, error) {
 	var removed []string
 	if purge {
+		if _, ok := FindRunning(e.Config); ok {
+			return nil, errors.New("shut down the VM before deleting its files")
+		}
 		dir, err := e.Config.WorkspaceDir()
 		if err != nil {
 			return nil, err
@@ -349,10 +358,16 @@ func SelectVM(id string) error {
 	return err
 }
 
-// FindVM looks a VM up by id or name (case-insensitive).
+// FindVM looks a VM up by id, then by name (case-insensitive): an id always wins, so a VM
+// later named like another VM's id cannot be picked instead of it.
 func FindVM(vms []VMEntry, key string) (VMEntry, bool) {
 	for _, e := range vms {
-		if e.ID == key || strings.EqualFold(e.DisplayName(), key) {
+		if e.ID == key {
+			return e, true
+		}
+	}
+	for _, e := range vms {
+		if strings.EqualFold(e.DisplayName(), key) {
 			return e, true
 		}
 	}

@@ -30,7 +30,7 @@ func runningIn(proc string, c Config) (RunInfo, bool) {
 	if err != nil {
 		return RunInfo{}, false
 	}
-	disk := filepath.Join(dir, DiskFile)
+	disk := realPath(filepath.Join(dir, DiskFile))
 	entries, _ := os.ReadDir(proc)
 	for _, e := range entries {
 		pid, err := strconv.Atoi(e.Name())
@@ -79,9 +79,9 @@ func usesDisk(args []string, disk, cwd string) bool {
 			}
 			f = strings.Trim(strings.ReplaceAll(f, "\x01", ","), `"`)
 			if !filepath.IsAbs(f) && cwd != "" {
-				f = filepath.Join(cwd, f)
+				f = cwd + string(filepath.Separator) + f // not Join: it would apply ".." before symlinks
 			}
-			if filepath.Clean(f) == disk {
+			if realPath(f) == disk {
 				return true
 			}
 		}

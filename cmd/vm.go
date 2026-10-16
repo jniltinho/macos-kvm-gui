@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -59,7 +60,10 @@ With display=app there is no window: the screen is on the printed private VNC so
 		defer signal.Stop(sig)
 		for asked := false; ; {
 			select {
-			case <-stopped:
+			case msg := <-stopped:
+				if msg != "" && !asked {
+					return errors.New(msg)
+				}
 				return nil
 			case <-sig:
 				if asked {

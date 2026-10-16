@@ -59,6 +59,9 @@ func (s *screen) MinSize() fyne.Size { return fyne.NewSize(480, 270) }
 // attach starts showing v; frames are redrawn at most 60 times per second.
 func (s *screen) attach(v *core.VNC) {
 	s.mu.Lock()
+	if s.stop != nil {
+		close(s.stop) // a connection that was not detached yet
+	}
 	s.vnc, s.stop = v, make(chan struct{})
 	stop := s.stop
 	s.mu.Unlock()
@@ -94,7 +97,14 @@ func (s *screen) attach(v *core.VNC) {
 }
 
 // detach stops showing the VM, releasing anything still pressed.
-func (s *screen) detach() {
+// detach drops v; a newer connection that replaced it is left alone.
+func (s *screen) detach(v *core.VNC) {
+	s.mu.Lock()
+	if s.vnc != v {
+		s.mu.Unlock()
+		return
+	}
+	s.mu.Unlock()
 	s.releaseAll()
 	s.mu.Lock()
 	if s.stop != nil {
@@ -185,7 +195,19 @@ func (s *screen) pointer(pos fyne.Position) {
 	}
 	fw, fh := v.Size()
 	size := s.Size()
-	if x, y, ok := core.ToFrame(fw, fh, size.Width, size.Height, pos.X, pos.Y); ok {
+	x, y, ok := core.ToFrame(fw, fh, size.Width, size.Height, pos.X, pos.Y)
+	s.mu.Lock()
+	held := s.buttons != 0 || s.lastSent != 0
+	s.mu.Unlock()
+	if !ok && held && fw > 0 && fh > 0 { // a drag into the black bars: keep it at the frame's edge
+		scale, ox, oy := core.FitRect(fw, fh, size.Width, size.Height)
+		if scale > 0 {
+			x = min(max(int((pos.X-ox)/scale), 0), fw-1)
+			y = min(max(int((pos.Y-oy)/scale), 0), fh-1)
+			ok = true
+		}
+	}
+	if ok {
 		s.mu.Lock()
 		b := s.buttons
 		same := x == s.lastX && y == s.lastY && b == s.lastSent
@@ -212,6 +234,12 @@ func vncButton(b desktop.MouseButton) uint8 {
 func (s *screen) MouseDown(e *desktop.MouseEvent) {
 	if c := fyne.CurrentApp().Driver().CanvasForObject(s); c != nil {
 		c.Focus(s) // clicking the screen sends the keyboard to the VM
+	}
+	if v := s.conn(); v != nil {
+		fw, fh := v.Size()
+		if _, _, ok := core.ToFrame(fw, fh, s.Size().Width, s.Size().Height, e.Position.X, e.Position.Y); !ok {
+			return // a press in the black bars is not a click in macOS
+		}
 	}
 	s.mu.Lock()
 	s.buttons |= vncButton(e.Button)
@@ -250,11 +278,10 @@ func (s *screen) wheel(dy float32) {
 		bit = core.ButtonWheelUp
 	}
 	s.mu.Lock()
-	b := s.buttons
+	b, x, y := s.buttons, s.lastX, s.lastY
 	s.mu.Unlock()
-	fw, fh := v.Size()
-	v.Pointer(b|bit, fw/2, fh/2)
-	v.Pointer(b, fw/2, fh/2)
+	v.Pointer(b|bit, x, y)
+	v.Pointer(b, x, y)
 }
 
 // Cursor hides the host pointer over the screen while a VM is shown: macOS draws its own

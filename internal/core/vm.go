@@ -216,7 +216,7 @@ func (v *VM) Start(c Config) error {
 		runtime.LockOSThread()
 		cmd := exec.Command("qemu-system-x86_64", args...)
 		cmd.Dir = dir
-		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true} // Ctrl+C in a terminal must not reach QEMU
 		pr, pw := io.Pipe()
 		cmd.Stdout, cmd.Stderr = pw, pw
 		if err := cmd.Start(); err != nil {

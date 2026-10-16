@@ -375,12 +375,12 @@ func (u *ui) start() {
 			u.logAsync("screen: " + err.Error())
 			return
 		}
-		fyne.Do(func() { u.screen.attach(v) })
+		fyne.DoAndWait(func() { u.screen.attach(v) }) // OnUpdate is set before frames arrive
 		if err := v.Run(); err != nil && u.vm.State() != core.Stopped {
 			u.logAsync("screen: " + err.Error())
 		}
 		v.Close()
-		fyne.Do(u.screen.detach)
+		fyne.Do(func() { u.screen.detach(v) })
 	}()
 }
 
