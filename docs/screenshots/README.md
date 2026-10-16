@@ -18,7 +18,7 @@ Like VirtualBox's wizard in expert mode: three folding sections for the name, fo
 
 ![Install tab](install.png)
 
-The guided install. **1 · VM folder** creates the folder and extracts the built-in OpenCore and OVMF. **2 · macOS recovery** downloads from Apple and verifies the signature. **3 · Disk** creates the thin qcow2. **4 · Install inside the VM** lists the steps to follow in macOS. **5 · Clean up** removes the install media. The status card shows the boot file versions and their source.
+The guided install as a stepper: the header shows how many of the five steps are done, and each step is a card with a badge (its number, a green check once done), its state (Done, Next, Waiting) and its action. The next step gets a blue stripe and the highlighted button; finished steps hide their controls. The download progress shows inside its step, and the steps to follow inside macOS fold away.
 
 ## Settings
 
@@ -30,13 +30,13 @@ The VM's Settings window: General, System (Motherboard, Processor and Accelerati
 
 ![Host tab](host.png)
 
-The host checks, each colored OK, Warning, Failure or Inconclusive. **Set up host** fixes the basics with one password prompt: missing QEMU packages, the KVM module, the kvm group and ignore_msrs. The home lab notice sits below.
+The host checks in the same style: a summary and the **Check again** and **Set up host** actions at the top, then one card per check with a green, amber or red badge. **Set up host** fixes the basics with one password prompt: missing QEMU packages, the KVM module, the kvm group and ignore_msrs. The home lab notice sits below.
 
 ## GPU
 
 ![GPU tab](gpu.png)
 
-Every display adapter on the host, with its macOS compatibility, IOMMU group, driver and the reason it can or cannot be passed to the VM. On this host none is eligible: NVIDIA cards and the Ryzen iGPU have no macOS driver. See [GPU passthrough](../gpu-passthrough.md).
+The GPU for the VM and the VFIO reservation at the top, then one card per display adapter with its macOS compatibility, driver, IOMMU group and why it can or cannot be passed to the VM. On this host none is eligible: NVIDIA cards and the Ryzen iGPU have no macOS driver. See [GPU passthrough](../gpu-passthrough.md).
 
 ## Log
 

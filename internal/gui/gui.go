@@ -2,7 +2,6 @@
 package gui
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -64,7 +63,12 @@ type ui struct {
 	busy    bool
 
 	checks                     *fyne.Container
-	installInfo                *widget.Label
+	steps                      []*itemCard // the Install tab's steps
+	hostSummary                *widget.Label
+	installTitle               *widget.Label
+	installBar                 *progressLine
+	installFiles               *widget.Label
+	btnStartInstall            *widget.Button
 	stage                      *widget.Label
 	bar                        *widget.ProgressBar
 	barInf                     *widget.ProgressBarInfinite
@@ -143,7 +147,10 @@ func Run(appVersion, configPath string) {
 	split.Offset = listWidth()
 	u.win.SetMainMenu(u.mainMenu())
 	u.win.SetContent(container.NewBorder(top, u.statusBar(), nil, nil, split))
-	a.Settings().AddListener(func(fyne.Settings) { recolorThemed() })
+	a.Settings().AddListener(func(fyne.Settings) {
+		recolorThemed()
+		u.refresh() // cards take their colors when they are marked
+	})
 	u.win.Resize(fyne.NewSize(1280, 820))
 	u.win.SetCloseIntercept(func() {
 		if u.vm.State() != core.Stopped {
@@ -292,32 +299,39 @@ func (u *ui) hostTab() fyne.CanvasObject {
 		}()
 	})
 	fix.Importance = widget.HighImportance
-	setupNote := wrapped("Set up host asks for your password once, then installs missing QEMU packages, loads the KVM module, " +
+	setupNote := caption("Set up host asks for your password once, then installs missing QEMU packages, loads the KVM module, " +
 		"adds you to the kvm group and enables ignore_msrs. The libvirt and input groups are not needed.")
-	setupNote.TextStyle = fyne.TextStyle{Italic: true}
+	setupNote.Wrapping = fyne.TextWrapWord
 	notice := wrapped(homeLab)
 	notice.Importance = widget.WarningImportance
-	return container.NewVScroll(container.NewVBox(
-		section("Host checks", "Everything should be green before starting the VM",
-			u.checks, container.NewHBox(fix, recheck), setupNote),
-		section("Home lab", "", notice),
-	))
+	u.hostSummary = widget.NewLabel("")
+	u.hostSummary.TextStyle = fyne.TextStyle{Bold: true}
+	header := tabHeader("Host checks", "system", theme.ComputerIcon(),
+		container.NewBorder(nil, nil, nil, container.NewHBox(recheck, fix), u.hostSummary), setupNote)
+	return tabPage(header, u.checks, surface(notice))
 }
 
 func (u *ui) refreshChecks() {
 	u.checks.RemoveAll()
-	for _, c := range u.host.Checks(u.cfg.Version) {
-		name := widget.NewLabel(c.Name)
-		name.TextStyle = fyne.TextStyle{Bold: true}
-		status := widget.NewLabel(c.Status.String())
-		status.Importance = statusImportance(c.Status)
-		detail := wrapped(c.Detail)
-		if c.Hint != "" {
-			detail.SetText(c.Detail + " — " + c.Hint)
+	checks := u.host.Checks(u.cfg.Version)
+	ok := 0
+	for _, c := range checks {
+		card := newItemCard("", c.Name, c.Detail)
+		badge := map[core.Status]fyne.ThemeColorName{core.OK: theme.ColorNameSuccess, core.Warn: theme.ColorNameWarning,
+			core.Fail: theme.ColorNameError}[c.Status]
+		if badge == "" {
+			badge = theme.ColorNameDisabled
 		}
-		detail.TextStyle = fyne.TextStyle{Italic: true}
-		row := container.NewBorder(nil, nil, container.NewHBox(widget.NewIcon(statusIcon(c.Status)), name), status, detail)
-		u.checks.Add(row)
+		card.mark(badge, statusIcon(c.Status), c.Status.String(), statusImportance(c.Status), c.Hint, c.Status == core.Fail)
+		u.checks.Add(card.obj)
+		if c.Status == core.OK {
+			ok++
+		}
+	}
+	if ok == len(checks) {
+		u.hostSummary.SetText(fmt.Sprintf("All %d checks passed: the host is ready", ok))
+	} else {
+		u.hostSummary.SetText(fmt.Sprintf("%d of %d checks passed", ok, len(checks)))
 	}
 }
 
@@ -332,113 +346,6 @@ const (
 	displayAppLabel    = "In the app (VNC on a private socket)"
 	displayWindowLabel = "QEMU window"
 )
-
-func (u *ui) installTab() fyne.CanvasObject {
-	u.installInfo = wrapped("")
-	u.installInfo.Wrapping = fyne.TextWrapWord
-	u.stage = widget.NewLabel("")
-	u.bar = widget.NewProgressBar()
-	u.bar.Hide()
-	u.barInf = widget.NewProgressBarInfinite()
-	u.barInf.Stop()
-	u.barInf.Hide()
-
-	u.btnPrepare = widget.NewButtonWithIcon("Create VM folder", theme.FolderNewIcon(), func() {
-		w, err := u.workspace()
-		if err != nil {
-			dialog.ShowError(err, u.win)
-			return
-		}
-		c := u.cfg
-		u.run("Create VM folder", func() error { return w.Prepare(c) }, nil)
-	})
-	u.btnDownload = widget.NewButtonWithIcon("Download macOS recovery", theme.DownloadIcon(), func() {
-		w, err := u.workspace()
-		if err != nil {
-			dialog.ShowError(err, u.win)
-			return
-		}
-		version := u.cfg.Version
-		u.run("Download recovery ("+version+")", func() error {
-			return w.DownloadMedia(context.Background(), version, func(p core.Progress) {
-				fyne.Do(func() { u.showProgress(p) })
-			}, u.logAsync)
-		}, nil)
-	})
-	u.diskSize = widget.NewEntry()
-	u.diskSize.SetText("80")
-	u.btnDisk = widget.NewButtonWithIcon("Create disk", theme.StorageIcon(), func() {
-		w, err := u.workspace()
-		if err != nil {
-			dialog.ShowError(err, u.win)
-			return
-		}
-		size, err := strconv.Atoi(strings.TrimSpace(u.diskSize.Text))
-		if err != nil {
-			dialog.ShowError(errors.New("disk size: enter a whole number of GiB"), u.win)
-			return
-		}
-		var warning string
-		u.run("Create disk", func() (err error) {
-			warning, err = w.CreateDisk(context.Background(), size)
-			return err
-		}, func() {
-			if warning != "" {
-				dialog.ShowInformation("Disk created with a warning", warning, u.win)
-			}
-		})
-	})
-	u.btnRemove = widget.NewButtonWithIcon("Remove install media", theme.DeleteIcon(), func() {
-		dialog.ShowConfirm("Remove install media",
-			"Confirm that macOS already boots from the installed disk. BaseSystem.img will be deleted.", func(ok bool) {
-				if !ok {
-					return
-				}
-				w, err := u.workspace()
-				if err != nil {
-					dialog.ShowError(err, u.win)
-					return
-				}
-				var freed int64
-				u.run("Remove install media", func() (err error) {
-					freed, err = w.RemoveMedia()
-					return err
-				}, func() {
-					dialog.ShowInformation("Install media removed", fmt.Sprintf("%.2f GiB freed.", float64(freed)/(1<<30)), u.win)
-				})
-			}, u.win)
-	})
-
-	u.btnDownload.Importance = widget.HighImportance
-	disk := container.NewBorder(nil, nil, widget.NewLabel("Size (GiB, min. 40):"), u.btnDisk, u.diskSize)
-	return container.NewVScroll(container.NewVBox(
-		section("Status", "", u.installInfo),
-		section("1 · VM folder", "Creates the VM's folder and extracts the built-in OpenCore and OVMF", container.NewHBox(u.btnPrepare)),
-		section("2 · macOS recovery", "Downloaded from Apple, signature and hashes verified", container.NewHBox(u.btnDownload), u.stage, u.bar, u.barInf),
-		section("3 · Disk", "Thin qcow2: it only takes the space macOS uses", disk),
-		section("4 · Install inside the VM", "", markdown(manualSteps)),
-		section("5 · Clean up", "After macOS boots from the disk", container.NewHBox(u.btnRemove)),
-	))
-}
-
-func (u *ui) showInfinite(stage string) {
-	u.stage.SetText(stage)
-	u.bar.Hide()
-	u.barInf.Show()
-	u.barInf.Start()
-}
-
-func (u *ui) showProgress(p core.Progress) {
-	if p.Pct < 0 {
-		u.showInfinite(p.Stage)
-		return
-	}
-	u.stage.SetText(fmt.Sprintf("%s: %.1f%%", p.Stage, p.Pct))
-	u.barInf.Stop()
-	u.barInf.Hide()
-	u.bar.Show()
-	u.bar.SetValue(p.Pct / 100)
-}
 
 const noGPU = "None (emulated display)"
 
@@ -474,12 +381,12 @@ func (u *ui) gpuTab() fyne.CanvasObject {
 	u.btnRelease = widget.NewButtonWithIcon("Release reservation", theme.CancelIcon(), func() {
 		u.privileged("Release GPU", u.host.ReleaseGPU)
 	})
-	return container.NewVScroll(container.NewVBox(
-		section("Display adapters", "Only macOS-supported AMD GPUs can be passed to the VM", u.gpuList),
-		section("Passthrough", "", container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM:"), nil, u.gpuSelect),
-			container.NewHBox(u.btnReserve, u.btnRelease), u.gpuStatus),
-		section("About GPU passthrough", "", markdown(gpuNotes)),
-	))
+	header := tabHeader("GPU passthrough", "gpu", theme.ColorPaletteIcon(),
+		container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM"), nil, u.gpuSelect),
+		container.NewBorder(nil, nil, nil, container.NewHBox(u.btnReserve, u.btnRelease), u.gpuStatus),
+		caption("Only macOS-supported AMD GPUs can be passed to the VM. Experimental: untested on real hardware."))
+	about := widget.NewAccordion(widget.NewAccordionItem("About GPU passthrough", markdown(gpuNotes)))
+	return tabPage(header, u.gpuList, surface(about))
 }
 
 func (u *ui) chosenGPU() (core.GPU, bool) {
@@ -514,20 +421,13 @@ func (u *ui) refreshGPUs() {
 	options := []string{noGPU}
 	selected := noGPU
 	for _, g := range u.gpus {
-		icon, verdict := theme.ErrorIcon(), widget.NewLabel("Not eligible")
-		verdict.Importance = widget.DangerImportance
-		reason := g.Reason
+		card := newItemCard("", g.Name, fmt.Sprintf("%s · %s · %s · driver %s · IOMMU group %s", g.Addr, g.ID, g.Compat, g.Driver, g.Group))
 		if g.Eligible {
-			icon, reason = theme.ConfirmIcon(), "Can be passed to the VM"
-			verdict.SetText("Eligible")
-			verdict.Importance = widget.SuccessImportance
+			card.mark(theme.ColorNameSuccess, theme.ConfirmIcon(), "Eligible", widget.SuccessImportance, "Can be passed to the VM", g.Addr == u.cfg.GPU)
+		} else {
+			card.mark(theme.ColorNameDisabled, theme.CancelIcon(), "Not eligible", widget.LowImportance, g.Reason, false)
 		}
-		name := wrapped(g.Name)
-		name.TextStyle = fyne.TextStyle{Bold: true}
-		meta := wrapped(fmt.Sprintf("%s · %s · %s · driver %s · IOMMU group %s", g.Addr, g.ID, g.Compat, g.Driver, g.Group))
-		meta.TextStyle = fyne.TextStyle{Italic: true}
-		why := wrapped(reason)
-		u.gpuList.Add(container.NewBorder(nil, nil, widget.NewIcon(icon), verdict, container.NewVBox(name, meta, why)))
+		u.gpuList.Add(card.obj)
 		if g.Eligible || g.Addr == u.cfg.GPU {
 			opt := g.Addr + " " + g.Name
 			options = append(options, opt)
@@ -537,7 +437,7 @@ func (u *ui) refreshGPUs() {
 		}
 	}
 	if len(u.gpus) == 0 {
-		u.gpuList.Add(widget.NewLabel("No PCI display adapter found."))
+		u.gpuList.Add(surface(widget.NewLabel("No PCI display adapter found.")))
 	}
 	u.gpuSelect.SetOptions(options)
 	u.gpuSelect.SetSelected(selected)
@@ -557,7 +457,7 @@ func (u *ui) logTab() fyne.CanvasObject {
 
 // refresh recomputes texts and buttons from the real state of the disk and the VM.
 func (u *ui) refresh() {
-	if u.installInfo == nil || u.gpuList == nil || u.header == nil || u.details == nil || u.status == nil {
+	if u.steps == nil || u.gpuList == nil || u.header == nil || u.details == nil || u.status == nil {
 		return
 	}
 	u.refreshChecks()
@@ -567,29 +467,8 @@ func (u *ui) refresh() {
 	free := !u.busy && !running
 
 	w, err := u.workspace()
-	var lines []string
 	ready := err == nil && w.Exists()
-	if err != nil {
-		lines = append(lines, "Invalid VM folder: "+err.Error())
-	} else {
-		if ready {
-			lines = append(lines, "VM folder "+w.Dir+": ready")
-			lines = append(lines, "Boot files: "+core.AssetVersions())
-		} else {
-			lines = append(lines, "VM folder "+w.Dir+": does not exist yet (click Create VM folder)")
-		}
-		if w.HasMedia() {
-			lines = append(lines, fmt.Sprintf("Install media: %s (%.2f GiB)", w.MediaVersion(), float64(core.Allocated(w.Path(core.MediaFile)))/(1<<30)))
-		} else {
-			lines = append(lines, "Install media: none")
-		}
-		if w.HasDisk() {
-			lines = append(lines, fmt.Sprintf("macOS disk: %.2f GiB used on the host", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30)))
-		} else {
-			lines = append(lines, "macOS disk: not created yet")
-		}
-	}
-	u.installInfo.SetText(strings.Join(lines, "\n"))
+	u.refreshInstall(w, err, ready, free)
 
 	enable := func(b fyne.Disableable, on bool) {
 		if on {
@@ -598,10 +477,6 @@ func (u *ui) refresh() {
 			b.Disable()
 		}
 	}
-	enable(u.btnPrepare, free && err == nil && !ready)
-	enable(u.btnDownload, free && err == nil)
-	enable(u.btnDisk, free && ready && !w.HasDisk())
-	enable(u.btnRemove, free && w.HasMedia())
 	enable(u.btnStart, free && ready && w.HasDisk())
 	enable(u.btnPowerdown, state == core.Running)
 	enable(u.btnKill, running)
