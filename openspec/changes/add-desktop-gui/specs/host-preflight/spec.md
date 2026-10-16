@@ -69,3 +69,18 @@ The system SHALL offer an action ("Fix ignore_msrs") that, with privilege elevat
 #### Scenario: Elevation error
 - **WHEN** the elevation mechanism returns an error that is not a cancellation
 - **THEN** the system shows the returned error and nothing is reported as applied without verification
+
+### Requirement: Assisted host setup
+The system SHALL offer a "Set up host" action that, with one privilege prompt and a constant script taking the user name, KVM module and package list as validated arguments, installs missing QEMU packages, loads the KVM module, adds the user to the kvm group and enables ignore_msrs, and SHALL say when a new login is needed.
+
+#### Scenario: Fresh host
+- **WHEN** qemu-utils is missing and the user is not in the kvm group
+- **THEN** the package is installed, the user is added to the kvm group, ignore_msrs is enabled and the app says to log out and back in
+
+#### Scenario: Hostile arguments
+- **WHEN** the user name, module or package list contains characters outside their allowed sets
+- **THEN** the script exits before changing anything
+
+#### Scenario: Groups not needed
+- **WHEN** the user runs the setup
+- **THEN** the user is not added to the libvirt or input groups

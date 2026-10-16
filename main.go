@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	osuser "os/user"
 	"runtime"
 	"strconv"
 	"strings"
@@ -238,27 +239,36 @@ func statusIcon(s core.Status) fyne.Resource {
 func (u *ui) hostTab() fyne.CanvasObject {
 	u.checks = container.NewVBox()
 	recheck := widget.NewButtonWithIcon("Check again", theme.ViewRefreshIcon(), u.refreshChecks)
-	fix := widget.NewButtonWithIcon("Fix ignore_msrs", theme.SettingsIcon(), func() {
+	fix := widget.NewButtonWithIcon("Set up host", theme.SettingsIcon(), func() {
+		me, err := osuser.Current()
+		if err != nil {
+			dialog.ShowError(err, u.win)
+			return
+		}
 		go func() {
-			err := u.host.FixIgnoreMSRs()
+			msg, err := u.host.SetupHost(me.Username)
 			fyne.Do(func() {
 				switch {
 				case errors.Is(err, core.ErrCancelled):
-					dialog.ShowInformation("ignore_msrs", "Cancelled: nothing was changed.", u.win)
+					dialog.ShowInformation("Set up host", "Cancelled: nothing was changed.", u.win)
 				case err != nil:
 					dialog.ShowError(err, u.win)
 				default:
-					dialog.ShowInformation("ignore_msrs", "ignore_msrs enabled and persisted in /etc/modprobe.d/macos-kvm-gui.conf.", u.win)
+					dialog.ShowInformation("Set up host", msg, u.win)
 				}
 				u.refreshChecks()
 			})
 		}()
 	})
+	fix.Importance = widget.HighImportance
+	setupNote := wrapped("Set up host asks for your password once, then installs missing QEMU packages, loads the KVM module, " +
+		"adds you to the kvm group and enables ignore_msrs. The libvirt and input groups are not needed.")
+	setupNote.TextStyle = fyne.TextStyle{Italic: true}
 	notice := wrapped(homeLab)
 	notice.Importance = widget.WarningImportance
 	return container.NewVScroll(container.NewVBox(
 		section("Host checks", "Everything should be green before starting the VM",
-			u.checks, container.NewHBox(recheck, fix)),
+			u.checks, container.NewHBox(fix, recheck), setupNote),
 		section("Home lab", "", notice),
 	))
 }

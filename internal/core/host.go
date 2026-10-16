@@ -131,9 +131,9 @@ func (h Host) checkKVM() Check {
 		f.Close()
 		c.Status, c.Detail = OK, "read and write allowed"
 	case errors.Is(err, os.ErrNotExist):
-		c.Status, c.Detail, c.Hint = Fail, "does not exist", "load the module: sudo modprobe kvm_intel (or kvm_amd)"
+		c.Status, c.Detail, c.Hint = Fail, "does not exist", "use Set up host (loads kvm_amd or kvm_intel)"
 	case errors.Is(err, os.ErrPermission):
-		c.Status, c.Detail, c.Hint = Fail, "permission denied", "sudo usermod -aG kvm $USER and log in again"
+		c.Status, c.Detail, c.Hint = Fail, "permission denied", "use Set up host (adds you to the kvm group), then log out and back in"
 	default:
 		c.Status, c.Detail = Fail, err.Error()
 	}
@@ -191,7 +191,7 @@ func (h Host) checkMSRs() Check {
 	case v == "Y" || v == "1":
 		c.Status, c.Detail = OK, "enabled"
 	default:
-		c.Status, c.Detail, c.Hint = Fail, "disabled: macOS will kernel panic", "use the Fix ignore_msrs button"
+		c.Status, c.Detail, c.Hint = Fail, "disabled: macOS will kernel panic", "use Set up host"
 	}
 	return c
 }
@@ -263,4 +263,61 @@ func (h Host) FixIgnoreMSRs() error {
 	default:
 		return errors.New("the fix was not applied")
 	}
+}
+
+// setupScript is constant: user, KVM module and packages arrive as $1, $2 and $3 and are
+// checked again here. Packages are installed only when some are missing.
+const setupScript = `case "$1" in ""|-*|*[!a-z0-9_.-]*) echo "invalid user name" >&2; exit 2;; esac
+case "$2" in kvm_intel|kvm_amd) ;; *) echo "invalid KVM module" >&2; exit 2;; esac
+case "$3" in *[!a-z0-9.+\ -]*) echo "invalid package list" >&2; exit 2;; esac
+if [ -n "$3" ]; then
+  command -v apt-get >/dev/null || { echo "apt-get not found: install $3 with your package manager" >&2; exit 3; }
+  DEBIAN_FRONTEND=noninteractive apt-get install -y $3 || exit 1
+fi
+[ -e /dev/kvm ] || modprobe "$2" || { echo "could not load $2: enable virtualization in the BIOS" >&2; exit 1; }
+getent group kvm >/dev/null || groupadd --system kvm || exit 1
+usermod -aG kvm "$1" || exit 1
+echo 1 > /sys/module/kvm/parameters/ignore_msrs || exit 1
+printf 'options kvm ignore_msrs=1 report_ignored_msrs=0\n' > /etc/modprobe.d/macos-kvm-gui.conf || exit 1`
+
+var userNameRe = regexp.MustCompile(`^[a-z_][a-z0-9_.-]*$`)
+
+// SetupHost does, with one password prompt, the basics KVM needs: missing QEMU packages,
+// the KVM module, kvm group membership and ignore_msrs. It returns what the user still has
+// to do, such as logging in again for the new group to apply.
+func (h Host) SetupHost(user string) (string, error) {
+	if !userNameRe.MatchString(user) {
+		return "", fmt.Errorf("unexpected user name %q", user)
+	}
+	flags := h.cpuFlags()
+	module := ""
+	switch {
+	case flags["svm"]:
+		module = "kvm_amd"
+	case flags["vmx"]:
+		module = "kvm_intel"
+	default:
+		return "", errors.New("the CPU reports no VT-x/AMD-V: enable virtualization in the BIOS/UEFI first")
+	}
+	var pkgs []string
+	for _, t := range tools {
+		if _, err := h.LookPath(t.bin); err != nil {
+			pkgs = append(pkgs, t.pkg)
+		}
+	}
+	err := h.Run("pkexec", "/bin/sh", "-c", setupScript, "sh", user, module, strings.Join(pkgs, " "))
+	var ee *exec.ExitError
+	if errors.As(err, &ee) && ee.ExitCode() == 126 {
+		return "", ErrCancelled
+	}
+	if err != nil {
+		return "", fmt.Errorf("host setup failed: %w", err)
+	}
+	if h.checkMSRs().Status != OK {
+		return "", errors.New("host setup ran, but ignore_msrs is still disabled")
+	}
+	if h.checkKVM().Status != OK {
+		return user + " was added to the kvm group: log out and back in (or reboot) so /dev/kvm opens.", nil
+	}
+	return "The host is ready for KVM.", nil
 }

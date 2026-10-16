@@ -154,3 +154,62 @@ func TestFixIgnoreMSRs(t *testing.T) {
 		t.Fatalf("expected pkexec error: %v", err)
 	}
 }
+
+func TestSetupHost(t *testing.T) {
+	h := fakeHost(t, "svm avx2", "N")
+	h.LookPath = func(s string) (string, error) {
+		if s == "qemu-img" {
+			return "", exec.ErrNotFound
+		}
+		return "/usr/bin/" + s, nil
+	}
+	h.Run = func(name string, args ...string) error {
+		if name != "pkexec" || args[2] != setupScript || args[4] != "nilton" || args[5] != "kvm_amd" || args[6] != "qemu-utils" {
+			t.Fatalf("unexpected command: %s %q", name, args[3:])
+		}
+		write(t, h.msrsPath(), "Y")
+		return nil
+	}
+	msg, err := h.SetupHost("nilton")
+	if err != nil || !strings.Contains(msg, "ready") {
+		t.Fatalf("setup: %q %v", msg, err)
+	}
+
+	os.Chmod(h.DevKVM, 0)
+	if os.Geteuid() != 0 {
+		if msg, _ := h.SetupHost("nilton"); !strings.Contains(msg, "log out") {
+			t.Errorf("new group membership needs a new login: %q", msg)
+		}
+	}
+
+	h.Run = func(string, ...string) error { return exitErr(126) }
+	if _, err := h.SetupHost("nilton"); !errors.Is(err, ErrCancelled) {
+		t.Errorf("126 must be cancelled: %v", err)
+	}
+	h.Run = func(string, ...string) error { t.Fatal("must not elevate"); return nil }
+	if _, err := h.SetupHost("bad;user"); err == nil {
+		t.Error("invalid user names must be refused before elevation")
+	}
+	noVirt := fakeHost(t, "fpu", "N")
+	noVirt.Run = h.Run
+	if _, err := noVirt.SetupHost("nilton"); err == nil || !strings.Contains(err.Error(), "BIOS") {
+		t.Errorf("no VT-x/AMD-V: %v", err)
+	}
+}
+
+// The real shell must reject hostile arguments before running anything.
+func TestSetupScriptRejectsInjection(t *testing.T) {
+	for _, args := range [][]string{
+		{"-o", "kvm_amd", ""},
+		{"nilton;reboot", "kvm_amd", ""},
+		{"nilton", "kvm_amd;reboot", ""},
+		{"nilton", "kvm_amd", "qemu-utils;reboot"},
+		{"nilton", "kvm_amd", "$(id)"},
+	} {
+		err := exec.Command("/bin/sh", append([]string{"-c", setupScript, "sh"}, args...)...).Run()
+		var ee *exec.ExitError
+		if !errors.As(err, &ee) || ee.ExitCode() != 2 {
+			t.Errorf("%q: expected exit 2, got %v", args, err)
+		}
+	}
+}
