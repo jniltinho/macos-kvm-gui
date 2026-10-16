@@ -2,10 +2,10 @@
 
 ## 1. Build and packages
 
-- [ ] 1.1 `.github/workflows/reims-release.yml`: on `reims-*` tags, matrix 24.04/26.04 with the embedded Dockerfile, strip, `tar.zst`, `.sha256`, source archive with `vendor/qemu` and `cargo vendor`, notices; check by pushing a tag on a fork or `act`, and that both packages unpack and list `apple-gfx-pci` in their `ubuntu:<release>` containers.
-- [ ] 1.2 `internal/core/reims/manifest.json` and `InstallReims(ctx, log)`: host release detection, download, SHA-256, safe unpack, promotion; tests with a local TLS server for a good package, a tampered one, an archive with `..` or an outside link, and an unsupported release.
-- [ ] 1.3 Embedded `internal/core/reims/Dockerfile` and `BuildReims(ctx, release, log)`: release and Docker checks, host-wide lock, build, strip, chown, staging, host validation (`ldd`, `apple-gfx-pci`), atomic `current` switch, pruning that spares builds in use; unit tests for release detection, the `ldd` parser and the package hints, promotion and pruning with fake folders; on this Ubuntu 24.04 host a real build activates `current`.
-- [ ] 1.4 Build for 26.04 on this host: it stays staged (not activated), and its QEMU runs `-device help` inside an `ubuntu:26.04` container with the runtime packages.
+- [ ] 1.1 `.github/workflows/reims-release.yml`: on `reims-*` tags, matrix 24.04/26.04 with the embedded Dockerfile, strip, `tar.gz`, `.sha256`, source archive with `vendor/qemu` and `cargo vendor`, notices; check by pushing a tag on a fork or `act`, and that both packages unpack and list `apple-gfx-pci` in their `ubuntu:<release>` containers.
+- [x] 1.2 `internal/core/reims/manifest.json` and `InstallReims(ctx, log)`: host release detection, download, SHA-256, safe unpack, promotion; tests with a local TLS server for a good package, a tampered one, an archive with `..` or an outside link, and an unsupported release.
+- [x] 1.3 Embedded `internal/core/reims/Dockerfile` and `BuildReims(ctx, release, log)`: release and Docker checks, host-wide lock, build, strip, chown, staging, host validation (`ldd`, `apple-gfx-pci`), atomic `current` switch, pruning that spares builds in use; unit tests for release detection, the `ldd` parser and the package hints, promotion and pruning with fake folders; on this Ubuntu 24.04 host a real build activates `current`.
+- [x] 1.4 Build for 26.04 on this host: it stays staged (not activated), and its QEMU runs `-device help` inside an `ubuntu:26.04` container with the runtime packages.
 
 ## 2. Core
 

@@ -15,6 +15,19 @@ Not embedded, downloaded at run time only when a VM's root-patch mode is turned 
 
 The apple-smc key string passed to QEMU (`isa-applesmc,osk=…`) and the macOS recovery images downloaded from Apple's servers are not part of this project.
 
+## Reims vGPU
+
+Not embedded and not part of the app's packages. `macos-kvm-gui reims install` downloads, from this repository's separate `reims-<commit>` releases, a build of [steelbrain/reims-vgpu](https://github.com/steelbrain/reims-vgpu)'s QEMU for the host's Ubuntu release (`reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz`, made by `.github/workflows/reims-release.yml` from `internal/core/reims/Dockerfile`), checked against the SHA-256 in `internal/core/reims/manifest.json`; `macos-kvm-gui reims build` builds the same thing from source on the user's machine instead. Each package holds:
+
+| Component | Source | License |
+|---|---|---|
+| Reims vGPU library, linked statically into QEMU, and its option ROM `ReimsVgpu.rom` | [steelbrain/reims-vgpu](https://github.com/steelbrain/reims-vgpu) | GPL-2.0-or-later OR LGPL-3.0-or-later |
+| QEMU with the `apple-gfx-pci` device, and the firmware files QEMU installs (SeaBIOS, iPXE, EDK II and others, each under its own license) | [steelbrain/qemu-reims-vgpu](https://github.com/steelbrain/qemu-reims-vgpu) (upstream's `vendor/qemu`) | GPL-2.0 (`COPYING`), with parts under compatible licenses |
+| SDL3, linked statically into the library | [libsdl-org/SDL](https://github.com/libsdl-org/SDL) through the `sdl3-src` crate | zlib |
+| Rust crates linked into the library | crates.io and the git sources upstream's `Cargo.lock` names | each crate's own license (MIT, Apache-2.0 and others), included in the source archive |
+
+The same release holds the corresponding source, `reims-vgpu-src-<commit>.tar.gz`: upstream at that commit, its `vendor/qemu` with the meson subprojects QEMU's build fetches, every Rust crate (`cargo vendor`, SDL3's source among them), the license texts, the Dockerfile the packages were built with, and a `SOURCES.txt` listing the commit of each QEMU firmware source (`roms/`). The source is offered under the same terms for as long as the packages are published.
+
 ## OpenCorePkg license
 
 ```
