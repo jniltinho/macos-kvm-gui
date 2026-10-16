@@ -21,7 +21,7 @@ const bundleManifest = "macos-kvm-gui-vm.json"
 
 // bundleFiles are the only workspace files a bundle may contain, in order. Import refuses any
 // other name, so a crafted bundle cannot write outside the new workspace.
-var bundleFiles = []string{DiskFile, VarsFile, identityFile, MediaFile, mediaMarker}
+var bundleFiles = []string{DiskFile, VarsFile, identityFile, MediaFile, mediaMarker, rootPatchMarker}
 
 type manifest struct {
 	Format int    `json:"format"`

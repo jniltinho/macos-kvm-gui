@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 )
 
 // osk is the isa-applesmc key, the same as in OpenCore-Boot.sh.
@@ -292,7 +293,9 @@ func (v *VM) Start(c Config) error {
 		}()
 		go v.connectQMP(sock)
 
+		startedAt := time.Now()
 		err := cmd.Wait()
+		w.ClearRootPatchMarker(c, time.Since(startedAt))
 		pw.Close()
 		<-logDone
 		v.mu.Lock()

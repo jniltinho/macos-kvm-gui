@@ -418,7 +418,7 @@ func (u *ui) refreshInstall(w core.Workspace, wsErr error, ready, free bool) {
 	case cached && runningHere && u.vm.InstallerCommand() == "":
 		u.installMode.SetText("Install mode: Offline, once the VM restarts: it was started before the installer was cached, so it has no OFFLINE disc yet.")
 	case cached:
-		u.installMode.SetText(fmt.Sprintf("Install mode: Offline. The VM starts with the disc OFFLINE (macOS %s) and needs no network; use the box below.", ci.Version))
+		u.installMode.SetText(fmt.Sprintf("Install mode: Offline. The VM starts with the disc OFFLINE (macOS %s) and needs no network; once it runs, this step shows the line to type and Type it in the VM.", ci.Version))
 	case core.InstallerSupported(u.cfg.Version):
 		u.installMode.SetText("Install mode: Online. Reinstall macOS downloads macOS (about 13 GB) inside the VM. To install offline, download the full installer in step 2 first.")
 	default:

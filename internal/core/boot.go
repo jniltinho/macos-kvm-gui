@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jniltinho/macos-kvm-gui/internal/assets"
@@ -163,7 +164,14 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 	if c.GPU != "" {
 		bootArgs += " agdpmod=pikera" // Navi cards show a black screen on iMac board IDs without it
 	}
-	return strings.NewReplacer(
+	if c.RootPatch {
+		bootArgs += rootPatchBootArgs
+	}
+	pairs := []string{}
+	for k, v := range rootPatchPlist(c.RootPatch, c.rootPatchWasOn) {
+		pairs = append(pairs, k, v)
+	}
+	return strings.NewReplacer(append(pairs,
 		"@@SHOWPICKER@@", picker,
 		"@@TIMEOUT@@", timeout,
 		"@@SCANPOLICY@@", scan,
@@ -175,7 +183,7 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		"@@UUID@@", id.UUID,
 		"@@ROM@@", base64.StdEncoding.EncodeToString(rom),
 		"@@RESOLUTION@@", resolution,
-	).Replace(string(tmpl)), nil
+	)...).Replace(string(tmpl)), nil
 }
 
 // PrepareBoot refreshes the embedded boot files and config.plist in the workspace.
@@ -223,12 +231,26 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 	if err != nil {
 		return fmt.Errorf("SMBIOS identity: %w", err)
 	}
+	if c.RootPatch {
+		if err := w.addRootPatchKexts(); err != nil {
+			return err
+		}
+	}
+	c.rootPatchWasOn = !c.RootPatch && exists(w.Path(rootPatchMarker))
 	cfg, err := OpenCoreConfig(c, id, withMedia)
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(w.Path(EFIDir+"/EFI/OC/config.plist"), []byte(cfg), 0o644); err != nil {
 		return err
+	}
+	// While the marker is there, boots with the mode off delete the lowered SIP; it is removed
+	// only after such a boot really ran (see ClearRootPatchMarker), not when a config is merely
+	// written (workspace create, a QEMU that fails to start).
+	if c.RootPatch {
+		if err := os.WriteFile(w.Path(rootPatchMarker), []byte("on\n"), 0o644); err != nil {
+			return err
+		}
 	}
 	// OpenCore's own disk would show in its picker as "QEMU VVFAT", ahead of macOS Base System.
 	// .contentVisibility "Disabled" hides that volume's entries only, so the recovery or the
@@ -240,6 +262,40 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 		}
 	}
 	return nil
+}
+
+// addRootPatchKexts copies the cached OCLP kexts into the extracted EFI (see rootpatch.go).
+func (w Workspace) addRootPatchKexts() error {
+	if !RootPatchKextsReady() {
+		return errors.New("root-patch mode needs OCLP's kexts: download them in the GPU tab (or config set root-patch=true)")
+	}
+	src, err := RootPatchKextsDir()
+	if err != nil {
+		return err
+	}
+	for _, k := range rootPatchKexts {
+		if err := copyTree(filepath.Join(src, k.Name+".kext"), w.Path(EFIDir+"/EFI/OC/Kexts/"+k.Name+".kext")); err != nil {
+			return fmt.Errorf("copying %s.kext: %w", k.Name, err)
+		}
+	}
+	return nil
+}
+
+func copyTree(src, dst string) error {
+	return filepath.WalkDir(src, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		target := filepath.Join(dst, rel)
+		if d.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		if !d.Type().IsRegular() {
+			return fmt.Errorf("unexpected file %s", p)
+		}
+		return copyAsset(os.DirFS(filepath.Dir(p)), filepath.Base(p), target)
+	})
 }
 
 func copyAsset(fsys fs.FS, src, dst string) error {

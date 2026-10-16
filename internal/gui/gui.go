@@ -2,6 +2,7 @@
 package gui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"image"
@@ -45,10 +46,23 @@ const videoTips = `The VM has no graphics acceleration: macOS has no driver for 
 
 Real acceleration needs a macOS-supported AMD GPU passed through with VFIO: see the GPU tab.`
 
-const gpuNotes = `Gives the VM a real AMD GPU, the only way to get Metal. The GPU's display output then goes to a monitor plugged into that card; the QEMU window stays for keyboard and mouse.
+// rootPatchSteps is what the user does inside macOS once root-patch mode is on.
+const rootPatchSteps = `Root-patch mode lets OpenCore Legacy Patcher (OCLP) install the Kepler drivers Apple removed after Big Sur. Inside macOS, with the Kepler card passed through:
+
+1. Turn **FileVault off**, and keep a backup of the VM's folder (disk, OVMF_VARS and the macos-kvm-gui folder).
+2. Download OCLP from github.com/dortania/OpenCore-Legacy-Patcher and open it. **Never use "Build and Install OpenCore"**: the app's OpenCore and Mac model stay.
+3. Click **Post-Install Root Patch**, then **Start Root Patching**. On Sequoia OCLP downloads MetallibSupportPkg, so macOS needs internet.
+4. Restart. Metal should now use the Kepler card (System Information › Graphics).
+5. **Every macOS update removes the patch**: turn automatic downloads off, update on purpose, then patch again.
+6. To stop using it: in OCLP, **Revert Root Patches**, restart, then turn root-patch mode off here.
+
+What the mode weakens: System Integrity Protection drops to 0x803 (unsigned kexts, writable system volume, unauthenticated root), and AMFIPass lets the patched drivers load. Experimental: untested with a real Kepler card on this app.`
+
+const gpuNotes = `Gives the VM a real GPU, the only way to get Metal. The GPU's display output then goes to a monitor plugged into that card; the QEMU window stays for keyboard and mouse.
 
 - Supported: RX 460–590, Vega 56/64, Radeon VII, RX 5500/5600/5700, RX 6600/6600 XT, RX 6800/6800 XT/6900 XT.
-- Not supported: RX 7000, RX 6400/6500, NVIDIA, Intel and AMD Ryzen iGPUs.
+- NVIDIA Kepler (GT 710/730 with GK208, GTX 650–780, Quadro K with Kepler chips): native up to Big Sur; Monterey to Sequoia with **root-patch mode** below and OpenCore Legacy Patcher inside macOS.
+- Not supported: RX 7000, RX 6400/6500, NVIDIA Maxwell and newer (GTX 750, 900, 10, 16, 20 series and up), Intel and AMD Ryzen iGPUs.
 - The host must show its screen on another GPU (set the integrated GPU as primary display in the BIOS).
 - **Reserve** writes the VFIO settings and needs a host reboot; **Release** undoes it.
 - Polaris, Vega and RX 5000 cards may need a host reboot after each VM restart (AMD reset bug). Navi cards may need ` + "`agdpmod=pikera`" + ` in OpenCore's boot-args.
@@ -89,6 +103,9 @@ type ui struct {
 	logLines                   []string
 	gpuList                    *fyne.Container
 	gpuSelect                  *widget.Select
+	rootPatch                  *widget.Check
+	rootPatchInfo              *widget.Label
+	rootPatchSetting           bool // SetChecked from refresh, not the user
 	gpuStatus                  *widget.Label
 	gpus                       []core.GPU
 	header                     *widget.Label // VM state chip in the toolbar
@@ -151,7 +168,7 @@ func Run(appVersion, configPath string) {
 		container.NewTabItemWithIcon("Screen", theme.ComputerIcon(), u.screenTab()),
 		container.NewTabItemWithIcon("Install", theme.DownloadIcon(), u.installTab()),
 		container.NewTabItemWithIcon("Host", theme.HomeIcon(), u.hostTab()),
-		container.NewTabItemWithIcon("GPU", theme.ColorPaletteIcon(), u.gpuTab()),
+		container.NewTabItemWithIcon("GPU", gpuTabIcon(), u.gpuTab()),
 		container.NewTabItemWithIcon("Log", theme.ListIcon(), u.logTab()),
 	)
 	split := container.NewHSplit(u.vmList(), u.tabs)
@@ -269,6 +286,11 @@ func (u *ui) saveConfig(c core.Config) bool {
 	}
 	u.cur.Config = c
 	u.cfg = c
+	for i := range u.vms { // the list's copy too, or selecting the VM again brings the old one back
+		if u.vms[i].ID == u.cur.ID {
+			u.vms[i].Config = c
+		}
+	}
 	u.refresh()
 	return true
 }
@@ -404,12 +426,12 @@ func (u *ui) gpuTab() fyne.CanvasObject {
 	u.btnRelease = widget.NewButtonWithIcon("Release reservation", theme.CancelIcon(), func() {
 		u.privileged("Release GPU", u.host.ReleaseGPU)
 	})
-	header := tabHeader("GPU passthrough", "gpu", theme.ColorPaletteIcon(),
+	header := tabHeader("GPU passthrough", "gpu", gpuTabIcon(),
 		container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM"), nil, u.gpuSelect),
 		container.NewBorder(nil, nil, nil, container.NewHBox(u.btnReserve, u.btnRelease), u.gpuStatus),
-		caption("Only macOS-supported AMD GPUs can be passed to the VM. Experimental: untested on real hardware."))
+		caption("macOS-supported AMD GPUs and NVIDIA Kepler GPUs can be passed to the VM. Experimental: untested on real hardware."))
 	about := widget.NewAccordion(widget.NewAccordionItem("About GPU passthrough", markdown(gpuNotes)))
-	return tabPage(header, u.gpuList, surface(about))
+	return tabPage(header, u.gpuList, u.rootPatchSection(), surface(about))
 }
 
 func (u *ui) chosenGPU() (core.GPU, bool) {
@@ -445,9 +467,13 @@ func (u *ui) refreshGPUs() {
 	selected := noGPU
 	for _, g := range u.gpus {
 		card := newItemCard("", g.Name, fmt.Sprintf("%s · %s · %s · driver %s · IOMMU group %s", g.Addr, g.ID, g.Compat, g.Driver, g.Group))
-		if g.Eligible {
+		switch {
+		case g.Eligible && g.Compat == core.CompatKepler:
+			card.mark(theme.ColorNameSuccess, theme.ConfirmIcon(), "Eligible", widget.SuccessImportance,
+				"NVIDIA Kepler: native up to Big Sur; Monterey to Sequoia with root-patch mode below", g.Addr == u.cfg.GPU)
+		case g.Eligible:
 			card.mark(theme.ColorNameSuccess, theme.ConfirmIcon(), "Eligible", widget.SuccessImportance, "Can be passed to the VM", g.Addr == u.cfg.GPU)
-		} else {
+		default:
 			card.mark(theme.ColorNameDisabled, theme.CancelIcon(), "Not eligible", widget.LowImportance, g.Reason, false)
 		}
 		u.gpuList.Add(card.obj)
@@ -509,6 +535,7 @@ func (u *ui) refresh() {
 	enable(u.btnKill, running)
 	_, eligible := u.chosenGPU()
 	enable(u.btnReserve, !running && eligible)
+	u.refreshRootPatch(running)
 	enable(u.btnRelease, !running && u.host.ReservedIDs() != "")
 	if running {
 		u.gpuSelect.Disable()
@@ -537,4 +564,83 @@ func (u *ui) refresh() {
 	u.refreshMenu()
 	u.refreshDetails()
 	u.refreshStatus(state, outside)
+}
+
+// rootPatchSection is the GPU tab's root-patch mode: per VM, off by default, for an NVIDIA
+// Kepler GPU on Monterey to Sequoia (see core/rootpatch.go).
+func (u *ui) rootPatchSection() fyne.CanvasObject {
+	u.rootPatchInfo = caption("")
+	u.rootPatchInfo.Wrapping = fyne.TextWrapWord
+	u.rootPatch = widget.NewCheck("Root-patch mode for an NVIDIA Kepler GPU (OpenCore Legacy Patcher)", func(on bool) {
+		if u.rootPatchSetting {
+			return
+		}
+		undo := func() { u.rootPatchSetting = true; u.rootPatch.SetChecked(!on); u.rootPatchSetting = false }
+		if on {
+			dialog.ShowConfirm("Turn on root-patch mode",
+				"For "+u.vmName()+", OpenCore will lower System Integrity Protection to 0x803 (unsigned kexts, a writable system volume, unauthenticated root) "+
+					"and load AMFIPass, RSRHelper, RestrictEvents and KDKlessWorkaround, downloaded now from OpenCore Legacy Patcher 2.5.1 and checked against their SHA-256. "+
+					"Then root-patch inside macOS with OCLP (see the steps below). Turn FileVault off first. Continue?",
+				func(yes bool) {
+					if !yes {
+						undo()
+						return
+					}
+					target := u.cur.ID // switching VMs is blocked while this runs; checked again anyway
+					u.run("Download OCLP's kexts for root-patch mode", func() error { return core.DownloadRootPatchKexts(context.Background()) }, func() {
+						if u.cur.ID != target {
+							return
+						}
+						c := u.cfg
+						c.RootPatch = true
+						if !u.saveConfig(c) {
+							undo()
+						}
+					})
+				}, u.win)
+			return
+		}
+		dialog.ShowConfirm("Turn off root-patch mode",
+			"Did you revert the root patch in OCLP (Post-Install Root Patch › Revert Root Patches) and restart? "+
+				"Remaining root patches can prevent macOS from booting once its protections are restored at the next start.",
+			func(yes bool) {
+				if !yes {
+					undo()
+					return
+				}
+				c := u.cfg
+				c.RootPatch = false
+				if !u.saveConfig(c) {
+					undo()
+				}
+			}, u.win)
+	})
+	steps := widget.NewAccordion(widget.NewAccordionItem("Root-patch steps inside macOS", markdown(rootPatchSteps)))
+	return surface(container.NewVBox(widget.NewLabelWithStyle("Root-patch mode (experimental)", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		u.rootPatch, u.rootPatchInfo, steps))
+}
+
+func (u *ui) refreshRootPatch(running bool) {
+	if u.rootPatch == nil {
+		return
+	}
+	u.rootPatchSetting = true
+	u.rootPatch.SetChecked(u.cfg.RootPatch)
+	u.rootPatchSetting = false
+	switch {
+	case !core.RootPatchVersion(u.cfg.Version) && !u.cfg.RootPatch:
+		u.rootPatchInfo.SetText("Not needed or not available for this macOS version: Big Sur and older drive Kepler GPUs natively, and Tahoe has no stable OCLP support yet.")
+		u.rootPatch.Disable()
+		return
+	case u.cfg.RootPatch:
+		u.rootPatchInfo.SetText("On for this VM: SIP 0x803, AMFIPass, RSRHelper, RestrictEvents (revblock=media), KDKlessWorkaround, ipc_control_port_options=0 -nokcmismatchpanic. " +
+			"Turning it off restores full SIP at the next start.")
+	default:
+		u.rootPatchInfo.SetText("Off. For Monterey to Sequoia with a passed-through Kepler GPU; other VMs do not need it.")
+	}
+	if running || u.busy {
+		u.rootPatch.Disable()
+	} else {
+		u.rootPatch.Enable()
+	}
 }

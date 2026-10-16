@@ -93,6 +93,11 @@ func (u *ui) selectVM(i int) {
 		dialog.ShowInformation("VM running", "Shut down "+u.cur.DisplayName()+" before switching to another VM.", u.win)
 		return
 	}
+	if u.busy { // a download or another operation still works on this VM
+		u.selectRow()
+		dialog.ShowInformation("Please wait", "Wait for the current operation on "+u.cur.DisplayName()+" to finish before switching to another VM.", u.win)
+		return
+	}
 	u.setCurrent(u.vms[i])
 	if !u.singleFile {
 		core.SelectVM(u.cur.ID)

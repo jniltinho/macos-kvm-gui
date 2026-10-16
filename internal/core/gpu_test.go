@@ -261,3 +261,34 @@ func TestBuildArgsWithGPU(t *testing.T) {
 		t.Fatalf("short PCI address must be refused: %v", err)
 	}
 }
+
+// A GT 710 (GK208, 10de:128b) in slot 05:00, bound to vfio-pci, next to the host's RX 6600.
+func TestKeplerGPU(t *testing.T) {
+	devs := append(slices.Clone(referenceHost),
+		fakeDev{"0000:05:00.0", "030000", "10de", "128b", "vfio-pci", "21", "0", false},
+		fakeDev{"0000:05:00.1", "040300", "10de", "0e0f", "vfio-pci", "21", "", false})
+	h := fakeSysfs(t, devs)
+	g := gpuByAddr(h.GPUs(), "0000:05:00.0")
+	if g.Compat != CompatKepler || !g.Eligible {
+		t.Fatalf("a Kepler card can be passed through: %+v", g)
+	}
+	if compatOf("10de", "1380") != CompatUnsupported || compatOf("10de", "0f02") != CompatUnsupported {
+		t.Fatal("Maxwell (GTX 750 Ti) and Fermi (GT 730 GF108) are not Kepler")
+	}
+	c := Defaults()
+	c.GPU, c.RAMMiB = "0000:05:00.0", 8192
+	for v, want := range map[string]string{"big-sur": "", "catalina": "", "sequoia": "root-patch mode", "tahoe": "no driver"} {
+		c.Version, c.RootPatch = v, false
+		_, err := h.GPUReady(c, ^uint64(0))
+		if (want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), want)) {
+			t.Errorf("%s without root-patch mode: %v", v, err)
+		}
+	}
+	c.Version, c.RootPatch = "sequoia", true
+	if funcs, err := h.GPUReady(c, ^uint64(0)); err != nil || len(funcs) != 2 {
+		t.Fatalf("Sequoia with root-patch mode: %v %v", funcs, err)
+	}
+	if !strings.Contains(reserveScript, "softdep nouveau pre: vfio-pci") || !strings.Contains(reserveScript, "softdep nvidia pre: vfio-pci") {
+		t.Error("vfio-pci must claim an NVIDIA card before nouveau or nvidia")
+	}
+}

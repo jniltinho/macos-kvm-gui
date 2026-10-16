@@ -16,10 +16,12 @@ const (
 	CompatUnknown Compat = iota
 	CompatSupported
 	CompatUnsupported
+	CompatKepler // NVIDIA Kepler: native up to Big Sur, root-patch mode on Monterey to Sequoia
 )
 
 func (c Compat) String() string {
-	return [...]string{"unknown", "supported by macOS", "not supported by macOS"}[c]
+	return [...]string{"unknown", "supported by macOS", "not supported by macOS",
+		"NVIDIA Kepler: native up to Big Sur; Monterey to Sequoia with root-patch mode (OCLP)"}[c]
 }
 
 // amdCompat lists AMD (vendor 1002) device IDs, following the Dortania GPU buyers guide.
@@ -49,7 +51,12 @@ func compatOf(vendor, device string) Compat {
 			return CompatUnsupported
 		}
 		return amdCompat[device] // zero value is CompatUnknown
-	case "10de", "8086":
+	case "10de":
+		if IsKepler(vendor + ":" + device) {
+			return CompatKepler
+		}
+		return CompatUnsupported // Maxwell and newer: no Metal driver since High Sierra's Web Drivers
+	case "8086":
 		return CompatUnsupported
 	}
 	return CompatUnknown
@@ -233,7 +240,7 @@ const (
 // host-wide lock and rolls the files back if the initramfs cannot be rebuilt.
 const reserveScript = `case "$1" in ""|*[!0-9a-f:,]*) echo "invalid PCI IDs" >&2; exit 2;; esac
 exec 9>/run/lock/macos-kvm-gui-host.lock && flock -n 9 || { echo "another GPU change is running" >&2; exit 3; }
-printf 'options vfio-pci ids=%s disable_vga=1\nsoftdep amdgpu pre: vfio-pci\nsoftdep radeon pre: vfio-pci\nsoftdep snd_hda_intel pre: vfio-pci\n' "$1" > /etc/modprobe.d/macos-kvm-gui-vfio.conf || exit 1
+printf 'options vfio-pci ids=%s disable_vga=1\nsoftdep amdgpu pre: vfio-pci\nsoftdep radeon pre: vfio-pci\nsoftdep nouveau pre: vfio-pci\nsoftdep nvidia pre: vfio-pci\nsoftdep snd_hda_intel pre: vfio-pci\n' "$1" > /etc/modprobe.d/macos-kvm-gui-vfio.conf || exit 1
 printf 'SUBSYSTEM=="vfio", GROUP="kvm", MODE="0660"\n' > /etc/udev/rules.d/99-macos-kvm-gui-vfio.rules || exit 1
 if ! update-initramfs -u -k all; then
   rm -f /etc/modprobe.d/macos-kvm-gui-vfio.conf /etc/udev/rules.d/99-macos-kvm-gui-vfio.rules
@@ -339,6 +346,9 @@ func (h Host) GPUReady(c Config, memlock uint64) ([]string, error) {
 	if min, ok := gpuMinVersion[strings.TrimPrefix(g.ID, "1002:")]; ok && versionIndex(c.Version) < versionIndex(min) {
 		return nil, fmt.Errorf("this GPU needs macOS %s or newer", min)
 	}
+	if err := keplerReady(*g, c); err != nil {
+		return nil, err
+	}
 	var funcs []string
 	for _, f := range g.Funcs {
 		if f.Driver != "vfio-pci" {
@@ -356,4 +366,18 @@ func (h Host) GPUReady(c Config, memlock uint64) ([]string, error) {
 		return nil, fmt.Errorf("the soft locked-memory limit is %d MiB but the VM needs %d MiB (VFIO pins all guest RAM): raise memlock in /etc/security/limits.d and log in again", memlock>>20, c.RAMMiB)
 	}
 	return funcs, nil
+}
+
+// keplerReady checks a Kepler GPU against the VM's macOS: native up to Big Sur, root-patch mode
+// from Monterey to Sequoia, nothing on Tahoe.
+func keplerReady(g GPU, c Config) error {
+	switch {
+	case g.Compat != CompatKepler, versionIndex(c.Version) <= versionIndex("big-sur"):
+		return nil
+	case !RootPatchVersion(c.Version):
+		return errors.New("NVIDIA Kepler GPUs have no driver on " + versionDisplay(c.Version) + ", and OCLP does not patch it yet: use Big Sur to Sequoia")
+	case !c.RootPatch:
+		return errors.New("on " + versionDisplay(c.Version) + " a Kepler GPU needs root-patch mode (GPU tab) and OCLP's root patch inside macOS")
+	}
+	return nil
 }

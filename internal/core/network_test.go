@@ -177,8 +177,11 @@ func TestMigrationToVersion2(t *testing.T) {
 	var v int
 	db.QueryRow(`PRAGMA user_version`).Scan(&v)
 	db.Close()
-	if v != 2 {
+	if v != schemaVersion {
 		t.Fatalf("user_version = %d", v)
+	}
+	if vms[0].Config.RootPatch {
+		t.Fatal("root-patch mode is off for VMs from older versions")
 	}
 
 	c := vms[0].Config
@@ -188,6 +191,13 @@ func TestMigrationToVersion2(t *testing.T) {
 	}
 	if again, _ := ListVMs(); len(again[0].Config.Networks) != 1 || again[0].Config.Networks[0].MAC != c.Networks[0].MAC {
 		t.Fatalf("adapters must persist: %+v", again[0].Config.Networks)
+	}
+	c.Version, c.RootPatch = "sequoia", true
+	if err := SaveVM(vms[0], c); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := ListVMs(); !again[0].Config.RootPatch {
+		t.Fatal("root-patch mode must persist")
 	}
 }
 

@@ -61,6 +61,12 @@ type Config struct {
 	// adapters existed, means one NAT adapter with the legacy MAC: see Adapters. An empty list
 	// means no adapter at all, so it must survive JSON: no omitempty.
 	Networks []NIC `json:"networks"`
+	// RootPatch (experimental, off by default) lowers SIP and loads OCLP's AMFIPass and helpers
+	// so OpenCore Legacy Patcher can root-patch a passed-through NVIDIA Kepler GPU inside
+	// Monterey to Sequoia (see rootpatch.go).
+	RootPatch bool `json:"root_patch,omitempty"`
+	// rootPatchWasOn is set by PrepareBoot when the previous boot had root-patch mode on.
+	rootPatchWasOn bool
 	// VerboseBoot is a one-off start option, never saved: macOS prints its boot log on screen
 	// (-v) and stops on a panic with its details (debug=0x100) instead of showing the logo.
 	VerboseBoot bool `json:"-"`
@@ -144,6 +150,9 @@ func (c Config) Validate() error {
 	}
 	if c.Display != "" && c.Display != DisplayApp && c.Display != DisplayWindow {
 		return &FieldError{"display", "expected app or window"}
+	}
+	if c.RootPatch && !RootPatchVersion(c.Version) {
+		return &FieldError{"root_patch", "root-patch mode is for Monterey 12 to Sequoia 15: Big Sur drives Kepler GPUs natively, and Tahoe has no stable OCLP support yet"}
 	}
 	if c.GPU != "" && !pciAddrRe.MatchString(c.GPU) {
 		return &FieldError{"gpu", "expected a PCI address such as 0000:03:00.0"}

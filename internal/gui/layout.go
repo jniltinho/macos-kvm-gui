@@ -1,6 +1,7 @@
 package gui
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/color"
@@ -165,6 +166,15 @@ func appIcon(name string, fallback fyne.Resource) fyne.Resource {
 	return fallback
 }
 
+// gpuTabIcon is a graphics card in the theme's color, like the other tabs' icons.
+func gpuTabIcon() fyne.Resource {
+	b, err := assets.Icons.ReadFile("icons/gpu-tab.svg")
+	if err != nil {
+		return theme.ComputerIcon()
+	}
+	return theme.NewThemedResource(fyne.NewStaticResource("gpu-tab.svg", b))
+}
+
 // stateIcon is the small symbol before a VM's state, like VirtualBox's list.
 func stateIcon(s core.VMState) fyne.Resource {
 	switch s {
@@ -316,7 +326,7 @@ func (u *ui) detailsTab() fyne.CanvasObject {
 		add("Audio", "audio", theme.VolumeUpIcon(), "Controller"),
 		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Adapter 2", "Adapter 3", "Adapter 4", "Port Forwarding"),
 		add("USB", "usb", theme.SettingsIcon(), "Controller", "Devices"),
-		add("GPU Passthrough", "gpu", theme.ColorPaletteIcon(), "GPU", "3D Acceleration"),
+		add("GPU Passthrough", "gpu", gpuTabIcon(), "GPU", "3D Acceleration"),
 	)
 	return container.NewVScroll(container.NewVBox(top, rest))
 }
@@ -504,6 +514,11 @@ func (u *ui) start() { u.startWith(false) }
 
 // startWith starts the VM; verbose shows macOS's boot log on screen for this start only.
 func (u *ui) startWith(verbose bool) {
+	if u.cfg.RootPatch && !core.RootPatchKextsReady() { // an imported VM, a moved Workspace
+		u.run("Download OCLP's kexts for root-patch mode", func() error { return core.DownloadRootPatchKexts(context.Background()) },
+			func() { u.startWith(verbose) })
+		return
+	}
 	u.runningID = u.cur.ID
 	c := u.cfg
 	c.VerboseBoot = verbose

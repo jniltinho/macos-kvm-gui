@@ -153,7 +153,7 @@
 				<string></string>
 				<key>PlistPath</key>
 				<string>Contents/Info.plist</string>
-			</dict>
+			</dict>@@ROOTPATCHKEXTS@@
 		</array>
 		<key>Block</key>
 		<array/>
@@ -351,7 +351,7 @@
 			<dict>
 				<key>rtc-blacklist</key>
 				<data>
-				</data>
+				</data>@@REVBLOCKADD@@
 			</dict>
 			<key>7C436110-AB2A-4BBB-A880-FE41995C9F82</key>
 			<dict>
@@ -367,7 +367,7 @@
 				<string>@@BOOTARGS@@</string>
 				<key>csr-active-config</key>
 				<data>
-				AAAAAA==
+				@@CSR@@
 				</data>
 				<key>prev-lang:kbd</key>
 				<data>
@@ -385,13 +385,13 @@
 			</array>
 			<key>4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102</key>
 			<array>
-				<string>rtc-blacklist</string>
+				<string>rtc-blacklist</string>@@REVBLOCKDELETE@@
 			</array>
 			<key>7C436110-AB2A-4BBB-A880-FE41995C9F82</key>
 			<array>
 				<string>boot-args</string>
 				<string>ForceDisplayRotationInEFI</string>
-				<string>prev-lang:kbd</string>
+				<string>prev-lang:kbd</string>@@CSRDELETE@@
 			</array>
 		</dict>
 		<key>LegacyOverwrite</key>
