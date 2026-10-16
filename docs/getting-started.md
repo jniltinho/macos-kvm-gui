@@ -63,11 +63,12 @@ The window works like VirtualBox's manager: the **File / Machine / Help** menus,
 
 ### New VM
 
-Click **New**. Like VirtualBox's wizard in expert mode, it has three folding sections:
+Click **New**. Like VirtualBox's wizard in expert mode, it has four folding sections:
 
 1. **Virtual machine name and operating system:** the name, the VM's folder (by default `<Workspace>/<name>`; the Workspace is `~/macOS-VMs` unless you change it in **File › Preferences**) and the macOS version. Only Sonoma has been validated end to end.
 2. **Specify virtual hardware:** Base Memory and Number of CPUs sliders, filled in with what is recommended for this host, and the display (in the app or a QEMU window).
-3. **Specify virtual hard disk:** the disk size (thin qcow2, at least 40 GB) and whether to download the macOS recovery now.
+3. **Specify network:** adapter 1, attached to NAT (with the SSH forward) or a Bridged Adapter, its type (it follows the macOS version unless you pick one) and its MAC address (random, or regenerate it). Add adapters 2–4 later in Settings › Network.
+4. **Specify virtual hard disk:** the disk size (thin qcow2, at least 40 GB) and whether to download the macOS recovery now.
 
 **Finish** checks every section (it opens the one with a problem), makes the folder, extracts the boot files, creates the disk and, when asked, downloads and verifies the recovery. Progress shows in the Install tab.
 
@@ -75,7 +76,7 @@ The first time the app opens it adds a VM named "macOS Sonoma" with the defaults
 
 ### Host
 
-Make the checks green before starting: CPU virtualization, `/dev/kvm`, QEMU tools/version, CPU compatibility and `ignore_msrs`. Shut down running VirtualBox/VMware VMs. Click **Check again** after fixing a problem.
+Make the checks green before starting: CPU virtualization, `/dev/kvm`, QEMU tools/version, CPU compatibility and `ignore_msrs`. The header says how many passed, and each check is a card with a green, amber or red badge and the fix when there is one. Shut down running VirtualBox/VMware VMs. Click **Check again** after fixing a problem.
 
 Click **Set up host** to authorize one operation that installs missing QEMU packages with `apt-get`, loads the appropriate KVM module if `/dev/kvm` is absent, creates/adds you to the `kvm` group, and enables/persists `ignore_msrs` in `/etc/modprobe.d/macos-kvm-gui.conf`. Log out/in if prompted so the new group applies, then recheck. The `libvirt` and `input` groups are not needed. Setup does not upgrade an already-present old QEMU or enable virtualization in BIOS.
 
@@ -108,13 +109,15 @@ An existing OSX-KVM folder can reuse `mac_hdd_ng.img` and `BaseSystem.img`. The 
 
 [![Installation journey](diagrams/install-flow.png)](diagrams/install-flow.svg)
 
+The Install tab is a stepper. Its header shows how many of the five steps are done; each step is a card with a numbered badge that turns into a green check, a state (**Done**, **Next** or **Waiting**) and its action. The next step has a blue stripe and the highlighted button, and finished steps hide their controls. A VM made with **New** usually arrives with steps 1–3 done.
+
 1. **VM folder — Create VM folder.** Creates the folder and extracts the built-in boot files. An existing directory already counts as ready; missing boot files are prepared on Start. Status shows asset versions and their source.
 2. **macOS recovery — Download macOS recovery.** Downloads the chunklist and DMG from Apple, verifies the Apple signature and every chunk's SHA-256, then converts to `BaseSystem.img`. Progress covers download, verification and conversion. Temporary DMG/chunklist files are removed. A failed download, verification or conversion preserves any previous install image.
-3. **Disk — Create disk.** Choose the virtual size in GiB. This creates a thin qcow2 file named `mac_hdd_ng.img`, never overwriting an existing disk. The size is not reserved on the host; monitor free space.
-4. **Install inside the VM.** Open **VM**, click **Start**, then follow the manual guest steps below.
+3. **Disk — Create disk.** Choose the virtual size in GB (Details › Storage shows it next to the space used). This creates a thin qcow2 file named `mac_hdd_ng.img`, never overwriting an existing disk. The size is not reserved on the host; monitor free space.
+4. **Install macOS.** Click **Start the VM** (or **Start** in the toolbar), then follow the guest steps below; **Show the steps inside macOS** has a short version.
 5. **Clean up — Remove install media.** Only after macOS boots from its installed disk, shut down the VM and confirm removal. This deletes `BaseSystem.img` and its version marker, not the macOS disk.
 
-### VM: install macOS and first boot
+### Install macOS and first boot
 
 1. With `BaseSystem.img` present, OpenCore shows its picker with a five-second timeout. Choose **macOS Base System**.
 2. In recovery, open **Disk Utility**, enable **View › Show All Devices**, select the **QEMU HARDDISK** target and **Erase** it with **GUID Partition Map** and **APFS**. Erase only the intended virtual disk, not the recovery media.

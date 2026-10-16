@@ -56,10 +56,14 @@ func (u *ui) newVMDialog() {
 	osIcon := canvas.NewImageFromResource(versionIcon("sonoma"))
 	osIcon.FillMode = canvas.ImageFillContain
 	osIcon.SetMinSize(fyne.NewSquareSize(36))
+	var onVersion func(string)
 	version := widget.NewSelect(labels, func(l string) {
 		for _, img := range []*canvas.Image{art, osIcon} {
 			img.Resource = versionIcon(short[l])
 			img.Refresh()
+		}
+		if onVersion != nil {
+			onVersion(short[l])
 		}
 	})
 	version.SetSelected(labels[6]) // Sonoma, the validated version
@@ -103,9 +107,69 @@ func (u *ui) newVMDialog() {
 		widget.NewFormItem("Format", widget.NewLabel("QCOW2 (QEMU Copy-On-Write), dynamically allocated")),
 	), download)
 
+	// Network: adapter 1 (more adapters in Settings › Network).
+	var models []string
+	byLabel := map[string]string{}
+	for _, m := range core.NICModels {
+		models = append(models, nicLabel(m))
+		byLabel[nicLabel(m)] = m
+	}
+	attach := widget.NewSelect([]string{attachNAT, attachBridge}, nil)
+	bridge := widget.NewSelectEntry(core.HostBridges())
+	bridge.SetPlaceHolder("br0")
+	model := widget.NewSelect(models, nil)
+	modelPicked := false // once the user picks a type, the version no longer changes it
+	mac := widget.NewEntry()
+	mac.SetText(core.RandomMAC())
+	regen := widget.NewButtonWithIcon("", theme.ViewRefreshIcon(), func() { mac.SetText(core.RandomMAC()) })
+	netWarn := caption("")
+	netWarn.Importance = widget.WarningImportance
+	netWarn.Wrapping = fyne.TextWrapWord
+	netUpdate := func() {
+		if attach.Selected == attachBridge {
+			bridge.Enable()
+		} else {
+			bridge.Disable()
+		}
+		var msg []string
+		if v := short[version.Selected]; !core.NICSupported(v, byLabel[model.Selected]) {
+			msg = append(msg, versionTitle(v)+" has no built-in driver for this adapter type.")
+		}
+		if attach.Selected == attachBridge {
+			msg = append(msg, "Bridged adapters need qemu-bridge-helper to be setuid root and the bridge allowed in /etc/qemu/bridge.conf; see Troubleshooting › Bridged networking.")
+		}
+		netWarn.SetText(strings.Join(msg, " "))
+		netWarn.Hidden = len(msg) == 0
+	}
+	setting := false
+	model.OnChanged = func(string) {
+		if !setting {
+			modelPicked = true
+		}
+		netUpdate()
+	}
+	onVersion = func(v string) {
+		if !modelPicked {
+			setting = true
+			model.SetSelected(nicLabel(core.NewNetworks(v)[0].Model))
+			setting = false
+		}
+		netUpdate()
+	}
+	attach.OnChanged = func(string) { netUpdate() }
+	attach.SetSelected(attachNAT)
+	onVersion(short[version.Selected])
+	network := container.NewVBox(widget.NewForm(
+		widget.NewFormItem("Attached to", attach),
+		widget.NewFormItem("Name", bridge),
+		widget.NewFormItem("Adapter Type", model),
+		widget.NewFormItem("MAC Address", container.NewBorder(nil, nil, nil, regen, mac)),
+	), netWarn, note("This is Adapter 1. Add more adapters later in Settings › Network. NAT also forwards SSH from 127.0.0.1."))
+
 	sections := widget.NewAccordion(
 		widget.NewAccordionItem("Virtual machine name and operating system", identity),
 		widget.NewAccordionItem("Specify virtual hardware", hardware),
+		widget.NewAccordionItem("Specify network", network),
 		widget.NewAccordionItem("Specify virtual hard disk", disk),
 	)
 	sections.Open(0)
@@ -147,12 +211,21 @@ func (u *ui) newVMDialog() {
 			c.Cores = c.VCPUs / 2
 		}
 		c.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
+		nic := core.NIC{Enabled: true, Mode: core.NetNAT, Model: byLabel[model.Selected], MAC: strings.ToLower(strings.TrimSpace(mac.Text))}
+		if attach.Selected == attachBridge {
+			nic.Mode, nic.Bridge = core.NetBridged, strings.TrimSpace(bridge.Text)
+		}
+		c.Networks = []core.NIC{nic}
 		if err := c.Validate(); err != nil {
+			var fe *core.FieldError
+			if errors.As(err, &fe) && strings.HasPrefix(fe.Field, "nic") {
+				return fail(2, fmt.Errorf("Network: %w", err))
+			}
 			return fail(1, err)
 		}
 		size, err := diskValue()
 		if err != nil || size < core.MinDiskGiB {
-			return fail(2, fmt.Errorf("Disk Size: at least %d GB", core.MinDiskGiB))
+			return fail(3, fmt.Errorf("Disk Size: at least %d GB", core.MinDiskGiB))
 		}
 		return c, size, nil
 	}
@@ -187,7 +260,9 @@ func (u *ui) newVMDialog() {
 // createVM adds the VM and, in the Install tab, makes its folder and disk and downloads the
 // recovery when asked.
 func (u *ui) createVM(c core.Config, sizeGiB int, download bool) {
-	c.Networks = core.NewNetworks(c.Version)
+	if c.Networks == nil { // the wizard sets adapter 1; other callers get the default one
+		c.Networks = core.NewNetworks(c.Version)
+	}
 	e, err := core.CreateVM(c)
 	if err != nil {
 		dialog.ShowError(err, u.win)

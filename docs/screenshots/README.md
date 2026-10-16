@@ -12,7 +12,7 @@ The manager, modelled on VirtualBox's: the File / Machine / Help menus, the tool
 
 ![New VM wizard](new-vm.png)
 
-Like VirtualBox's wizard in expert mode: three folding sections for the name, folder and macOS version; the hardware (memory and CPU sliders, recommended for this host); and the hard disk (size and whether to download the recovery now). Finish makes the folder and the disk and downloads the recovery.
+Like VirtualBox's wizard in expert mode: four folding sections for the name, folder and macOS version; the hardware (memory and CPU sliders, recommended for this host); the network (adapter 1: NAT or bridged, adapter type, MAC address); and the hard disk (size and whether to download the recovery now). Finish makes the folder and the disk and downloads the recovery.
 
 ## Install
 
@@ -24,7 +24,7 @@ The guided install as a stepper: the header shows how many of the five steps are
 
 ![Settings window](settings.png)
 
-The VM's Settings window: General, System (Motherboard, Processor and Acceleration tabs), Display, Storage, Audio, Network and USB. Nothing is saved until OK. The Workspace and the theme are in File › Preferences.
+The VM's Settings window: General, System (Motherboard, Processor and Acceleration tabs), Display, Storage, Audio, Network (Adapter 1–4 tabs: NAT or bridged, adapter type, MAC address) and USB. Nothing is saved until OK. The Workspace and the theme are in File › Preferences.
 
 ## Host
 
