@@ -9,12 +9,16 @@ Running macOS under KVM usually means cloning repositories, running Python downl
 - **One binary, no setup.** OpenCore 1.0.8, Lilu, VirtualSMC, WhateverGreen and OVMF are embedded, built from their official BSD-licensed releases. You don't need `git`, `python3` or an OSX-KVM clone.
 - **Safe downloads.** The recovery comes straight from Apple, and the app checks Apple's signature and the SHA-256 of every chunk before using it.
 - **macOS inside the app.** The VM's screen shows in a VirtualBox-style window with keyboard and mouse, in its own window or full screen (Ctrl+Alt+F is the host key), over a private VNC socket with no network port.
-- **Several VMs, VirtualBox style.** A manager modelled on VirtualBox's (menus, toolbar, Details with Preview, a Settings window), a New VM wizard, a VM list with status, and each VM in its own folder inside the Workspace (`~/macOS-VMs/<name>`). VMs can be moved, exported as a `.tar` with everything they need, and imported on another host. The list lives in a small SQLite database.
-- **Light, dark or system theme**, chosen in File › Preferences and applied right away.
+- **A manager like VirtualBox's.** File / Machine / Help menus, a toolbar with large icons, the VM list with each VM's state, Details in sections with a live Preview, a Settings window with categories (General, System, Display, Storage, Audio, Network, USB) and a New VM wizard in VirtualBox's expert style. The icons are original and every corner is square.
+- **Several VMs.** Each VM has its own folder inside the Workspace (`~/macOS-VMs/<name>`). VMs can be moved, exported as a `.tar` with everything they need, and imported on another host. The list lives in a small SQLite database that upgrades itself.
+- **Guided install.** The Install tab is a stepper (VM folder, recovery, disk, install, clean up) that shows what is done and what comes next. The Host and GPU tabs use the same cards.
+- **Networking.** Up to four adapters per VM, like VirtualBox's Adapter 1–4: NAT or bridged to a host bridge, an adapter type macOS has a driver for (`virtio-net-pci`, `vmxnet3`, Intel 82545EM) and a MAC address of your choice. Existing VMs keep their adapter and MAC.
+- **Light, dark or system theme**, chosen in File › Preferences and applied right away. The light theme uses VirtualBox's colors.
 - **Scriptable.** The same binary is a command line tool (`check`, `setup`, `download`, `disk create`, `vm start`...), so installs can be automated. See [docs/cli.md](cli.md).
 - **Boots like a Mac.** It generates OpenCore's configuration for you at 1920x1080 and, once macOS is installed, boots without a menu. Each VM gets its own Mac identity.
 - **Explains what's wrong.** The Host tab checks KVM, QEMU, `ignore_msrs` (one-click fix) and conflicting VirtualBox/VMware VMs. QEMU errors become plain messages.
-- **Careful with your data.** It never overwrites a disk, the NVRAM or existing media. A lock keeps two operations or two app instances from touching the same workspace, and SSH is only reachable from `127.0.0.1`.
+- **Careful with your data.** It never overwrites a disk, the NVRAM or existing media. A lock keeps two operations or two app instances from touching the same VM folder, it refuses to start a disk another QEMU already uses, and the SSH forward is only reachable from `127.0.0.1`.
+- **Packages for Ubuntu, Debian and Fedora.** Each release has a `.deb`, an `.rpm` (Fedora 39+) and a `.tar.gz`, with SHA-256 files.
 - **GPU passthrough** *(experimental)*. It can hand a macOS-supported AMD GPU to the VM for real Metal acceleration, and it refuses setups that would leave your host without a display.
 
 ## How it works

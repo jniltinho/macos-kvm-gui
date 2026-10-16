@@ -33,7 +33,10 @@
 
 - **One binary.** OpenCore, Lilu, VirtualSMC, WhateverGreen and OVMF are embedded; no `git`, `python3` or OSX-KVM clone.
 - **Verified downloads.** The recovery comes from Apple, checked against Apple's signature and every chunk's SHA-256.
-- **Several VMs, VirtualBox style.** A New VM wizard, one folder per VM in the Workspace, export/import, and macOS on screen inside the app.
+- **A manager like VirtualBox's.** Menus, toolbar, a VM list, Details with a live Preview, a Settings window and a New VM wizard, in a light theme with VirtualBox's colors or a dark one.
+- **Several VMs.** One folder per VM in the Workspace, move, export/import, and macOS on screen inside the app.
+- **Guided install.** A step-by-step Install tab, and Host checks with one-click setup.
+- **Networking.** Up to four adapters per VM, NAT or bridged, with the adapter type and MAC address of your choice.
 - **Scriptable.** The same binary is a [command line tool](docs/cli.md).
 
 Sonoma 14 is validated end to end; High Sierra through Tahoe are experimental. More in the [overview](docs/overview.md).
@@ -45,7 +48,13 @@ sudo apt install ./macos-kvm-gui_*_amd64.deb      # Ubuntu 24.04+, Debian 13+
 sudo dnf install ./macos-kvm-gui-*.x86_64.rpm     # Fedora 39+
 ```
 
-Both add "macOS KVM" to the applications menu. Needs Linux x86_64 with glibc 2.38+, VT-x/AMD-V, `qemu-system-x86`, `qemu-utils` and `pkexec`. Then open **macOS KVM**, make the **Host** checks green, click **New**, and **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**. Full walkthrough: [getting started](docs/getting-started.md).
+Both add "macOS KVM" to the applications menu, and a `.tar.gz` is there for other distributions. Needs Linux x86_64 with glibc 2.38+, VT-x/AMD-V, `qemu-system-x86`, `qemu-utils` and `pkexec`.
+
+1. Open **macOS KVM** and make the **Host** checks green (**Set up host** fixes the basics).
+2. Click **New**: the wizard creates the VM's folder and disk and downloads the macOS recovery from Apple.
+3. Click **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**; the **Install** tab walks you through it.
+
+Full walkthrough: [getting started](docs/getting-started.md).
 
 ## Documentation
 
