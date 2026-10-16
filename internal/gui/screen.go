@@ -14,6 +14,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
@@ -58,7 +59,9 @@ func newScreen() *screen {
 
 func (s *screen) CreateRenderer() fyne.WidgetRenderer {
 	bg := canvas.NewRectangle(color.Black)
-	return widget.NewSimpleRenderer(container.NewStack(bg, s.img, container.NewCenter(s.hint)))
+	// The background is always black, so the hint uses the dark theme's text color.
+	hint := container.NewThemeOverride(container.NewCenter(s.hint), appTheme{Theme: theme.DefaultTheme(), mode: "dark"})
+	return widget.NewSimpleRenderer(container.NewStack(bg, s.img, hint))
 }
 
 func (s *screen) MinSize() fyne.Size { return fyne.NewSize(480, 270) }
