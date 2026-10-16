@@ -63,6 +63,42 @@ CREATE TABLE IF NOT EXISTS vms (
 );
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`
 
+// schemaVersion is the database's PRAGMA user_version: 1 created the tables, 2 added the
+// network adapters.
+const schemaVersion = 2
+
+// migrate brings a database from version v to schemaVersion. Each step is safe to repeat, and
+// the version is written last, so an interrupted upgrade runs again on the next start.
+func migrate(db *sql.DB, v int) error {
+	if v < 1 {
+		if _, err := db.Exec(schemaV1); err != nil {
+			return err
+		}
+	}
+	if v < 2 {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM pragma_table_info('vms') WHERE name = 'networks'`).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			// The app and the CLI may upgrade at the same moment: the column the other one
+			// just added is fine.
+			if _, err := db.Exec(`ALTER TABLE vms ADD COLUMN networks TEXT NOT NULL DEFAULT ''`); err != nil &&
+				!strings.Contains(err.Error(), "duplicate column name") {
+				return err
+			}
+		}
+	}
+	if v < 1 {
+		// Imported files are renamed as they are read, so a retry does not read them twice.
+		if err := importFiles(db); err != nil {
+			return err
+		}
+	}
+	_, err := db.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
+	return err
+}
+
 // openDB opens the database, creating and migrating it as needed. WAL and a busy timeout let
 // the app and the CLI use it at the same time.
 func openDB() (*sql.DB, error) {
@@ -82,31 +118,36 @@ func openDB() (*sql.DB, error) {
 		db.Close()
 		return nil, fmt.Errorf("database %s: %w", path, err)
 	}
-	if v == 0 {
-		if _, err := db.Exec(schemaV1); err != nil {
+	if v < schemaVersion {
+		if err := migrate(db, v); err != nil {
 			db.Close()
-			return nil, fmt.Errorf("creating %s: %w", path, err)
-		}
-		// The version is set only after the old files are imported, so a failed import is
-		// retried on the next start (imported files were renamed and are not read twice).
-		if err := importFiles(db); err != nil {
-			db.Close()
-			return nil, err
-		}
-		if _, err := db.Exec(`PRAGMA user_version = 1`); err != nil {
-			db.Close()
-			return nil, err
+			return nil, fmt.Errorf("upgrading %s: %w", path, err)
 		}
 	}
 	return db, nil
 }
 
-const vmColumns = `id, name, workspace, version, ram_mib, cores, vcpus, ssh_port, display, gpu`
+const vmColumns = `id, name, workspace, version, ram_mib, cores, vcpus, ssh_port, display, gpu, networks`
+
+// networksJSON stores the adapters; "" keeps a VM on its legacy single NAT adapter.
+func networksJSON(c Config) string {
+	if c.Networks == nil {
+		return ""
+	}
+	b, _ := json.Marshal(c.Networks)
+	return string(b)
+}
 
 func scanVM(row interface{ Scan(...any) error }) (VMEntry, error) {
 	var e VMEntry
 	c := &e.Config
-	err := row.Scan(&e.ID, &c.Name, &c.Workspace, &c.Version, &c.RAMMiB, &c.Cores, &c.VCPUs, &c.SSHPort, &c.Display, &c.GPU)
+	var nets string
+	err := row.Scan(&e.ID, &c.Name, &c.Workspace, &c.Version, &c.RAMMiB, &c.Cores, &c.VCPUs, &c.SSHPort, &c.Display, &c.GPU, &nets)
+	if err == nil && nets != "" {
+		if jerr := json.Unmarshal([]byte(nets), &c.Networks); jerr != nil {
+			return e, fmt.Errorf("VM %s: unreadable network adapters: %w", e.ID, jerr)
+		}
+	}
 	return e, err
 }
 
@@ -206,8 +247,8 @@ func insertVM(db *sql.DB, c Config) (VMEntry, error) {
 		}
 		id = fmt.Sprintf("%s-%d", base, i)
 	}
-	_, err := db.Exec(`INSERT INTO vms (`+vmColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		id, c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU)
+	_, err := db.Exec(`INSERT INTO vms (`+vmColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		id, c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c))
 	if isUniqueErr(err) {
 		return VMEntry{}, &FieldError{"name", "a VM with this name already exists"}
 	}
@@ -236,8 +277,8 @@ func SaveVM(e VMEntry, c Config) error {
 	}
 	defer db.Close()
 	res, err := db.Exec(`UPDATE vms SET name = ?, workspace = ?, version = ?, ram_mib = ?, cores = ?, vcpus = ?, ssh_port = ?,
-		display = ?, gpu = ?, updated_at = datetime('now') WHERE id = ?`,
-		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, e.ID)
+		display = ?, gpu = ?, networks = ?, updated_at = datetime('now') WHERE id = ?`,
+		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), e.ID)
 	if isUniqueErr(err) {
 		return &FieldError{"name", "a VM with this name already exists"}
 	}

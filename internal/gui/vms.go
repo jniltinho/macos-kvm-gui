@@ -31,6 +31,7 @@ func (u *ui) loadVMs(configPath string) error {
 		c := core.Defaults()
 		c.Name = "macOS Sonoma"
 		c.Workspace = core.VMFolder(c.Name)
+		c.Networks = core.NewNetworks(c.Version)
 		var e core.VMEntry
 		if e, err = core.CreateVM(c); err == nil {
 			vms = []core.VMEntry{e}

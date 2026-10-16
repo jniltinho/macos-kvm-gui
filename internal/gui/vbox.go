@@ -143,7 +143,9 @@ func infoSection(title string, icon fyne.Resource, keys ...string) (fyne.CanvasO
 	for _, k := range keys {
 		v := themedText("", false)
 		values[k] = v
-		grid.Add(themedText(k+":", false))
+		key := themedText(k+":", false)
+		values[k+"\x00key"] = key
+		grid.Add(key)
 		grid.Add(v)
 	}
 	return container.NewVBox(sectionBand(title, icon), container.NewPadded(grid)), values
@@ -167,8 +169,10 @@ const kvValueWidth = 240
 
 func (kvLayout) keyWidth(objs []fyne.CanvasObject) float32 {
 	var w float32
-	for i := 0; i < len(objs); i += 2 {
-		w = max(w, objs[i].MinSize().Width)
+	for i := 0; i+1 < len(objs); i += 2 {
+		if objs[i+1].Visible() {
+			w = max(w, objs[i].MinSize().Width)
+		}
 	}
 	return w
 }
@@ -176,6 +180,9 @@ func (kvLayout) keyWidth(objs []fyne.CanvasObject) float32 {
 func (l kvLayout) MinSize(objs []fyne.CanvasObject) fyne.Size {
 	var w, h float32
 	for i := 0; i+1 < len(objs); i += 2 {
+		if !objs[i+1].Visible() {
+			continue
+		}
 		k, v := objs[i].MinSize(), objs[i+1].MinSize()
 		w = max(w, min(v.Width, kvValueWidth))
 		h += max(k.Height, v.Height) + kvRowGap
@@ -188,6 +195,9 @@ func (l kvLayout) Layout(objs []fyne.CanvasObject, size fyne.Size) {
 	var y float32
 	for i := 0; i+1 < len(objs); i += 2 {
 		k, v := objs[i], objs[i+1]
+		if !v.Visible() {
+			continue
+		}
 		rh := max(k.MinSize().Height, v.MinSize().Height)
 		k.Move(fyne.NewPos(0, y))
 		k.Resize(fyne.NewSize(kw, rh))

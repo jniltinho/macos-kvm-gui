@@ -96,8 +96,9 @@ If KVM loads from an initramfs, also rebuild that initramfs after the persistent
 | RAM | 8192 MiB |
 | Cores / total vCPUs | 4 / 8 |
 | SSH host port | 2222, bound to `127.0.0.1` |
+| Network | Adapter 1: NAT, `virtio-net-pci` (or `vmxnet3` through Catalina), its own random MAC |
 
-**System** has the Base Memory and Processors sliders and **Threads per core**; with 2 threads, choose an even number of processors. The SSH port (in **Network**) must be 1024–65535. **Recommended for this host** fills in memory and processors but does not save them: click **OK**. Settings cannot be changed while the VM runs. **Storage**, **Audio** and **USB** show what the VM uses; the Install tab creates the disk and manages the install media.
+**System** has the Base Memory and Processors sliders and **Threads per core**; with 2 threads, choose an even number of processors. **Network** has VirtualBox's Adapter 1–4 tabs: enable an adapter, attach it to **NAT** or a **Bridged Adapter**, pick its type and edit or regenerate its MAC address; see [network adapters](troubleshooting.md#network-adapters) for which type each macOS version supports and how to set up a bridge. The SSH port (also in **Network**) must be 1024–65535 and is forwarded on the first NAT adapter. **Recommended for this host** fills in memory and processors but does not save them: click **OK**. Settings cannot be changed while the VM runs. **Storage**, **Audio** and **USB** show what the VM uses; the Install tab creates the disk and manages the install media.
 
 **File › Preferences** holds the app-wide settings. The **Workspace** is the folder that holds one folder per VM; new and imported VMs go there. Changing it does not move existing VMs: **Machine › Move…** (or **Move…** in Settings › General) moves the selected VM's disk, install media, NVRAM, identity and boot files into a new folder (on the same disk) and leaves anything else in the old folder alone. **Theme** switches between Dark, Light and System right away.
 

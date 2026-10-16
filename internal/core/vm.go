@@ -52,9 +52,9 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 	args = append(args,
 		"-drive", "id=MacHDD,if=none,format=qcow2,file="+f(DiskFile),
 		"-device", "ide-hd,bus=sata.4,drive=MacHDD",
-		"-netdev", fmt.Sprintf("user,id=net0,hostfwd=tcp:127.0.0.1:%d-:22", c.SSHPort),
-		"-device", p.NIC+",netdev=net0,id=net0,mac=52:54:00:c9:18:27",
 	)
+	firstNIC, moreNICs := netArgs(c, BridgeHelper())
+	args = append(args, firstNIC...)
 	// vmware-svga stays even with a passed-through GPU: QEMU's window needs a graphical
 	// console to deliver keyboard and mouse input, and it shows the boot screens.
 	args = append(args, "-device", "vmware-svga")
@@ -64,6 +64,7 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 			args = append(args, "-device", "vfio-pci,host="+f)
 		}
 	}
+	args = append(args, moreNICs...)
 	if c.InApp() {
 		// No QEMU window: the screen goes to the app over VNC on a Unix socket in the same
 		// private 0700 directory as QMP, never on a TCP port.
@@ -97,6 +98,11 @@ func explainExit(err error, lastLines []string) string {
 		return "KVM is busy: another hypervisor (VirtualBox or VMware) is using virtualization. Shut its VM down and try again."
 	case strings.Contains(out, `Failed to get "write" lock`):
 		return "The disk is already open in another QEMU (started outside the app?). Shut that VM down first."
+	case strings.Contains(out, "Could not set up host forwarding rule"):
+		return "The SSH port is already in use on 127.0.0.1 (another VM?). Choose another port in Settings › Network."
+	case strings.Contains(out, "bridge helper") || strings.Contains(out, "access denied by acl file") ||
+		strings.Contains(out, "failed to create tun device") || strings.Contains(out, "qemu-bridge-helper"):
+		return "A bridged adapter could not attach: qemu-bridge-helper needs to be setuid root (or hold CAP_NET_ADMIN) and the bridge must be allowed in /etc/qemu/bridge.conf. See Troubleshooting › Bridged networking."
 	case err == nil:
 		return ""
 	case strings.Contains(out, "Could not access KVM kernel module"), strings.Contains(out, "/dev/kvm"):
@@ -181,6 +187,12 @@ func (v *VM) Start(c Config) error {
 			who = "another program (for example OSX-KVM's OpenCore-Boot.sh)"
 		}
 		return fmt.Errorf("this VM's disk is already in use by QEMU (pid %d), started by %s: shut that VM down first", r.PID, who)
+	}
+	if err := checkBridges(c, "/sys/class/net", "/etc/qemu/bridge.conf", BridgeHelper()); err != nil {
+		return err
+	}
+	if err := checkSSHPort(c); err != nil {
+		return err
 	}
 	var gpuFuncs []string
 	if c.GPU != "" {

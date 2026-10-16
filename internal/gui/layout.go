@@ -301,7 +301,7 @@ func (u *ui) detailsTab() fyne.CanvasObject {
 		add("Display", "display", theme.ViewFullScreenIcon(), "Shown", "Graphics Controller", "Resolution", "Remote Display"),
 		add("Storage", "storage", theme.StorageIcon(), "Controller", "SATA Port 0", "SATA Port 1", "Boot Disk"),
 		add("Audio", "audio", theme.VolumeUpIcon(), "Controller"),
-		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Port Forwarding"),
+		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Adapter 2", "Adapter 3", "Adapter 4", "Port Forwarding"),
 		add("USB", "usb", theme.SettingsIcon(), "Controller", "Devices"),
 		add("GPU Passthrough", "gpu", theme.ColorPaletteIcon(), "GPU", "3D Acceleration"),
 	)
@@ -310,9 +310,15 @@ func (u *ui) detailsTab() fyne.CanvasObject {
 
 func (u *ui) refreshDetails() {
 	set := func(k, v string) {
-		if t := u.details[k]; t != nil && t.Text != v {
+		t, key := u.details[k], u.details[k+"\x00key"]
+		if t == nil {
+			return
+		}
+		if t.Text != v || t.Hidden != (v == "") {
 			t.Text = v
+			t.Hidden, key.Hidden = v == "", v == "" // an empty value hides its row
 			t.Refresh()
+			key.Refresh()
 		}
 	}
 	p := core.ProfileFor(u.cfg.Version)
@@ -333,8 +339,19 @@ func (u *ui) refreshDetails() {
 	set("Display/Graphics Controller", "VMware SVGA")
 	set("Display/Resolution", "1920x1080")
 	set("Display/Remote Display", map[bool]string{true: "VNC on a private socket", false: "Disabled"}[u.cfg.InApp()])
-	set("Network/Adapter 1", p.NIC+" (NAT)")
-	set("Network/Port Forwarding", fmt.Sprintf("SSH 127.0.0.1:%d → 22", u.cfg.SSHPort))
+	adapters := u.cfg.Adapters()
+	for i := 0; i < core.MaxNICs; i++ {
+		v := ""
+		if i < len(adapters) && adapters[i].Enabled {
+			v = adapterSummary(adapters[i])
+		}
+		set(fmt.Sprintf("Network/Adapter %d", i+1), v)
+	}
+	fwd := "None: use the VM's address on its network, if reachable"
+	if u.cfg.SSHForwarded() {
+		fwd = fmt.Sprintf("SSH 127.0.0.1:%d → 22", u.cfg.SSHPort)
+	}
+	set("Network/Port Forwarding", fwd)
 	set("USB/Devices", "Keyboard, Tablet")
 	gpu, accel := "None", "Disabled: the CPU draws the screen"
 	if u.cfg.GPU != "" {
@@ -345,7 +362,8 @@ func (u *ui) refreshDetails() {
 	disk, media := "mac_hdd_ng.img (not created yet)", "Empty"
 	if w, err := u.workspace(); err == nil {
 		if w.HasDisk() {
-			disk = fmt.Sprintf("mac_hdd_ng.img (Normal, %.2f GB used)", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30))
+			disk = fmt.Sprintf("mac_hdd_ng.img (Normal, %.2f GB, %.2f GB used)",
+				float64(core.DiskVirtualSize(w.Path(core.DiskFile)))/(1<<30), float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30))
 		}
 		if w.HasMedia() {
 			media = "BaseSystem.img (" + w.MediaVersion() + " recovery)"

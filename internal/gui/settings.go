@@ -114,13 +114,8 @@ func (u *ui) settingsDialog() {
 		widget.NewFormItem("Boot Disk", widget.NewLabel("OpenCore (built in, read-only)")),
 	), note("Create the disk and add or remove the install media in the Install tab."))
 
-	// Network.
-	port := widget.NewEntry()
-	port.SetText(strconv.Itoa(c.SSHPort))
-	network := widget.NewForm(
-		widget.NewFormItem("Adapter 1", widget.NewLabel(p.NIC+" (NAT)")),
-		widget.NewFormItem("SSH port on 127.0.0.1", port),
-	)
+	// Network: VirtualBox's Adapter 1–4 tabs.
+	network, readNetwork := networkPage(c, func() string { return short[version.Selected] })
 
 	pages := []struct {
 		title, icon string
@@ -173,8 +168,8 @@ func (u *ui) settingsDialog() {
 			return errors.New("Processors: with 2 threads per core, choose an even number")
 		}
 		n.Cores = n.VCPUs / t
-		if n.SSHPort, err = strconv.Atoi(strings.TrimSpace(port.Text)); err != nil {
-			return errors.New("SSH port: enter a whole number")
+		if n.Networks, n.SSHPort, err = readNetwork(); err != nil {
+			return err
 		}
 		if n.Name == "" {
 			return errors.New("Name: give the VM a name")

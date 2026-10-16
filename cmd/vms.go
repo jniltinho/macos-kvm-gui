@@ -53,6 +53,7 @@ var vmCreateCmd = &cobra.Command{
 		if c.Workspace == "" {
 			c.Workspace = core.VMFolder(c.Name)
 		}
+		c.Networks = core.NewNetworks(c.Version)
 		if err := c.Validate(); err != nil {
 			return err
 		}
@@ -248,7 +249,11 @@ var vmStatusCmd = &cobra.Command{
 		fmt.Fprintf(out, "status:    %s\n", statusOf(c))
 		fmt.Fprintf(out, "macOS:     %s, %d MiB, %d vCPUs\n", c.Version, c.RAMMiB, c.VCPUs)
 		fmt.Fprintf(out, "folder: %s\n", c.Workspace)
-		fmt.Fprintf(out, "ssh:       ssh -p %d user@127.0.0.1\n", c.SSHPort)
+		if c.SSHForwarded() {
+			fmt.Fprintf(out, "ssh:       ssh -p %d user@127.0.0.1\n", c.SSHPort)
+		} else {
+			fmt.Fprintln(out, "ssh:       no 127.0.0.1 forward (no NAT adapter): use the VM's address on its network")
+		}
 		if r, ok := core.FindRunning(c); ok && r.VNCSocket != "" {
 			fmt.Fprintf(out, "screen:    VNC socket %s\n", r.VNCSocket)
 		}

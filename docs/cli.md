@@ -18,7 +18,7 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 | `check` | Runs the Host tab's checks. Exits with an error when any check fails. |
 | `setup` | Installs missing QEMU packages, loads the KVM module, adds you to the `kvm` group and enables `ignore_msrs`. It asks for your password once, through `pkexec`. |
 | `config show` | Prints the settings as JSON. |
-| `config set key=value...` | Changes settings. The keys are `workspace`, `version`, `ram`, `cores`, `vcpus`, `ssh-port`, `display` (`app` or `window`) and `gpu`. Values go through the same validation as the app. |
+| `config set key=value...` | Changes settings. The keys are `workspace`, `version`, `ram`, `cores`, `vcpus`, `ssh-port`, `display` (`app` or `window`), `gpu`, and for network adapter N (1–4) `nicN.enabled` (`true`/`false`), `nicN.mode` (`nat` or `bridged`), `nicN.bridge`, `nicN.model` (`virtio-net-pci`, `vmxnet3`, `e1000-82545em`) and `nicN.mac` (an address, or `random`). Values go through the same validation as the app. |
 | `config recommend` | Sets CPU and RAM to the values recommended for this host. |
 | `workspace show` / `workspace set <dir>` | Prints or sets the Workspace, the folder that holds one folder per VM (default `~/macOS-VMs`). Existing VMs are not moved. |
 | `workspace create` | Creates the VM's folder and extracts the built-in OpenCore and OVMF. |
@@ -52,6 +52,8 @@ macos-kvm-gui check                    # stops the script if the host is not rea
 
 macos-kvm-gui vm create "Sonoma lab" --version sonoma   # recommended CPU/RAM, folder ~/macOS-VMs/sonoma-lab
 macos-kvm-gui config set display=window
+# optional: a second adapter on the host bridge br0 (see troubleshooting.md#bridged-networking)
+macos-kvm-gui config set nic2.enabled=true nic2.mode=bridged nic2.bridge=br0 nic2.model=vmxnet3 nic2.mac=random
 macos-kvm-gui download
 macos-kvm-gui disk create --size 80
 

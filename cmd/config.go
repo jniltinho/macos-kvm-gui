@@ -45,6 +45,42 @@ var configKeys = map[string]func(*core.Config, string) error{
 	"ssh-port":  intKey(func(c *core.Config, n int) { c.SSHPort = n }),
 }
 
+// nic<N>.<field> keys edit network adapter N (1-4).
+func init() {
+	fields := map[string]func(*core.NIC, string) error{
+		"enabled": func(n *core.NIC, v string) error {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				return fmt.Errorf("%q is not true or false", v)
+			}
+			n.Enabled = b
+			return nil
+		},
+		"mode":   func(n *core.NIC, v string) error { n.Mode = v; return nil },
+		"bridge": func(n *core.NIC, v string) error { n.Bridge = v; return nil },
+		"model":  func(n *core.NIC, v string) error { n.Model = v; return nil },
+		"mac": func(n *core.NIC, v string) error {
+			if v == "random" {
+				v = core.RandomMAC()
+			}
+			n.MAC = strings.ToLower(v)
+			return nil
+		},
+	}
+	for i := 1; i <= core.MaxNICs; i++ {
+		for name, set := range fields {
+			i, set := i, set
+			configKeys[fmt.Sprintf("nic%d.%s", i, name)] = func(c *core.Config, v string) error {
+				n, err := c.NIC(i - 1)
+				if err != nil {
+					return err
+				}
+				return set(n, v)
+			}
+		}
+	}
+}
+
 func intKey(set func(*core.Config, int)) func(*core.Config, string) error {
 	return func(c *core.Config, v string) error {
 		n, err := strconv.Atoi(v)
@@ -57,10 +93,11 @@ func intKey(set func(*core.Config, int)) func(*core.Config, string) error {
 }
 
 var configSetCmd = &cobra.Command{
-	Use:     "set key=value...",
-	Short:   "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu)",
-	Example: "  macos-kvm-gui config set version=sonoma ram=16384 cores=8 vcpus=16 display=app",
-	Args:    cobra.MinimumNArgs(1),
+	Use:   "set key=value...",
+	Short: "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu, nic<N>.enabled|mode|bridge|model|mac)",
+	Example: "  macos-kvm-gui config set version=sonoma ram=16384 cores=8 vcpus=16 display=app\n" +
+		"  macos-kvm-gui config set nic2.enabled=true nic2.mode=bridged nic2.bridge=br0 nic2.model=vmxnet3 nic2.mac=random",
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		e, err := currentVM()
 		if err != nil {

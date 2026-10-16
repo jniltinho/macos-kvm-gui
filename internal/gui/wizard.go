@@ -187,6 +187,7 @@ func (u *ui) newVMDialog() {
 // createVM adds the VM and, in the Install tab, makes its folder and disk and downloads the
 // recovery when asked.
 func (u *ui) createVM(c core.Config, sizeGiB int, download bool) {
+	c.Networks = core.NewNetworks(c.Version)
 	e, err := core.CreateVM(c)
 	if err != nil {
 		dialog.ShowError(err, u.win)

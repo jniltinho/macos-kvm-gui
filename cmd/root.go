@@ -59,6 +59,7 @@ func currentVM() (core.VMEntry, error) {
 		c := core.Defaults()
 		c.Name = "macOS Sonoma"
 		c.Workspace = core.VMFolder(c.Name)
+		c.Networks = core.NewNetworks(c.Version)
 		e, err := core.CreateVM(c)
 		return e, err
 	}

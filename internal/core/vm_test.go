@@ -33,6 +33,7 @@ func TestBuildArgs(t *testing.T) {
 		{"sonoma with media", "sonoma", true, "Skylake-Client", "virtio-net-pci"},
 		{"sonoma without media", "sonoma", false, "Skylake-Client", "virtio-net-pci"},
 		{"high sierra", "high-sierra", false, "Penryn", "vmxnet3"},
+		{"catalina has no VirtIO network driver", "catalina", false, "Penryn", "vmxnet3"},
 	}
 	for _, tc := range cases {
 		c.Version = tc.version

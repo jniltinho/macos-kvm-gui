@@ -30,6 +30,7 @@ var Versions = []Version{
 }
 
 const (
+	idxBigSur   = 3
 	idxMonterey = 4
 	idxVentura  = 5
 	// validated: the only version tested end to end on the reference host.
@@ -56,6 +57,10 @@ type Config struct {
 	SSHPort   int    `json:"ssh_port"`
 	GPU       string `json:"gpu,omitempty"`     // PCI address of a passed-through GPU; "" = emulated display
 	Display   string `json:"display,omitempty"` // "app" (default): screen inside the app over VNC; "window": QEMU's own window
+	// Networks are the adapters (Adapter 1–4). nil (JSON null or absent), for VMs saved before
+	// adapters existed, means one NAT adapter with the legacy MAC: see Adapters. An empty list
+	// means no adapter at all, so it must survive JSON: no omitempty.
+	Networks []NIC `json:"networks"`
 }
 
 func Defaults() Config {
@@ -132,7 +137,7 @@ func (c Config) Validate() error {
 	if c.SSHPort < 1024 || c.SSHPort > 65535 {
 		return &FieldError{"ssh_port", "use a port between 1024 and 65535"}
 	}
-	return nil
+	return validateNICs(c.Adapters())
 }
 
 // ConfigPath is ~/.config/macos-kvm-gui/config.json (or the XDG equivalent).
@@ -197,7 +202,6 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 // Profile is the virtual hardware derived from the macOS version.
 type Profile struct {
 	CPU          string
-	NIC          string
 	Experimental bool
 	NeedsAVX2    bool
 }
@@ -209,15 +213,11 @@ func ProfileFor(version string) Profile {
 	i := versionIndex(version)
 	p := Profile{
 		CPU:          "Skylake-Client,-hle,-rtm," + cpuFlags,
-		NIC:          "virtio-net-pci",
 		Experimental: version != validated,
 		NeedsAVX2:    i >= idxVentura,
 	}
 	if i <= idxMonterey {
 		p.CPU = "Penryn," + cpuFlags
-	}
-	if version == "high-sierra" {
-		p.NIC = "vmxnet3"
 	}
 	return p
 }

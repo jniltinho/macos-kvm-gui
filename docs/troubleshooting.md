@@ -107,6 +107,43 @@ Read the last `qemu-img` line for unsupported compression versus disk-space/perm
 - `QMP control unavailable: use Force stop` or `warning: QMP connection closed; graceful shutdown is unavailable` — wait briefly if just started, or shut down inside macOS. Force stop is destructive; the app never escalates automatically.
 - `could not prepare the boot files: MKG_ASSETS_DIR=<directory> is missing <file>` — fix the complete override tree or unset the override/use built-ins. The setting may come from the user-config `.env`.
 
+## Network adapters
+
+Each VM has up to four adapters (Settings › Network, Adapter 1–4), attached to **NAT** or to a **Bridged Adapter**, with a type and a MAC address.
+
+| Adapter type | macOS with a built-in driver |
+| --- | --- |
+| Paravirtualized Network (`virtio-net-pci`) | Big Sur 11 and later |
+| VMware `vmxnet3` | High Sierra 10.13 through Tahoe 26 |
+| Intel PRO/1000 MT Desktop (`e1000-82545em`) | High Sierra through Monterey 12 (Apple removed the driver in Ventura) |
+
+New adapters default to `vmxnet3` through Catalina and `virtio-net-pci` from Big Sur. Settings warns when the chosen type has no driver for the VM's macOS version.
+
+- **No network in macOS:** check the adapter type against the table above.
+- **"SSH port … is in use":** another VM (or program) already listens on that port on `127.0.0.1`. Every VM defaults to 2222; give each VM its own port in Settings › Network.
+- **The MAC address.** VMs created before adapters became configurable keep the address they always had (`52:54:00:c9:18:27`), so macOS keeps seeing the same interface. New VMs and new adapters get a random, locally administered address. Changing the first adapter's MAC or type can make macOS treat it as a new interface; iCloud and Messages may then ask you to sign in again. Two VMs on the same bridge must not share a MAC: regenerate it in a copied VM.
+- **Several NAT adapters** each get their own private subnet (10.0.2.0/24, 10.0.3.0/24, …). The SSH forward is only on the first enabled NAT adapter.
+
+### Bridged networking
+
+A bridged adapter puts the VM on a host bridge such as `br0`, through QEMU's `qemu-bridge-helper`. The app and QEMU stay unprivileged, but the helper needs privileges, and the app never changes the host's network configuration. One-time setup, as an administrator:
+
+1. **Create a bridge** with your network tools (NetworkManager, netplan or systemd-networkd), enslaving a wired interface. Wi-Fi interfaces usually cannot be bridged. `virbr0` (libvirt) and Docker bridges exist but are NAT or isolated networks, not your LAN.
+2. **Allow the bridge** for the helper, in `/etc/qemu/bridge.conf` (create the file if it is missing):
+
+   ```text
+   allow br0
+   ```
+
+   `allow all` also works, and a `deny` line wins over any `allow`.
+3. **Make the helper setuid root.** Fedora ships it that way; Ubuntu and Debian do not. Use `dpkg-statoverride` so package upgrades keep the change:
+
+   ```sh
+   sudo dpkg-statoverride --update --add root root 4755 /usr/lib/qemu/qemu-bridge-helper
+   ```
+
+The helper is `/usr/lib/qemu/qemu-bridge-helper` on Ubuntu/Debian and `/usr/libexec/qemu-bridge-helper` on Fedora. Before starting, the app checks that the bridge exists, the helper is installed and, when it can read `bridge.conf`, that the bridge is allowed. Anything else (helper privileges, `/dev/net/tun`) shows up as QEMU's error: "A bridged adapter could not attach…". A bridged VM gets its address from the bridge's network (DHCP on your LAN, for example); there is no `127.0.0.1` SSH forward on that adapter, so use the VM's address with **Remote Login** enabled in macOS.
+
 ## Screen, keyboard and pointer
 
 - **Shut down does nothing.** The request reaches macOS (the Log tab shows "ACPI power button sent to macOS"), but macOS treats the power button as Sleep (`pmset -g` shows `Sleep On Power Button 1`) and a VM cannot sleep. Use **Apple menu › Shut Down** inside macOS, `sudo shutdown -h now` over SSH, or **Force stop** if macOS is frozen.

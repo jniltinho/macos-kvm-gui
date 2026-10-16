@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -10,7 +11,7 @@ import (
 func TestConfigRoundTripAndDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "config.json")
 	c, err := LoadConfig(path)
-	if err != nil || c != Defaults() {
+	if err != nil || !reflect.DeepEqual(c, Defaults()) {
 		t.Fatalf("no file should yield defaults: %+v %v", c, err)
 	}
 	c.RAMMiB = 16384
@@ -81,8 +82,8 @@ func TestProfileFor(t *testing.T) {
 		if p.NeedsAVX2 == old {
 			t.Errorf("%s: NeedsAVX2=%v", v.Short, p.NeedsAVX2)
 		}
-		if (v.Short == "high-sierra") != (p.NIC == "vmxnet3") {
-			t.Errorf("%s: NIC %s", v.Short, p.NIC)
+		if m := defaultNICModel(v.Short); !NICSupported(v.Short, m) {
+			t.Errorf("%s: default adapter %s has no macOS driver", v.Short, m)
 		}
 		if p.Experimental != (v.Short != "sonoma") {
 			t.Errorf("%s: experimental %v", v.Short, p.Experimental)
