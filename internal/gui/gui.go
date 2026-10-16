@@ -76,60 +76,63 @@ type ui struct {
 	vm      *core.VM
 	busy    bool
 
-	checks                     *fyne.Container
-	steps                      []*itemCard // the Install tab's steps
-	hostSummary                *widget.Label
-	installTitle               *widget.Label
-	installBar                 *progressLine
-	installFiles               *widget.Label
-	btnStartInstall            *widget.Button
-	btnVerboseInstall          *widget.Button
-	btnFullInstaller           *widget.Button
-	btnDeleteInstaller         *widget.Button
-	installerInfo              *widget.Label
-	installMode                *widget.Label
-	watching                   bool      // the screen shows a VM another process runs (watchOutside)
-	watchID                    string    // which VM it shows
-	watchVNC                   *core.VNC // its connection, closed when another VM is selected
-	lastWatch                  time.Time // the last attempt, so they are at most one every 3 s
-	installerCmd               *widget.Entry
-	installerCmdBox            *fyne.Container
-	stage                      *widget.Label
-	bar                        *widget.ProgressBar
-	barInf                     *widget.ProgressBarInfinite
-	diskSize                   *widget.Entry
-	log                        *widget.TextGrid
-	logScroll                  *container.Scroll
-	logLines                   []string
-	gpuList                    *fyne.Container
-	gpuSelect                  *widget.Select
-	rootPatch                  *widget.Check
-	rootPatchInfo              *widget.Label
-	rootPatchSetting           bool // SetChecked from refresh, not the user
-	gpuStatus                  *widget.Label
-	gpus                       []core.GPU
-	header                     *widget.Label // VM state chip in the toolbar
-	status                     *widget.Label // status bar
-	tabs                       *container.AppTabs
-	vmItem                     *widget.List
-	details                    map[string]*canvas.Text
-	screen                     *screen
-	screenHolder               *fyne.Container
-	screenWin                  fyne.Window
-	btnDetach, btnFull         *toolButton
-	btnNew, btnEdit, btnDelete *toolButton
-	vms                        []core.VMEntry
-	cur                        core.VMEntry // the selected VM
-	runningID                  string       // the VM QEMU is running, if any
-	singleFile                 bool         // --config: one VM file, no list management
-	preview                    *canvas.Image
-	previewImg                 *image.RGBA
-	previewBg                  *canvas.Rectangle
-	previewName                *canvas.Text
-	previewIdle                *fyne.Container
-	btnExport, btnImport       *toolButton
-	menuFor                    map[*fyne.MenuItem]*toolButton // menu items that mirror a toolbar button
-	lastPreview                time.Time
+	checks                         *fyne.Container
+	steps                          []*itemCard // the Install tab's steps
+	hostSummary                    *widget.Label
+	installTitle                   *widget.Label
+	installBar                     *progressLine
+	installFiles                   *widget.Label
+	btnStartInstall                *widget.Button
+	btnVerboseInstall              *widget.Button
+	btnFullInstaller               *widget.Button
+	btnDeleteInstaller             *widget.Button
+	installerInfo                  *widget.Label
+	installMode                    *widget.Label
+	watching                       bool      // the screen shows a VM another process runs (watchOutside)
+	watchID                        string    // which VM it shows
+	watchVNC                       *core.VNC // its connection, closed when another VM is selected
+	lastWatch                      time.Time // the last attempt, so they are at most one every 3 s
+	installerCmd                   *widget.Entry
+	installerCmdBox                *fyne.Container
+	stage                          *widget.Label
+	bar                            *widget.ProgressBar
+	barInf                         *widget.ProgressBarInfinite
+	diskSize                       *widget.Entry
+	log                            *widget.TextGrid
+	logScroll                      *container.Scroll
+	logLines                       []string
+	gpuList                        *fyne.Container
+	gpuSelect                      *widget.Select
+	rootPatch                      *widget.Check
+	rootPatchInfo                  *widget.Label
+	rootPatchSetting               bool // SetChecked from refresh, not the user
+	gpuStatus                      *widget.Label
+	gpus                           []core.GPU
+	reimsChecks                    *fyne.Container
+	reimsSummary, reimsInfo        *widget.Label
+	btnReimsInstall, btnReimsBuild *widget.Button
+	header                         *widget.Label // VM state chip in the toolbar
+	status                         *widget.Label // status bar
+	tabs                           *container.AppTabs
+	vmItem                         *widget.List
+	details                        map[string]*canvas.Text
+	screen                         *screen
+	screenHolder                   *fyne.Container
+	screenWin                      fyne.Window
+	btnDetach, btnFull             *toolButton
+	btnNew, btnEdit, btnDelete     *toolButton
+	vms                            []core.VMEntry
+	cur                            core.VMEntry // the selected VM
+	runningID                      string       // the VM QEMU is running, if any
+	singleFile                     bool         // --config: one VM file, no list management
+	preview                        *canvas.Image
+	previewImg                     *image.RGBA
+	previewBg                      *canvas.Rectangle
+	previewName                    *canvas.Text
+	previewIdle                    *fyne.Container
+	btnExport, btnImport           *toolButton
+	menuFor                        map[*fyne.MenuItem]*toolButton // menu items that mirror a toolbar button
+	lastPreview                    time.Time
 
 	btnPrepare, btnDownload, btnDisk, btnRemove *widget.Button
 	btnStart, btnPowerdown, btnKill             *toolButton
@@ -321,7 +324,7 @@ func statusIcon(s core.Status) fyne.Resource {
 
 func (u *ui) hostTab() fyne.CanvasObject {
 	u.checks = container.NewVBox()
-	recheck := widget.NewButtonWithIcon("Check again", theme.ViewRefreshIcon(), u.refreshChecks)
+	recheck := widget.NewButtonWithIcon("Check again", theme.ViewRefreshIcon(), func() { u.refreshChecks(); u.refreshReimsInfo() })
 	fix := widget.NewButtonWithIcon("Set up host", theme.SettingsIcon(), func() {
 		me, err := osuser.Current()
 		if err != nil {
@@ -353,30 +356,96 @@ func (u *ui) hostTab() fyne.CanvasObject {
 	u.hostSummary.TextStyle = fyne.TextStyle{Bold: true}
 	header := tabHeader("Host checks", "system", theme.ComputerIcon(),
 		container.NewBorder(nil, nil, nil, container.NewHBox(recheck, fix), u.hostSummary), setupNote)
-	return tabPage(header, u.checks, surface(notice))
+	return tabPage(header, u.checks, u.reimsSection(), u.reimsChecks, surface(notice))
 }
 
-func (u *ui) refreshChecks() {
-	u.checks.RemoveAll()
-	checks := u.host.Checks(u.cfg.Version)
+// reimsSection is the Host tab's Reims vGPU header: the build in use and how to get one.
+func (u *ui) reimsSection() fyne.CanvasObject {
+	u.reimsChecks = container.NewVBox()
+	u.reimsSummary = widget.NewLabel("")
+	u.reimsSummary.TextStyle = fyne.TextStyle{Bold: true}
+	u.reimsInfo = wrapped("")
+	u.btnReimsInstall = widget.NewButtonWithIcon("Install Reims vGPU", theme.DownloadIcon(), func() {
+		u.tabs.SelectIndex(5) // Log: the progress
+		u.run("Install Reims vGPU", func() error { return core.InstallReims(context.Background(), u.logAsync) }, u.refreshReimsInfo)
+	})
+	u.btnReimsBuild = widget.NewButtonWithIcon("Build from source (Docker)", theme.ComputerIcon(), func() {
+		dialog.ShowConfirm("Build Reims vGPU", "Build Reims vGPU's QEMU from source in a Docker container for this host's Ubuntu release? "+
+			"It downloads Rust, QEMU and SDL3 sources and takes about 10 to 20 minutes the first time.", func(ok bool) {
+			if ok {
+				u.tabs.SelectIndex(5)
+				u.run("Build Reims vGPU", func() error { return core.BuildReims(context.Background(), "", u.logAsync) }, u.refreshReimsInfo)
+			}
+		}, u.win)
+	})
+	about := caption("Reims vGPU is an experimental paravirtual GPU: Metal in macOS through the host's Vulkan driver, without passing a GPU through. " +
+		"It runs on its own QEMU build, installed in <Workspace>/.reims from a prebuilt package (Ubuntu 24.04 and 26.04) or built in Docker. " +
+		"Choose it per VM in Settings › Display. The checks below are warnings unless the selected VM uses it.")
+	about.Wrapping = fyne.TextWrapWord
+	u.refreshReimsInfo()
+	return tabHeader("Reims vGPU (experimental)", "gpu", gpuTabIcon(),
+		container.NewBorder(nil, nil, nil, container.NewHBox(u.btnReimsInstall, u.btnReimsBuild), u.reimsSummary), u.reimsInfo, about)
+}
+
+// refreshReimsInfo shows the Reims build in use; probing it runs QEMU, so it is off the UI thread.
+func (u *ui) refreshReimsInfo() {
+	go func() {
+		text := "Not installed."
+		if info, err := core.ReimsInstalled(); err == nil {
+			text = "In use: " + info.QEMU
+			if info.Build != "" {
+				text += "\nBuild " + info.Build + ", upstream commit " + info.Commit
+			}
+			if info.AppleGFX != nil {
+				text += "\n" + info.AppleGFX.Error()
+			}
+		}
+		fyne.Do(func() { u.reimsInfo.SetText(text) })
+	}()
+}
+
+func checkCard(c core.Check) fyne.CanvasObject {
+	card := newItemCard("", c.Name, c.Detail)
+	badge := map[core.Status]fyne.ThemeColorName{core.OK: theme.ColorNameSuccess, core.Warn: theme.ColorNameWarning,
+		core.Fail: theme.ColorNameError}[c.Status]
+	if badge == "" {
+		badge = theme.ColorNameDisabled
+	}
+	card.mark(badge, statusIcon(c.Status), c.Status.String(), statusImportance(c.Status), c.Hint, c.Status == core.Fail)
+	return card.obj
+}
+
+// fillChecks shows checks in box and returns how many passed.
+func fillChecks(box *fyne.Container, checks []core.Check) int {
+	box.RemoveAll()
 	ok := 0
 	for _, c := range checks {
-		card := newItemCard("", c.Name, c.Detail)
-		badge := map[core.Status]fyne.ThemeColorName{core.OK: theme.ColorNameSuccess, core.Warn: theme.ColorNameWarning,
-			core.Fail: theme.ColorNameError}[c.Status]
-		if badge == "" {
-			badge = theme.ColorNameDisabled
-		}
-		card.mark(badge, statusIcon(c.Status), c.Status.String(), statusImportance(c.Status), c.Hint, c.Status == core.Fail)
-		u.checks.Add(card.obj)
+		box.Add(checkCard(c))
 		if c.Status == core.OK {
 			ok++
 		}
 	}
+	return ok
+}
+
+func (u *ui) refreshChecks() {
+	all := u.host.ChecksFor(u.cfg)
+	reims := u.host.ReimsChecksFor(u.cfg) // ChecksFor ends with these
+	checks := all[:len(all)-len(reims)]
+	ok := fillChecks(u.checks, checks)
 	if ok == len(checks) {
 		u.hostSummary.SetText(fmt.Sprintf("All %d checks passed: the host is ready", ok))
 	} else {
 		u.hostSummary.SetText(fmt.Sprintf("%d of %d checks passed", ok, len(checks)))
+	}
+	ok = fillChecks(u.reimsChecks, reims)
+	switch {
+	case ok == len(reims):
+		u.reimsSummary.SetText("Ready for Reims vGPU VMs")
+	case u.cfg.Reims():
+		u.reimsSummary.SetText(fmt.Sprintf("%d of %d checks passed: %s cannot start yet", ok, len(reims), u.vmName()))
+	default:
+		u.reimsSummary.SetText(fmt.Sprintf("%d of %d checks passed (only needed for Reims vGPU VMs)", ok, len(reims)))
 	}
 }
 
@@ -495,6 +564,9 @@ func (u *ui) refreshGPUs() {
 	if ids := u.host.ReservedIDs(); ids != "" {
 		status = "Reserved for vfio-pci: " + ids + ". If you just changed this, reboot the host."
 	}
+	if u.cfg.Reims() {
+		status = "This VM uses Reims vGPU (Settings › Display): choose VMware SVGA there to pass a GPU through. " + status
+	}
 	u.gpuStatus.SetText(status)
 }
 
@@ -537,7 +609,9 @@ func (u *ui) refresh() {
 	enable(u.btnReserve, !running && eligible)
 	u.refreshRootPatch(running)
 	enable(u.btnRelease, !running && u.host.ReservedIDs() != "")
-	if running {
+	enable(u.btnReimsInstall, !u.busy)
+	enable(u.btnReimsBuild, !u.busy)
+	if running || u.cfg.Reims() { // Reims vGPU and passthrough exclude each other (Config.Validate)
 		u.gpuSelect.Disable()
 	} else {
 		u.gpuSelect.Enable()
@@ -553,13 +627,20 @@ func (u *ui) refresh() {
 		u.header.Importance = stateImportance(state)
 	}
 	u.header.Refresh()
-	enable(u.btnDetach, u.cfg.InApp())
+	idle := screenIdle
+	if u.cfg.Reims() {
+		idle = screenReims
+	}
+	if u.screen.hint.Text != idle {
+		u.screen.hint.SetText(idle)
+	}
+	enable(u.btnDetach, u.cfg.InApp() && !u.cfg.Reims())
 	enable(u.btnNew, !running && !u.singleFile)
 	enable(u.btnEdit, !running)
 	enable(u.btnDelete, !running && !u.singleFile)
 	enable(u.btnExport, !running)
 	enable(u.btnImport, !running && !u.singleFile)
-	enable(u.btnFull, u.cfg.InApp() && running)
+	enable(u.btnFull, u.cfg.InApp() && !u.cfg.Reims() && running)
 	u.vmItem.Refresh()
 	u.refreshMenu()
 	u.refreshDetails()

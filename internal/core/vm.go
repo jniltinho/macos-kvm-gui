@@ -167,7 +167,7 @@ type VM struct {
 	mu       sync.Mutex
 	proc     *os.Process
 	qmp      *QMP
-	vncSock  string // set while running with the in-app display
+	vncSock  string // set while running with the in-app display or Reims vGPU
 	discDone func() // releases the attached installer disc, if any
 	state    VMState
 	ioError  string
@@ -302,7 +302,7 @@ func (v *VM) Start(c Config) error {
 		}
 		v.mu.Lock()
 		v.proc, v.ioError, v.vncSock = cmd.Process, "", ""
-		if c.InApp() {
+		if c.InApp() || c.Reims() { // BuildArgs serves VNC for both
 			v.vncSock = VNCSocket(sock)
 		}
 		v.discDone = discDone

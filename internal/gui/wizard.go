@@ -86,11 +86,29 @@ func (u *ui) newVMDialog() {
 	cpuSet(rec.VCPUs)
 	display := widget.NewSelect([]string{displayAppLabel, displayWindowLabel}, nil)
 	display.SetSelected(displayAppLabel)
+	graphics, reimsBox := graphicsSelect(display)
+	graphicsPicked, settingGraphics := false, false // once the user picks, the version no longer changes it
+	onGraphics := graphics.OnChanged
+	graphics.OnChanged = func(l string) {
+		if !settingGraphics {
+			graphicsPicked = true
+		}
+		onGraphics(l)
+	}
+	defaultGraphics := func(v string) {
+		if graphicsPicked {
+			return
+		}
+		settingGraphics = true
+		graphics.SetSelected(map[bool]string{true: graphicsReimsLabel, false: graphicsSVGALabel}[u.reimsByDefault(v, rec.RAMMiB)])
+		settingGraphics = false
+	}
 	hardware := container.NewVBox(widget.NewForm(
 		widget.NewFormItem("Base Memory", ramRow),
 		widget.NewFormItem("Number of CPUs", cpuRow),
 		widget.NewFormItem("Display", display),
-	), note(fmt.Sprintf("Recommended for this host: %d MB and %d CPUs. Without a supported GPU the CPU draws the screen, so more CPUs make it smoother.", rec.RAMMiB, rec.VCPUs)))
+		widget.NewFormItem("Graphics", graphics),
+	), reimsBox, note(fmt.Sprintf("Recommended for this host: %d MB and %d CPUs. Without a supported GPU the CPU draws the screen, so more CPUs make it smoother.", rec.RAMMiB, rec.VCPUs)))
 
 	// Hard disk.
 	diskRow, diskValue, diskSet := sliderRow(core.MinDiskGiB, 2048, 8, "GB")
@@ -149,6 +167,7 @@ func (u *ui) newVMDialog() {
 		netUpdate()
 	}
 	onVersion = func(v string) {
+		defaultGraphics(v)
 		if !modelPicked {
 			setting = true
 			model.SetSelected(nicLabel(core.NewNetworks(v)[0].Model))
@@ -211,6 +230,7 @@ func (u *ui) newVMDialog() {
 			c.Cores = c.VCPUs / 2
 		}
 		c.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
+		c.Graphics = graphicsValue(graphics.Selected, "")
 		nic := core.NIC{Enabled: true, Mode: core.NetNAT, Model: byLabel[model.Selected], MAC: strings.ToLower(strings.TrimSpace(mac.Text))}
 		if attach.Selected == attachBridge {
 			nic.Mode, nic.Bridge = core.NetBridged, strings.TrimSpace(bridge.Text)
@@ -297,4 +317,18 @@ func (u *ui) createVM(c core.Config, sizeGiB int, download bool) {
 		}
 		dialog.ShowInformation("New VM", c.Name+" is ready. "+next, u.win)
 	})
+}
+
+// reimsByDefault: new Sequoia and Tahoe VMs get Reims vGPU when it is installed and the host
+// passes its checks (warnings allowed); it worked on Sequoia 15.8.1 with an RTX 4070.
+func (u *ui) reimsByDefault(version string, ramMiB int) bool {
+	if version != "sequoia" && version != "tahoe" {
+		return false
+	}
+	for _, c := range u.host.ReimsChecks(ramMiB) { // includes finding the Reims QEMU
+		if c.Status == core.Fail {
+			return false
+		}
+	}
+	return true
 }

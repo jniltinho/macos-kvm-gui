@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -358,10 +359,15 @@ func (u *ui) refreshDetails() {
 	set("System/CPU Model", strings.SplitN(p.CPU, ",", 2)[0])
 	set("System/Firmware", "UEFI (OVMF) with OpenCore")
 	set("System/Acceleration", "KVM, Q35 chipset")
-	set("Display/Shown", map[bool]string{true: "In the app", false: "QEMU window"}[u.cfg.InApp()])
-	set("Display/Graphics Controller", "VMware SVGA")
+	shown, ctrl, remote := map[bool]string{true: "In the app", false: "QEMU window"}[u.cfg.InApp()], "VMware SVGA",
+		map[bool]string{true: "VNC on a private socket", false: "Disabled"}[u.cfg.InApp()]
+	if u.cfg.Reims() {
+		shown, ctrl, remote = "Reims vGPU window", "Reims vGPU (apple-gfx-pci)", "VNC on a private socket (Preview only)"
+	}
+	set("Display/Shown", shown)
+	set("Display/Graphics Controller", ctrl)
 	set("Display/Resolution", "1920x1080")
-	set("Display/Remote Display", map[bool]string{true: "VNC on a private socket", false: "Disabled"}[u.cfg.InApp()])
+	set("Display/Remote Display", remote)
 	adapters := u.cfg.Adapters()
 	for i := 0; i < core.MaxNICs; i++ {
 		v := ""
@@ -377,8 +383,11 @@ func (u *ui) refreshDetails() {
 	set("Network/Port Forwarding", fwd)
 	set("USB/Devices", "Keyboard, Tablet")
 	gpu, accel := "None", "Disabled: the CPU draws the screen"
-	if u.cfg.GPU != "" {
+	switch {
+	case u.cfg.GPU != "":
 		gpu, accel = u.cfg.GPU+" (vfio-pci)", "Metal through the passed-through GPU"
+	case u.cfg.Reims():
+		accel = "Metal through Reims vGPU (the host's Vulkan driver)"
 	}
 	set("GPU Passthrough/GPU", gpu)
 	set("GPU Passthrough/3D Acceleration", accel)
@@ -417,22 +426,50 @@ func (u *ui) refreshDetails() {
 // screenTab holds the live VM screen; "Open in window" moves it to its own window.
 func (u *ui) screenTab() fyne.CanvasObject {
 	u.screen = newScreen()
-	u.screen.onFrame = func(f *image.RGBA) {
-		if time.Since(u.lastPreview) < time.Second/5 { // the preview only needs a few frames per second
-			return
-		}
-		u.lastPreview = time.Now()
-		// The preview gets its own small image: sharing the screen's buffer between two canvas
-		// images made Fyne recycle a texture that other widgets were still drawing with.
-		u.previewImg = thumbnail(f, u.previewImg)
-		u.preview.Image = u.previewImg
-		u.previewIdle.Hide()
-		u.previewBg.Show()
-		u.preview.Show()
-		u.preview.Refresh()
-	}
+	u.screen.onFrame = u.showPreview
 	u.screenHolder = container.NewStack(u.screen)
 	return u.screenHolder
+}
+
+// showPreview draws a frame into the Details preview, a few times per second at most.
+func (u *ui) showPreview(f *image.RGBA) {
+	if time.Since(u.lastPreview) < time.Second/5 {
+		return
+	}
+	u.lastPreview = time.Now()
+	// The preview gets its own small image: sharing the screen's buffer between two canvas
+	// images made Fyne recycle a texture that other widgets were still drawing with.
+	u.previewImg = thumbnail(f, u.previewImg)
+	u.preview.Image = u.previewImg
+	u.previewIdle.Hide()
+	u.previewBg.Show()
+	u.preview.Show()
+	u.preview.Refresh()
+}
+
+// previewOnly feeds the Details preview from v without attaching it as the Screen: a Reims vGPU
+// VM's screen is the library's own window. It returns when v.Run does.
+func (u *ui) previewOnly(v *core.VNC) error {
+	var dirty atomic.Bool
+	v.OnUpdate = func() { dirty.Store(true) }
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		var buf *image.RGBA
+		t := time.NewTicker(time.Second / 5)
+		defer t.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				if dirty.Swap(false) {
+					fyne.Do(func() { buf = v.Frame(buf); u.showPreview(buf) })
+				}
+			}
+		}
+	}()
+	return v.Run()
 }
 
 func (u *ui) statusBar() fyne.CanvasObject {
@@ -449,8 +486,12 @@ func (u *ui) refreshStatus(s core.VMState, outside bool) {
 	}
 	defer u.status.Refresh()
 	switch {
-	case outside:
+	case outside && !u.cfg.Reims():
 		text = "● Running (outside the app)  ·  Started by the command line or an AI agent (MCP). Keys and clicks on the screen go to macOS; shut it down in macOS or where it was started."
+	case outside && u.cfg.Reims():
+		text = "● Running (outside the app)  ·  Started by the command line or an AI agent (MCP), in the Reims vGPU window. Shut it down in macOS or where it was started."
+	case s != core.Stopped && u.cfg.Reims():
+		text += "  ·  In the Reims vGPU window; the Preview follows it."
 	case s != core.Stopped && u.cfg.InApp():
 		text += "  ·  Click the screen to type; keys go to macOS while it has focus. Ctrl+Alt+F leaves full screen."
 	case s != core.Stopped:
@@ -478,7 +519,7 @@ func (u *ui) watchOutside() {
 	if !ok || r.VNCSocket == "" || core.CheckRunDir(r.VNCSocket) != nil {
 		return
 	}
-	id := u.cur.ID
+	id, reims := u.cur.ID, u.cfg.Reims()
 	u.watching, u.watchID = true, id
 	done := func() { u.watching, u.watchVNC = false, nil; u.refresh() }
 	go func() {
@@ -494,7 +535,9 @@ func (u *ui) watchOutside() {
 				return
 			}
 			attached, u.watchVNC = true, v
-			u.screen.attach(v)
+			if !reims { // a Reims VM's screen is its own window: the Preview only
+				u.screen.attach(v)
+			}
 			u.refresh()
 		})
 		if !attached {
@@ -503,7 +546,11 @@ func (u *ui) watchOutside() {
 			return
 		}
 		u.logAsync(fmt.Sprintf("[VM] showing %s, run by another process (pid %d)", u.vmName(), r.PID))
-		v.Run()
+		if reims {
+			u.previewOnly(v)
+		} else {
+			v.Run()
+		}
 		v.Close()
 		fyne.Do(func() { u.screen.detach(v); done() })
 	}()
@@ -554,6 +601,20 @@ func (u *ui) startKexts(verbose bool, ks core.ExtraKexts) {
 		return
 	}
 	u.refresh()
+	if c.Reims() { // the screen is Reims vGPU's window; VNC feeds the Preview only
+		go func() {
+			v, err := core.DialVNC(u.vm.VNCSocket())
+			if err != nil {
+				u.logAsync("preview: " + err.Error())
+				return
+			}
+			if err := u.previewOnly(v); err != nil && u.vm.State() != core.Stopped {
+				u.logAsync("preview: " + err.Error())
+			}
+			v.Close()
+		}()
+		return
+	}
 	if !u.cfg.InApp() {
 		return
 	}

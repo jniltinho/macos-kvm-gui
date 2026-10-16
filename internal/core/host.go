@@ -78,19 +78,22 @@ var tools = []struct{ bin, pkg string }{
 // Checks runs every host check for the chosen macOS version.
 func (h Host) Checks(version string) []Check { return h.ChecksFor(Config{Version: version}) }
 
-// ChecksFor runs every host check for c. Reims vGPU's checks are included, as warnings at most
-// unless c runs on Reims vGPU.
+// ChecksFor runs every host check for c: the base checks, then ReimsChecksFor's.
 func (h Host) ChecksFor(c Config) []Check {
-	out := h.baseChecks(c.Version)
+	return append(h.baseChecks(c.Version), h.ReimsChecksFor(c)...)
+}
+
+// ReimsChecksFor runs Reims vGPU's checks for c, as warnings at most unless c runs on Reims vGPU.
+func (h Host) ReimsChecksFor(c Config) []Check {
 	ram := c.RAMMiB
 	if ram == 0 {
 		ram = Defaults().RAMMiB
 	}
-	for _, ch := range h.ReimsChecks(ram) {
-		if ch.Status == Fail && !c.Reims() {
-			ch.Status = Warn
+	out := h.ReimsChecks(ram)
+	for i := range out {
+		if out[i].Status == Fail && !c.Reims() {
+			out[i].Status = Warn
 		}
-		out = append(out, ch)
 	}
 	return out
 }
