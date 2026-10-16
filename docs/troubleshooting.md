@@ -262,6 +262,6 @@ These are limitations, not translated core error messages:
 **In the guest**
 
 - **The desktop never appears:** `METAL_ERROR_MODE` is not set. Boot the recovery and set it from Terminal, see [first boot in macOS](reims-vgpu.md#first-boot-in-macos), or switch the VM back to `vmware-svga`, set it on the desktop, and switch again.
-- **WindowServer crashes at a larger resolution:** displays wider than 2048 pixels need upstream's `ReimsVgpu.kext`, which loads on macOS 26 only (the app adds it to Tahoe VMs). On earlier versions set the resolution back to 1920x1080 (`config set resolution=1920x1080`). See [resolution](reims-vgpu.md#resolution).
+- **WindowServer crashes at a larger resolution:** on macOS before 26, widths between 2048 and 3840 pixels (2304x1296, 2560x1440, 2560x1600) crash WindowServer at login; upstream's `ReimsVgpu.kext` fixes it but loads on macOS 26 only (the app adds it to Tahoe VMs). Use 1920x1080, 1920x1200 or 3840x2160 (a HiDPI desktop) (`config set resolution=1920x1080`). See [resolution](reims-vgpu.md#resolution).
 - **`ReimsVgpu.kext: ... does not match reims-util b302389`:** the download was not the pinned file; nothing was cached. Check the network (a proxy rewriting downloads) and start again.
 - **The Screen tab stays empty:** expected. The screen is Reims vGPU's own window; the Preview and the MCP server's `screen_capture` still work.

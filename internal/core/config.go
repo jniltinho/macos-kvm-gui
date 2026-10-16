@@ -134,12 +134,14 @@ func (c Config) ReimsResolution() string {
 	return c.Resolution
 }
 
-// WideResolution reports whether a resolution is wider than 2048 px: upstream says WindowServer
-// dies at boot often enough to matter there without ReimsVgpu.kext, which loads on macOS 26 only.
+// WideResolution reports whether WindowServer is expected to crash at login on this resolution
+// without ReimsVgpu.kext, which loads on macOS 26 only. Upstream: wider than 2048 px. Measured on
+// Sequoia 15.8.1: 2304x1296 and 2560x1440 crashed at every boot, while 3840x2160 boots as a
+// HiDPI 1920x1080 desktop with no crash, so 4K is not counted.
 func WideResolution(r string) bool {
 	var w, h int
 	fmt.Sscanf(r, "%dx%d", &w, &h)
-	return w > 2048
+	return w > 2048 && w < 3840
 }
 
 // ReimsKext reports whether the VM loads ReimsVgpu.kext: Reims vGPU on Tahoe, the only

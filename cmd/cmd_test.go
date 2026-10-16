@@ -51,7 +51,7 @@ func TestConfigCommands(t *testing.T) {
 	if _, err := run(t, "--config", cfg, "config", "set", "resolution=1600x900"); err == nil || !strings.Contains(err.Error(), "1920x1080, 1920x1200") {
 		t.Fatalf("invalid resolution must list the allowed values: %v", err)
 	}
-	if out, err := run(t, "--config", cfg, "config", "set", "resolution=2560x1440"); err != nil || !strings.Contains(out, "wider than 2048 px") {
+	if out, err := run(t, "--config", cfg, "config", "set", "resolution=2560x1440"); err != nil || !strings.Contains(out, "between 2048 and 3840 px") {
 		t.Fatalf("a wide resolution before Tahoe warns: %v %s", err, out)
 	}
 	if out, _ := run(t, "--config", cfg, "config", "show"); !strings.Contains(out, `"resolution": "2560x1440"`) {

@@ -154,7 +154,7 @@ var configSetCmd = &cobra.Command{
 			return err
 		}
 		if c.Reims() && core.WideResolution(c.ReimsResolution()) && !c.ReimsKext() {
-			fmt.Fprintln(out, "warning: wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)")
+			fmt.Fprintln(out, "warning: between 2048 and 3840 px wide, WindowServer crashed at every login on macOS Sequoia (ReimsVgpu.kext, which fixes it, loads on macOS 26 only); 3840x2160 works as a HiDPI desktop")
 		}
 		fmt.Fprintln(out, "saved", e.DisplayName())
 		return nil

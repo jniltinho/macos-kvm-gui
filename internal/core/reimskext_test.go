@@ -27,7 +27,7 @@ func TestResolution(t *testing.T) {
 	if err := c.Validate(); !errors.As(err, &fe) || fe.Field != "resolution" || !strings.Contains(err.Error(), strings.Join(Resolutions, ", ")) {
 		t.Errorf("invalid resolution must list the allowed values: %v", err)
 	}
-	for r, want := range map[string]bool{"1920x1080": false, "2048x1152": false, "2304x1296": true, "3840x2160": true} {
+	for r, want := range map[string]bool{"1920x1080": false, "2048x1152": false, "2304x1296": true, "2560x1600": true, "3840x2160": false} {
 		if WideResolution(r) != want {
 			t.Errorf("WideResolution(%s) = %v", r, !want)
 		}

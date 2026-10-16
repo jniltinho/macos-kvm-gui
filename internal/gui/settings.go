@@ -102,7 +102,7 @@ func (u *ui) settingsDialog() {
 		graphics.Disable()
 	}
 	// Resolution: Reims vGPU's display size; VMware SVGA keeps OpenCore's 1920x1080.
-	wideNote := wrapped("Wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)")
+	wideNote := wrapped("Between 2048 and 3840 px wide, WindowServer crashed at every login on macOS Sequoia (ReimsVgpu.kext, which fixes it, loads on macOS 26 only). 3840x2160 works there as a HiDPI desktop.")
 	wideNote.Importance = widget.WarningImportance
 	resolution := widget.NewSelect(core.Resolutions, nil)
 	resolution.SetSelected(c.ReimsResolution())

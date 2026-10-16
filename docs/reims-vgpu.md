@@ -92,15 +92,19 @@ Saving refuses a VM with both Reims vGPU and a GPU: `graphics: Reims vGPU and GP
 
 Reims vGPU's display size is set per VM: Settings › Display › **Resolution** (enabled while Reims vGPU is selected; new VMs get 1920x1080), or `macos-kvm-gui config set resolution=2560x1440`. The choices are `1920x1080` (the default), `1920x1200`, `2048x1152`, `2304x1296`, `2560x1440`, `2560x1600` and `3840x2160`; anything else is refused with that list. It is passed to QEMU as `apple-gfx-pci,...,resolution=<WxH>`, saved with the VM (database schema 5) and exported and imported with it. VMware SVGA ignores it and keeps OpenCore's 1920x1080. The Details pane shows the resolution in use.
 
-**The 2048 px rule.** Upstream (reims-vgpu `docs/qemu.md`): without ReimsVgpu.kext, WindowServer dies at boot often enough to matter on displays wider than 2048 px (the display is drawn in 1024 px tiles), and the kext loads on macOS 26 only. So the Settings page and `config set` warn for widths above 2048 unless the VM is Tahoe: *Wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)*. If it happens, set the resolution back to 1920x1080.
+**The 2048 px rule.** Upstream (reims-vgpu `docs/qemu.md`): without ReimsVgpu.kext, WindowServer dies at boot often enough to matter on displays wider than 2048 px (the display is drawn in 1024 px tiles), and the kext loads on macOS 26 only. Measured on Sequoia (table below), 3840x2160 is the exception: macOS drives it as a HiDPI desktop and WindowServer did not crash. So the Settings page and `config set` warn for 2304x1296, 2560x1440 and 2560x1600 unless the VM is Tahoe. If WindowServer crashes, set the resolution back to 1920x1080.
 
 Measured on the reference host (Sequoia 15.8.1, RTX 4070, no kext):
 
 | Resolution | Result | Preview frame read (VNC) |
 | --- | --- | --- |
-| 1920x1080 | Login window and desktop | 0.42 s |
-| 2560x1440 | Login window at 2560x1440; one WindowServer crash report in one boot | 0.79 s |
-| 3840x2160 | Login window at 3840x2160, no crash report | 1.82 s |
+| 1920x1080 | Login window and desktop, no crash | 0.42 s |
+| 1920x1200 | Login window, no crash | 0.46 s |
+| 2304x1296 | WindowServer crashed at login (1 of 1 boots) | — |
+| 2560x1440 | WindowServer crashed at login (3 of 3 boots) | 0.79 s |
+| 3840x2160 | Login and desktop with no crash (3 of 3 boots); macOS picks a HiDPI desktop that looks like 1920x1080 | 1.0–1.8 s |
+
+So before macOS 26 the app warns for widths between 2048 and 3840 px (2304x1296, 2560x1440, 2560x1600); 4K is the way to a sharper desktop there. On Tahoe, ReimsVgpu.kext (below) is meant to cover them.
 
 The Preview's refresh follows the size: no faster than about twice a frame read (0.2 s minimum), so a 4K VM's Preview updates every few seconds without keeping QEMU busy.
 
@@ -159,7 +163,7 @@ The audio backend is PipeWire when its socket is in `$XDG_RUNTIME_DIR`, then Pul
 
 ## Limits and known issues
 
-- **Wide displays before macOS 26.** Wider than 2048 pixels, WindowServer may crash at login without ReimsVgpu.kext, which loads on macOS 26 only ([resolution](#resolution)). No multiple displays, HiDPI or `resolution=host`.
+- **Wide displays before macOS 26.** Between 2048 and 3840 pixels wide, WindowServer crashed at every login on Sequoia without ReimsVgpu.kext, which loads on macOS 26 only; 3840x2160 works as a HiDPI desktop ([resolution](#resolution)). No multiple displays or `resolution=host`.
 - **Measured upstream on macOS 26 only.** Other versions are offered with a note; this app's reference host validated Sequoia 15.8.1.
 - **Sleep** is reduced to a dark wake: S3 is off.
 - **AMD GPUs** need `/dev/udmabuf` (see [requirements](#requirements)).
