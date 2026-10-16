@@ -8,6 +8,9 @@
 # instead of the built-in ones.
 # assets_dir: /path/to/assets
 
+# Reims vGPU's QEMU, instead of the one installed in <Workspace>/.reims (Host tab).
+# reims_qemu: /path/to/qemu-system-x86_64
+
 # Extra kexts OpenCore loads in every VM, after the built-in ones. The app ships no
 # third-party kext: list the ones you choose. Each archive is downloaded once (HTTPS only)
 # before a start, checked and kept in <Workspace>/.kexts/extra.

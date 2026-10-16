@@ -20,6 +20,7 @@ var defaultSettingsYAML []byte
 type fileSettings struct {
 	Theme      string `yaml:"theme,omitempty"`      // MKG_THEME
 	AssetsDir  string `yaml:"assets_dir,omitempty"` // MKG_ASSETS_DIR
+	ReimsQEMU  string `yaml:"reims_qemu,omitempty"` // MKG_REIMS_QEMU
 	ExtraKexts `yaml:",inline"`
 }
 
@@ -83,7 +84,7 @@ func Setting(key string) string {
 		return v
 	}
 	if fs, err := loadSettingsFile(); err == nil {
-		if v := map[string]string{"MKG_THEME": fs.Theme, "MKG_ASSETS_DIR": fs.AssetsDir}[key]; v != "" {
+		if v := map[string]string{"MKG_THEME": fs.Theme, "MKG_ASSETS_DIR": fs.AssetsDir, "MKG_REIMS_QEMU": fs.ReimsQEMU}[key]; v != "" {
 			return v
 		}
 	}
