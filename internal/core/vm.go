@@ -39,8 +39,10 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 		"-smbios", "type=2",
 		"-device", "ich9-intel-hda", "-device", "hda-duplex",
 		"-device", "ich9-ahci,id=sata",
-		"-drive", "id=OpenCoreBoot,if=none,snapshot=on,format=qcow2,file=" + f(OpenCore),
-		"-device", "ide-hd,bus=sata.2,drive=OpenCoreBoot",
+		// OpenCore boots from the extracted EFI directory, exposed read-only as a FAT disk by
+		// QEMU's vvfat driver. SATA refuses read-only drives, so it sits on virtio-blk.
+		"-drive", "id=OpenCoreBoot,if=none,format=raw,readonly=on,file=fat:" + f(EFIDir),
+		"-device", "virtio-blk-pci,drive=OpenCoreBoot,bootindex=0",
 	}
 	if withMedia {
 		args = append(args,
@@ -72,30 +74,6 @@ func memlockLimit() uint64 {
 		return 0
 	}
 	return r.Cur
-}
-
-// ensureVars creates the app's own NVRAM once; it never overwrites it.
-func ensureVars(w Workspace) error {
-	dst, err := os.OpenFile(w.Path(VarsFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if errors.Is(err, os.ErrExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	src, err := os.Open(w.Path(VarsSource))
-	if err != nil {
-		dst.Close()
-		os.Remove(dst.Name())
-		return err
-	}
-	defer src.Close()
-	if _, err := io.Copy(dst, src); err != nil {
-		dst.Close()
-		os.Remove(dst.Name())
-		return err
-	}
-	return dst.Close()
 }
 
 // explainExit turns QEMU output into a message for the user ("" = normal exit).
@@ -177,8 +155,8 @@ func (v *VM) Start(c Config) error {
 	}
 	dir, _ := c.WorkspaceDir()
 	w := NewWorkspace(dir)
-	if st, missing := w.Classify(); st != WorkspaceReady {
-		return fmt.Errorf("workspace is not ready (missing: %s)", strings.Join(missing, ", "))
+	if !w.Exists() {
+		return fmt.Errorf("workspace %s does not exist: prepare it in the Install tab", dir)
 	}
 	if !w.HasDisk() {
 		return fmt.Errorf("%s does not exist: create the disk in the Install tab", DiskFile)
@@ -195,8 +173,8 @@ func (v *VM) Start(c Config) error {
 		return err
 	}
 	fail := func(err error) error { unlock(); return err }
-	if err := ensureVars(w); err != nil {
-		return fail(fmt.Errorf("could not create the NVRAM: %w", err))
+	if err := w.PrepareBoot(c, w.HasMedia()); err != nil {
+		return fail(fmt.Errorf("could not prepare the boot files: %w", err))
 	}
 	base := os.Getenv("XDG_RUNTIME_DIR")
 	if base == "" {

@@ -1,11 +1,13 @@
 # macos-kvm-gui
 
-Desktop app (Go + [Fyne](https://fyne.io)) to install and run macOS on KVM with [OSX-KVM](https://github.com/kholia/OSX-KVM), without editing scripts.
+Desktop app (Go + [Fyne](https://fyne.io)) to install and run macOS on KVM, in a single binary that carries its own OpenCore and OVMF. It started as a GUI for [OSX-KVM](https://github.com/kholia/OSX-KVM) and still works with existing OSX-KVM disks.
+
+> **For home lab use.** macOS is Apple's software, and its license only allows it on Apple-branded hardware. Make sure your use complies with Apple's macOS license terms. This project is not affiliated with Apple.
 
 The app:
 
 - checks the host (VT-x/AMD-V, `/dev/kvm`, QEMU ≥ 8.2.2, `ignore_msrs`, running VirtualBox/VMware VMs) and fixes `ignore_msrs` through `pkexec`;
-- clones OSX-KVM (shallow clone) into the workspace;
+- carries OpenCore, its kexts and OVMF inside the binary and generates OpenCore's `config.plist` (1080p, no boot menu once installed) at every start;
 - downloads the macOS recovery, **verifies Apple's signature and the SHA-256 of every chunk**, converts it to a raw image and deletes the DMG;
 - creates the thin qcow2 disk;
 - starts the VM, shuts it down through ACPI (QMP) or force-stops it, keeping the UEFI NVRAM between runs;
@@ -20,7 +22,7 @@ Partitioning the disk and running the installer **inside** macOS stay manual; th
 Runtime (Ubuntu/Debian):
 
 ```sh
-sudo apt install qemu-system-x86 qemu-utils git python3 pkexec
+sudo apt install qemu-system-x86 qemu-utils pkexec
 ```
 
 Build (Fyne needs CGO, OpenGL, X11 and Wayland headers):
@@ -38,9 +40,9 @@ make build   # produces ./macos-kvm-gui
 make run
 ```
 
-Flow: **Host** (all green) → **Settings** (workspace, version, RAM, CPUs, SSH port) → **Install** (Prepare workspace → Download recovery → Create disk) → **VM** (Start).
+Flow: **Host** (all green) → **Settings** (workspace, version, RAM, CPUs, SSH port) → **Install** (Create workspace → Download recovery → Create disk) → **VM** (Start).
 
-An existing OSX-KVM workspace (for example `~/OSX-KVM` with `BaseSystem.img` and `mac_hdd_ng.img`) is used as is.
+No OSX-KVM clone, `git` or `python3` is needed: the recovery is downloaded directly from Apple's server by a Go port of acidanthera's `macrecovery`, and its chunklist is verified before use.
 
 The guest's SSH is forwarded to `127.0.0.1:<port>` only (default 2222): `ssh -p 2222 user@127.0.0.1`, after turning on Remote Login in macOS.
 
@@ -53,7 +55,51 @@ The VM has no graphics acceleration. macOS has no driver for any display device 
 - The default Sonoma wallpaper is animated and stays **blank** without Metal. Pick a static one, such as `/System/Library/Desktop Pictures/Sonoma.heic`.
 - Raising the `vmware-svga` VRAM (`vgamem_mb`) does not help: macOS only uses the boot framebuffer, and the default 16 MB covers up to 2560x1440.
 
-OSX-KVM's `OpenCore.qcow2` leaves `Resolution` empty, so macOS may start at 1280x800. Setting `UEFI › Output › Resolution` to `1920x1080@32` in its `config.plist` gives 1080p. The app does not edit OpenCore yet.
+The app's OpenCore sets the output to 1920x1080. (OSX-KVM's own `OpenCore.qcow2` leaves `Resolution` empty, so macOS starts at 1280x800 there.)
+
+## Boot files
+
+The binary embeds, from their official BSD-licensed releases (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)):
+
+- OpenCore 1.0.8 (`BOOTx64.efi`, `OpenCore.efi`, `OpenRuntime.efi`, `OpenHfsPlus.efi`), Lilu, VirtualSMC and WhateverGreen;
+- OVMF (`OVMF_CODE_4M.fd`, `OVMF_VARS_4M.fd`) from Debian's `ovmf` package.
+
+At every start the app extracts them into `<workspace>/macos-kvm-gui/` and generates `config.plist`:
+
+- with `BaseSystem.img` attached, OpenCore shows its menu (5 s) and scans every volume, so you can pick the installer;
+- without it, the menu is hidden and only APFS volumes are scanned, so OpenCore boots straight into macOS (hold **Esc** at boot to see the menu);
+- the Mac model is iMac18,3 (High Sierra), iMac19,1 (Mojave) or iMac20,1 (Catalina to Tahoe), with a random serial, MLB, UUID and ROM created once per workspace;
+- with a passed-through GPU, `agdpmod=pikera` is added to the boot arguments.
+
+OpenCore is exposed to QEMU read-only, as a FAT disk built on the fly from that directory (QEMU's `vvfat` driver), so nothing in it is ever written by the guest. The NVRAM lives in `<workspace>/macos-kvm-gui/OVMF_VARS_4M.fd` and is never overwritten.
+
+### Updating the boot files
+
+The files live in this repository under `internal/assets/files`, and the build embeds them from there, so building needs no network. To move to newer releases, edit `assets.env` (version, URL and SHA-256 of each component) and run:
+
+```sh
+scripts/fetch-assets.sh   # needs curl, sha256sum, unzip, dpkg-deb
+```
+
+Every value in `assets.env` can be overridden without editing it, from the environment or from a local, untracked `.env` file next to it (precedence: environment > `.env` > `assets.env`), for example to try a beta or use a mirror:
+
+```sh
+OPENCORE_URL=https://example.org/OpenCore-1.0.9-RELEASE.zip OPENCORE_SHA256=<sha256> scripts/fetch-assets.sh
+```
+
+The script checks every SHA-256 before replacing anything, and the tests run OpenCore's `ocvalidate` on the generated `config.plist`.
+
+To try other boot files **without rebuilding the app**, point `MKG_ASSETS_DIR` to a directory with the same layout as `internal/assets` (`config.plist.tmpl` and `files/`), either in the environment or in `~/.config/macos-kvm-gui/.env`:
+
+```sh
+MKG_ASSETS_DIR=$HOME/src/macos-kvm-gui/internal/assets ./macos-kvm-gui
+```
+
+The Install tab shows the versions in use and where they come from.
+
+### Coming from OSX-KVM
+
+Point the workspace to the OSX-KVM directory: the app reuses `mac_hdd_ng.img` and `BaseSystem.img` and ignores OSX-KVM's other files. Because the app brings its own OpenCore and SMBIOS, macOS sees a different Mac (iMac20,1 with a new serial), so iCloud or Messages may ask you to sign in again. OSX-KVM's `OpenCore-Boot.sh` keeps working as before; the app does not change it.
 
 ## GPU passthrough
 
@@ -94,7 +140,7 @@ Passing a real AMD GPU to the VM through VFIO is the only way to get Metal accel
 
 ```sh
 make test               # unit tests, with -race
-make test-integration   # boots a real QEMU in a temporary workspace (needs KVM and ~/OSX-KVM)
+make test-integration   # boots a real QEMU with the embedded OpenCore in a temporary workspace (needs KVM)
 ```
 
 ## Files
@@ -102,7 +148,10 @@ make test-integration   # boots a real QEMU in a temporary workspace (needs KVM 
 | Where | What |
 |---|---|
 | `~/.config/macos-kvm-gui/config.json` | app settings |
-| `<workspace>/macos-kvm-gui-vars.fd` | the VM's UEFI NVRAM (created on first start, never overwritten) |
+| `<workspace>/macos-kvm-gui/efi/` | OpenCore tree and generated `config.plist` (rewritten at every start) |
+| `<workspace>/macos-kvm-gui/OVMF_VARS_4M.fd` | the VM's UEFI NVRAM (created on first start, never overwritten) |
+| `<workspace>/macos-kvm-gui/smbios.json` | the VM's SMBIOS identity (serial, MLB, UUID, ROM) |
+| `~/.config/macos-kvm-gui/.env` | optional local settings, such as `MKG_ASSETS_DIR` |
 | `<workspace>/.macos-kvm-gui-media` | version of the `BaseSystem.img` downloaded by the app |
 | `$XDG_RUNTIME_DIR/macos-kvm-gui-*.lock` | workspace lock (one operation or VM at a time, across app instances) |
 | `/etc/modprobe.d/macos-kvm-gui.conf` | persistent `ignore_msrs` (created by the fix in the Host tab) |
@@ -120,4 +169,4 @@ make test-integration   # boots a real QEMU in a temporary workspace (needs KVM 
 
 Proposals and specs live in [`openspec/changes`](openspec/changes) (OpenSpec).
 
-OSX-KVM is GPLv3 and is used at runtime: none of it is embedded in the binary.
+The app is BSD-3-Clause licensed (see [LICENSE](LICENSE)). The embedded boot files keep their own licenses, listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). No file from OSX-KVM is included.

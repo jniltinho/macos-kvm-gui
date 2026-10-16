@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -57,27 +56,14 @@ func TestBuildArgs(t *testing.T) {
 		if got := argAfter(args, "-drive", "id=MacHDD"); !strings.HasSuffix(got, "file=/vm/a,,b/mac_hdd_ng.img") {
 			t.Errorf("%s: comma in the path must become ,, : %q", tc.name, got)
 		}
-		if argAfter(args, "-drive", "if=pflash,format=raw,file=/vm/a,,b/"+VarsFile) == "" {
+		if argAfter(args, "-drive", "if=pflash,format=raw,readonly=on,file=/vm/a,,b/"+OVMFCode) == "" ||
+			argAfter(args, "-drive", "if=pflash,format=raw,file=/vm/a,,b/"+VarsFile) == "" {
 			t.Errorf("%s: must use the app's own NVRAM", tc.name)
 		}
-		if !slices.Contains(args, "id=OpenCoreBoot,if=none,snapshot=on,format=qcow2,file=/vm/a,,b/OpenCore/OpenCore.qcow2") {
-			t.Errorf("%s: OpenCore must be a snapshot", tc.name)
+		if !slices.Contains(args, "id=OpenCoreBoot,if=none,format=raw,readonly=on,file=fat:/vm/a,,b/"+EFIDir) ||
+			!slices.Contains(args, "virtio-blk-pci,drive=OpenCoreBoot,bootindex=0") {
+			t.Errorf("%s: OpenCore must boot first, read-only, from the EFI directory through vvfat", tc.name)
 		}
-	}
-}
-
-func TestEnsureVarsNeverOverwrites(t *testing.T) {
-	w := readyWorkspace(t)
-	write(t, w.Path(VarsSource), "original")
-	if err := ensureVars(w); err != nil {
-		t.Fatal(err)
-	}
-	write(t, w.Path(VarsFile), "modified-by-guest")
-	if err := ensureVars(w); err != nil {
-		t.Fatal(err)
-	}
-	if b, _ := os.ReadFile(w.Path(VarsFile)); string(b) != "modified-by-guest" {
-		t.Fatalf("NVRAM overwritten: %q", b)
 	}
 }
 

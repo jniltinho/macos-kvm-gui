@@ -65,8 +65,6 @@ func SystemHost() Host {
 var tools = []struct{ bin, pkg string }{
 	{"qemu-system-x86_64", "qemu-system-x86"},
 	{"qemu-img", "qemu-utils"},
-	{"git", "git"},
-	{"python3", "python3"},
 }
 
 // Checks runs every host check for the chosen macOS version.

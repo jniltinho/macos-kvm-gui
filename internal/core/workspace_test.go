@@ -13,19 +13,12 @@ import (
 	"testing"
 )
 
-func readyWorkspace(t *testing.T) Workspace {
-	w := NewWorkspace(t.TempDir())
-	for _, f := range RequiredFiles {
-		write(t, w.Path(f), "x")
-	}
-	return w
-}
+// readyWorkspace is an existing, empty workspace directory.
+func readyWorkspace(t *testing.T) Workspace { return NewWorkspace(t.TempDir()) }
 
 func TestLockOutsideWorkspace(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	dir := filepath.Join(t.TempDir(), "empty")
-	os.Mkdir(dir, 0o755)
-	w := NewWorkspace(dir)
+	w := readyWorkspace(t)
 	unlock, err := w.Lock()
 	if err != nil {
 		t.Fatal(err)
@@ -33,8 +26,8 @@ func TestLockOutsideWorkspace(t *testing.T) {
 	if _, err := w.Lock(); !errors.Is(err, ErrBusy) {
 		t.Fatalf("second acquisition must return ErrBusy: %v", err)
 	}
-	if st, _ := w.Classify(); st != WorkspaceEmpty {
-		t.Fatal("the lock must not touch the workspace (git clone needs an empty directory)")
+	if entries, _ := os.ReadDir(w.Dir); len(entries) != 0 {
+		t.Fatal("the lock file must live outside the workspace")
 	}
 	unlock()
 	unlock2, err := w.Lock()
@@ -44,65 +37,90 @@ func TestLockOutsideWorkspace(t *testing.T) {
 	unlock2()
 }
 
-func TestClassify(t *testing.T) {
-	if st, _ := NewWorkspace(filepath.Join(t.TempDir(), "does-not-exist")).Classify(); st != WorkspaceEmpty {
-		t.Error("missing must be empty")
-	}
-	if st, _ := readyWorkspace(t).Classify(); st != WorkspaceReady {
-		t.Error("complete must be ready")
-	}
-	w := NewWorkspace(t.TempDir())
-	write(t, w.Path("something-else.txt"), "x")
-	st, missing := w.Classify()
-	if st != WorkspaceIncomplete || len(missing) != len(RequiredFiles) {
-		t.Errorf("unrelated: %v %v", st, missing)
-	}
+func TestPrepareExtractsBootFiles(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	if err := w.Prepare(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "missing") {
-		t.Errorf("prepare must not touch a non-empty directory: %v", err)
+	w := NewWorkspace(filepath.Join(t.TempDir(), "new"))
+	if w.Exists() {
+		t.Fatal("must not exist yet")
+	}
+	if err := w.Prepare(Defaults()); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{EFIDir + "/EFI/BOOT/BOOTx64.efi", EFIDir + "/EFI/OC/OpenCore.efi", EFIDir + "/EFI/OC/config.plist",
+		EFIDir + "/EFI/OC/Kexts/Lilu.kext/Contents/MacOS/Lilu", EFIDir + "/EFI/OC/Drivers/OpenRuntime.efi", OVMFCode, VarsFile, identityFile} {
+		if !exists(w.Path(f)) {
+			t.Errorf("%s was not extracted", f)
+		}
+	}
+	id1, _ := os.ReadFile(w.Path(identityFile))
+	write(t, w.Path(VarsFile), "modified-by-guest")
+	if err := w.PrepareBoot(Defaults(), false); err != nil {
+		t.Fatal(err)
+	}
+	if id2, _ := os.ReadFile(w.Path(identityFile)); !bytes.Equal(id1, id2) {
+		t.Error("the SMBIOS identity must be generated once")
+	}
+	if b, _ := os.ReadFile(w.Path(VarsFile)); string(b) != "modified-by-guest" {
+		t.Error("the NVRAM must never be overwritten")
 	}
 }
 
-func TestParseProgress(t *testing.T) {
-	// Real fetch-macOS-v2.py output: everything on one "line" rewritten with \r.
-	raw := "Saving http://x/BaseSystem.chunklist to ./BaseSystem.chunklist...\r\nDownload complete!\n" +
-		"Saving http://x/BaseSystem.dmg to ./BaseSystem.dmg...\r" +
-		"1.0/753.0 MB |   | 0.1% downloaded\r376.5/753.0 MB |==  | 50.0% downloaded\r"
-	stage := StageChunklist
-	var got []Progress
-	data := []byte(raw)
+func TestOpenCoreConfig(t *testing.T) {
+	id, err := newIdentity()
+	if err != nil || len(id.Serial) != 12 || len(id.MLB) != 17 || len(id.UUID) != 36 || len(id.ROM) != 12 {
+		t.Fatalf("identity: %+v %v", id, err)
+	}
+	c := Defaults()
+	install, _ := OpenCoreConfig(c, id, true)
+	installed, _ := OpenCoreConfig(c, id, false)
+	c.GPU = "0000:03:00.0"
+	gpu, _ := OpenCoreConfig(c, id, false)
+	for name, cfg := range map[string]string{"install": install, "installed": installed, "gpu": gpu} {
+		if strings.Contains(cfg, "@@") {
+			t.Errorf("%s: unreplaced placeholder", name)
+		}
+		if !strings.Contains(cfg, "<string>iMac20,1</string>") || !strings.Contains(cfg, "<string>"+id.Serial+"</string>") || !strings.Contains(cfg, "1920x1080@32") {
+			t.Errorf("%s: SMBIOS or resolution missing", name)
+		}
+	}
+	if !strings.Contains(install, "<key>ShowPicker</key>\n\t\t\t<true/>") || !strings.Contains(install, "<integer>0</integer>") {
+		t.Error("with install media the picker must show and everything must be scanned")
+	}
+	if !strings.Contains(installed, "<key>ShowPicker</key>\n\t\t\t<false/>") || !strings.Contains(installed, "<integer>257</integer>") {
+		t.Error("without media the picker is hidden and only APFS is scanned")
+	}
+	if !strings.Contains(gpu, "keepsyms=1 agdpmod=pikera") || strings.Contains(installed, "agdpmod") {
+		t.Error("agdpmod=pikera only with a passed-through GPU")
+	}
+	if smbiosProduct("high-sierra") != "iMac18,3" || smbiosProduct("mojave") != "iMac19,1" || smbiosProduct("tahoe") != "iMac20,1" {
+		t.Error("SMBIOS per version")
+	}
+	// OpenCore's own validator, when scripts/fetch-assets.sh left it in testdata.
+	if v, err := filepath.Abs("testdata/ocvalidate"); err == nil && exists(v) {
+		for name, cfg := range map[string]string{"install": install, "installed": installed, "gpu": gpu} {
+			f := filepath.Join(t.TempDir(), "config.plist")
+			write(t, f, cfg)
+			if out, err := exec.Command(v, f).CombinedOutput(); err != nil || !strings.Contains(string(out), "No issues found") {
+				t.Errorf("%s: ocvalidate: %v\n%s", name, err, out)
+			}
+		}
+	}
+}
+
+func TestConvertProgress(t *testing.T) {
+	// qemu-img -p rewrites the line with \r.
+	data := []byte("    (0.00/100%)\r    (42.50/100%)\r    (100.00/100%)\n")
+	var got []float64
 	for len(data) > 0 {
 		n, tok, _ := scanCRLF(data, true)
 		data = data[n:]
-		if p, ok := parseProgress(stage, strings.TrimSpace(string(tok))); ok {
-			stage = p.Stage
-			got = append(got, p)
+		if pct, ok := parseConvertProgress(strings.TrimSpace(string(tok))); ok {
+			got = append(got, pct)
 		}
 	}
-	want := []Progress{{StageChunklist, -1}, {StageImage, -1}, {StageImage, 0.1}, {StageImage, 50}}
-	if len(got) != len(want) {
+	if len(got) != 3 || got[1] != 42.5 || got[2] != 100 {
 		t.Fatalf("got %v", got)
 	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Errorf("%d: got %v want %v", i, got[i], want[i])
-		}
-	}
-	if p, ok := parseProgress(StageConvert, "    (42.50/100%)"); !ok || p.Pct != 42.5 {
-		t.Errorf("qemu-img progress: %v %v", p, ok)
-	}
-}
-
-// fakeFetch replaces fetch-macOS-v2.py with a script that copies files prepared by the test.
-func fakeFetch(t *testing.T, w Workspace, dmg, cnk []byte) {
-	src := t.TempDir()
-	write(t, filepath.Join(src, "BaseSystem.dmg"), string(dmg))
-	write(t, filepath.Join(src, "BaseSystem.chunklist"), string(cnk))
-	write(t, w.Path(FetchScript), "import shutil,sys\n"+
-		"print('Saving http://x/BaseSystem.chunklist to ./BaseSystem.chunklist...')\n"+
-		"shutil.copy('"+src+"/BaseSystem.chunklist', '.')\n"+
-		"print('Saving http://x/BaseSystem.dmg to ./BaseSystem.dmg...')\n"+
-		"shutil.copy('"+src+"/BaseSystem.dmg', '.')\n")
 }
 
 func TestDownloadFailuresPreserveMedia(t *testing.T) {
@@ -117,14 +135,15 @@ func TestDownloadFailuresPreserveMedia(t *testing.T) {
 	write(t, w.Path(mediaMarker), "monterey\n")
 	img := bytes.Repeat([]byte("not-a-dmg"), 500)
 	noop := func(Progress) {}
+	srv := newFakeRecovery(t)
 
 	// 1) tampered image: fails verification, nothing converted.
-	fakeFetch(t, w, append([]byte("X"), img[1:]...), buildChunklist(t, key, img, 1024))
+	srv.chunklist, srv.dmg = string(buildChunklist(t, key, img, 1024)), "X"+string(img[1:])
 	if err := w.DownloadMedia(context.Background(), "sonoma", noop, nil); err == nil || !strings.Contains(err.Error(), "verification") {
 		t.Fatalf("expected verification failure: %v", err)
 	}
 	// 2) intact image that is not a DMG: fails conversion.
-	fakeFetch(t, w, img, buildChunklist(t, key, img, 1024))
+	srv.dmg = string(img)
 	if err := w.DownloadMedia(context.Background(), "sonoma", noop, nil); err == nil || !strings.Contains(err.Error(), "conversion") {
 		t.Fatalf("expected conversion failure: %v", err)
 	}

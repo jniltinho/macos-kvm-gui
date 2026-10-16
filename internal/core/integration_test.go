@@ -1,34 +1,17 @@
 //go:build integration
 
 // Test with real QEMU and KVM: go test -tags integration -run Real ./internal/core
-// Requires an OSX-KVM clone at $OSX_KVM (default ~/OSX-KVM), used read-only.
+// Boots the embedded OpenCore through vvfat in a temporary workspace.
 package core
 
 import (
 	"context"
-	"io"
 	"os"
 	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 )
-
-func copyFile(t *testing.T, src, dst string) {
-	t.Helper()
-	os.MkdirAll(filepath.Dir(dst), 0o755)
-	in, err := os.Open(src)
-	if err != nil {
-		t.Skip("OSX-KVM not found: ", err)
-	}
-	defer in.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer out.Close()
-	io.Copy(out, in)
-}
 
 func waitState(t *testing.T, v *VM, want VMState) {
 	t.Helper()
@@ -42,15 +25,8 @@ func waitState(t *testing.T, v *VM, want VMState) {
 }
 
 func TestRealQEMULifecycle(t *testing.T) {
-	src := os.Getenv("OSX_KVM")
-	if src == "" {
-		home, _ := os.UserHomeDir()
-		src = filepath.Join(home, "OSX-KVM")
-	}
 	w := NewWorkspace(filepath.Join(t.TempDir(), "ws,with,comma"))
-	for _, f := range RequiredFiles {
-		copyFile(t, filepath.Join(src, f), w.Path(f))
-	}
+	os.Mkdir(w.Dir, 0o755)
 	if _, err := w.CreateDisk(context.Background(), 40); err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +42,7 @@ func TestRealQEMULifecycle(t *testing.T) {
 	}
 	waitState(t, v, Running)
 	if !exists(w.Path(VarsFile)) {
-		t.Fatal("the app's own NVRAM was not created")
+		t.Fatal("the NVRAM was not created")
 	}
 	if _, err := w.Lock(); err != ErrBusy {
 		t.Fatalf("workspace must stay locked while the VM runs: %v", err)

@@ -1,2 +1,3 @@
 /macos-kvm-gui
 *.test
+.env

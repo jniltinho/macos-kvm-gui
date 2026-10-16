@@ -19,23 +19,14 @@ import (
 )
 
 const (
-	RepoURL     = "https://github.com/kholia/OSX-KVM.git"
 	MediaFile   = "BaseSystem.img"
 	DiskFile    = "mac_hdd_ng.img"
-	VarsFile    = "macos-kvm-gui-vars.fd"
-	VarsSource  = "OVMF_VARS-1920x1080.fd"
-	OVMFCode    = "OVMF_CODE_4M.fd"
-	OpenCore    = "OpenCore/OpenCore.qcow2"
-	FetchScript = "fetch-macOS-v2.py"
 	mediaMarker = ".macos-kvm-gui-media"
 	stagingDir  = ".macos-kvm-gui-staging"
 	MinDiskGiB  = 40
 	minFreeGiB  = 4
 	gib         = int64(1) << 30
 )
-
-// RequiredFiles are the OSX-KVM files the app uses.
-var RequiredFiles = []string{OpenCore, OVMFCode, VarsSource, FetchScript}
 
 var ErrBusy = errors.New("workspace in use by another operation or another app instance")
 
@@ -48,8 +39,8 @@ func NewWorkspace(dir string) Workspace { return Workspace{Dir: dir} }
 
 func (w Workspace) Path(name string) string { return filepath.Join(w.Dir, name) }
 
-// Lock takes an exclusive flock per workspace. The file lives outside the workspace
-// so it does not block git clone into an empty directory; the kernel releases it if the app dies.
+// Lock takes an exclusive flock per workspace. The file lives outside the workspace so
+// the workspace can still be created by the locked operation; the kernel releases it if the app dies.
 func (w Workspace) Lock() (unlock func(), err error) {
 	base := os.Getenv("XDG_RUNTIME_DIR")
 	if base == "" {
@@ -79,45 +70,19 @@ func (w Workspace) withLock(fn func() error) error {
 	return fn()
 }
 
-type WorkspaceState int
-
-const (
-	WorkspaceEmpty WorkspaceState = iota // missing or empty: can clone
-	WorkspaceReady
-	WorkspaceIncomplete // not empty and missing files: left alone
-)
-
-// Classify reports the workspace state and, if incomplete, which files are missing.
-func (w Workspace) Classify() (WorkspaceState, []string) {
-	entries, err := os.ReadDir(w.Dir)
-	if errors.Is(err, os.ErrNotExist) || err == nil && len(entries) == 0 {
-		return WorkspaceEmpty, nil
-	}
-	var missing []string
-	for _, f := range RequiredFiles {
-		if _, err := os.Stat(w.Path(f)); err != nil {
-			missing = append(missing, f)
-		}
-	}
-	if len(missing) > 0 {
-		return WorkspaceIncomplete, missing
-	}
-	return WorkspaceReady, nil
+// Exists reports whether the workspace directory exists.
+func (w Workspace) Exists() bool {
+	st, err := os.Stat(w.Dir)
+	return err == nil && st.IsDir()
 }
 
-// Prepare clones OSX-KVM (shallow) if the workspace is empty.
-func (w Workspace) Prepare(ctx context.Context, log func(string)) error {
+// Prepare creates the workspace and extracts the embedded boot files into it.
+func (w Workspace) Prepare(c Config) error {
 	return w.withLock(func() error {
-		switch st, missing := w.Classify(); st {
-		case WorkspaceReady:
-			return nil
-		case WorkspaceIncomplete:
-			return fmt.Errorf("%s is not empty and is missing: %s", w.Dir, strings.Join(missing, ", "))
-		}
-		if err := os.MkdirAll(filepath.Dir(w.Dir), 0o755); err != nil {
+		if err := os.MkdirAll(w.Dir, 0o755); err != nil {
 			return err
 		}
-		return runStream(ctx, "", log, "git", "clone", "--depth", "1", "--recursive", "--shallow-submodules", "--progress", RepoURL, w.Dir)
+		return w.PrepareBoot(c, w.HasMedia())
 	})
 }
 
@@ -182,30 +147,16 @@ type Progress struct {
 	Pct   float64
 }
 
-var (
-	downloadPctRe = regexp.MustCompile(`([\d.]+)% downloaded`)
-	convertPctRe  = regexp.MustCompile(`\((\d+(?:\.\d+)?)/100%\)`)
-)
+var convertPctRe = regexp.MustCompile(`\((\d+(?:\.\d+)?)/100%\)`)
 
-// parseProgress interprets an output chunk from fetch-macOS-v2.py or qemu-img -p.
-// Returns ok=false when the chunk does not change the progress.
-func parseProgress(stage, line string) (Progress, bool) {
-	switch {
-	case strings.HasPrefix(line, "Saving ") && strings.Contains(line, ".chunklist"):
-		return Progress{StageChunklist, -1}, true
-	case strings.HasPrefix(line, "Saving ") && strings.Contains(line, ".dmg"):
-		return Progress{StageImage, -1}, true
+// parseConvertProgress reads the percentage printed by qemu-img convert -p.
+func parseConvertProgress(line string) (float64, bool) {
+	m := convertPctRe.FindStringSubmatch(line)
+	if m == nil {
+		return 0, false
 	}
-	re := downloadPctRe
-	if stage == StageConvert {
-		re = convertPctRe
-	}
-	if m := re.FindStringSubmatch(line); m != nil {
-		if pct, err := strconv.ParseFloat(m[1], 64); err == nil {
-			return Progress{stage, pct}, true
-		}
-	}
-	return Progress{}, false
+	pct, err := strconv.ParseFloat(m[1], 64)
+	return pct, err == nil
 }
 
 func freeBytes(dir string) (int64, error) {
@@ -220,8 +171,8 @@ func freeBytes(dir string) (int64, error) {
 // On any failure the previous BaseSystem.img stays intact.
 func (w Workspace) DownloadMedia(ctx context.Context, version string, progress func(Progress), log func(string)) error {
 	return w.withLock(func() error {
-		if st, _ := w.Classify(); st != WorkspaceReady {
-			return errors.New("prepare the workspace before downloading the media")
+		if err := os.MkdirAll(w.Dir, 0o755); err != nil {
+			return err
 		}
 		if free, err := freeBytes(w.Dir); err == nil && free < minFreeGiB*gib {
 			return fmt.Errorf("not enough free space: %d GiB needed and %.1f GiB available", minFreeGiB, float64(free)/float64(gib))
@@ -233,40 +184,30 @@ func (w Workspace) DownloadMedia(ctx context.Context, version string, progress f
 		}
 		defer os.RemoveAll(staging)
 
-		stage := StageChunklist
-		report := func(line string) {
-			if p, ok := parseProgress(stage, line); ok {
-				stage = p.Stage
-				progress(p)
-				if p.Pct >= 0 {
-					return // percentages go only to the bar, not to the log
-				}
-			}
-			if log != nil {
-				log(line)
-			}
-		}
-		progress(Progress{stage, -1})
-		// The script's exit code proves nothing (without a TTY it fails verification and exits 0);
-		// the real verification is ours, just below.
-		if err := runStream(ctx, staging, report, "python3", w.Path(FetchScript), "-s", version); err != nil {
+		progress(Progress{StageChunklist, -1})
+		stages := map[string]string{"chunklist": StageChunklist, "image": StageImage}
+		dmg, cnk, err := DownloadRecovery(ctx, version, staging, func(stage string, pct float64) {
+			progress(Progress{stages[stage], pct})
+		})
+		if err != nil {
 			return fmt.Errorf("download failed: %w", err)
 		}
-		dmg, cnk := glob1(staging, "*.dmg"), glob1(staging, "*.chunklist")
-		if dmg == "" || cnk == "" {
-			return errors.New("the download did not produce the .dmg and the .chunklist")
-		}
 
-		stage = StageVerify
-		err := verifyImage(dmg, cnk, w.verifyKey(), func(done, total int) {
+		err = verifyImage(dmg, cnk, w.verifyKey(), func(done, total int) {
 			progress(Progress{StageVerify, float64(done) * 100 / float64(total)})
 		})
 		if err != nil {
 			return fmt.Errorf("verification failed: %w", err)
 		}
 
-		stage = StageConvert
-		progress(Progress{stage, 0})
+		progress(Progress{StageConvert, 0})
+		report := func(line string) {
+			if pct, ok := parseConvertProgress(line); ok {
+				progress(Progress{StageConvert, pct}) // percentages go only to the bar
+			} else if log != nil {
+				log(line)
+			}
+		}
 		tmpImg := filepath.Join(staging, MediaFile)
 		if err := runStream(ctx, "", report, "qemu-img", "convert", "-p", "-f", "dmg", "-O", "raw", dmg, tmpImg); err != nil {
 			return fmt.Errorf("conversion failed (if qemu-img does not support this compression, install dmg2img): %w", err)
@@ -289,14 +230,6 @@ func (w Workspace) verifyKey() *rsa.PublicKey {
 		return w.key
 	}
 	return appleEFIKey
-}
-
-func glob1(dir, pattern string) string {
-	m, _ := filepath.Glob(filepath.Join(dir, pattern))
-	if len(m) == 0 {
-		return ""
-	}
-	return m[0]
 }
 
 // MediaVersion is the recorded version of BaseSystem.img ("" if there is no media).

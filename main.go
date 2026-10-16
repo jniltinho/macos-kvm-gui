@@ -19,6 +19,8 @@ import (
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
 )
 
+const homeLab = "For home lab use. macOS is Apple's software: its license only allows it on Apple-branded hardware, so make sure your use complies with it."
+
 const manualSteps = `**Manual steps inside the VM (first install)**
 
 1. In the OpenCore menu, choose **macOS Base System**.
@@ -206,7 +208,10 @@ func (u *ui) hostTab() fyne.CanvasObject {
 			})
 		}()
 	})
-	return container.NewBorder(nil, container.NewHBox(recheck, fix), nil, nil, container.NewVScroll(u.checks))
+	notice := widget.NewLabel(homeLab)
+	notice.Wrapping = fyne.TextWrapWord
+	notice.Importance = widget.WarningImportance
+	return container.NewBorder(notice, container.NewHBox(recheck, fix), nil, nil, container.NewVScroll(u.checks))
 }
 
 func (u *ui) refreshChecks() {
@@ -307,14 +312,14 @@ func (u *ui) installTab() fyne.CanvasObject {
 	u.barInf.Stop()
 	u.barInf.Hide()
 
-	u.btnPrepare = widget.NewButtonWithIcon("Prepare workspace (clone OSX-KVM)", theme.FolderNewIcon(), func() {
+	u.btnPrepare = widget.NewButtonWithIcon("Create workspace", theme.FolderNewIcon(), func() {
 		w, err := u.workspace()
 		if err != nil {
 			dialog.ShowError(err, u.win)
 			return
 		}
-		u.showInfinite("Cloning OSX-KVM")
-		u.run("Prepare workspace", func() error { return w.Prepare(context.Background(), u.logAsync) }, nil)
+		c := u.cfg
+		u.run("Create workspace", func() error { return w.Prepare(c) }, nil)
 	})
 	u.btnDownload = widget.NewButtonWithIcon("Download macOS recovery", theme.DownloadIcon(), func() {
 		w, err := u.workspace()
@@ -573,19 +578,15 @@ func (u *ui) refresh() {
 
 	w, err := u.workspace()
 	var lines []string
-	st := core.WorkspaceIncomplete
+	ready := err == nil && w.Exists()
 	if err != nil {
 		lines = append(lines, "Invalid workspace: "+err.Error())
 	} else {
-		var missing []string
-		st, missing = w.Classify()
-		switch st {
-		case core.WorkspaceEmpty:
-			lines = append(lines, "Workspace "+w.Dir+": empty (click Prepare)")
-		case core.WorkspaceReady:
+		if ready {
 			lines = append(lines, "Workspace "+w.Dir+": ready")
-		default:
-			lines = append(lines, "Workspace "+w.Dir+": not a complete OSX-KVM; missing "+strings.Join(missing, ", "))
+			lines = append(lines, "Boot files: "+core.AssetVersions())
+		} else {
+			lines = append(lines, "Workspace "+w.Dir+": does not exist yet (click Create workspace)")
 		}
 		if w.HasMedia() {
 			lines = append(lines, fmt.Sprintf("Install media: %s (%.2f GiB)", w.MediaVersion(), float64(core.Allocated(w.Path(core.MediaFile)))/(1<<30)))
@@ -607,9 +608,8 @@ func (u *ui) refresh() {
 			b.Disable()
 		}
 	}
-	ready := st == core.WorkspaceReady
-	enable(u.btnPrepare, free && st == core.WorkspaceEmpty)
-	enable(u.btnDownload, free && ready)
+	enable(u.btnPrepare, free && err == nil && !ready)
+	enable(u.btnDownload, free && err == nil)
 	enable(u.btnDisk, free && ready && !w.HasDisk())
 	enable(u.btnRemove, free && w.HasMedia())
 	enable(u.btnStart, free && ready && w.HasDisk())
