@@ -192,6 +192,21 @@ pub fn root_patch_version(version: &str) -> bool {
     matches!(version, "monterey" | "ventura" | "sonoma" | "sequoia")
 }
 
+/// Go `SMBIOSModel`: a Mac that supports the macOS version. iMac models also keep
+/// AppleMCEReporter (which panics on AMD hosts) from loading.
+pub fn smbios_model(version: &str) -> &'static str {
+    match version {
+        "high-sierra" => "iMac18,3",
+        "mojave" => "iMac19,1",
+        _ => "iMac20,1", // Catalina 10.15.6 to Tahoe
+    }
+}
+
+/// Go `ReimsDir`: `<Workspace>/.reims` for the Workspace root (`~` expanded, absolute).
+pub fn reims_dir(workspace_root: &str) -> Result<PathBuf> {
+    Ok(expand_workspace(workspace_root, dirs::home_dir().as_deref())?.join(".reims"))
+}
+
 /// Whether WindowServer is expected to crash at login on this resolution without
 /// ReimsVgpu.kext (macOS 26 only). Measured on Sequoia 15.8.1: wider than 2048 px crashes,
 /// while 3840x2160 boots as a HiDPI 1920x1080 desktop, so 4K is not counted.
@@ -605,5 +620,21 @@ mod tests {
             }
             .reims_kext()
         );
+    }
+
+    #[test]
+    fn smbios_model_per_version() {
+        assert_eq!(smbios_model("high-sierra"), "iMac18,3");
+        assert_eq!(smbios_model("mojave"), "iMac19,1");
+        assert_eq!(smbios_model("tahoe"), "iMac20,1");
+    }
+
+    #[test]
+    fn reims_dir_needs_an_absolute_workspace() {
+        assert_eq!(reims_dir("/vms/").ok(), Some(PathBuf::from("/vms/.reims")));
+        assert!(reims_dir("vms").is_err());
+        if dirs::home_dir().is_some() {
+            assert!(reims_dir("~/macOS-VMs").is_ok_and(|p| p.ends_with("macOS-VMs/.reims")));
+        }
     }
 }

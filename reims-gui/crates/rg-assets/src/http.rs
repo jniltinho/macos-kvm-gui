@@ -1,8 +1,9 @@
-//! HTTPS downloads with a size limit that fails instead of truncating (Go `httpsGetMax`).
+//! HTTPS downloads with a size limit that fails instead of truncating (Go `httpsGetMax`),
+//! through rg-core's shared client.
 
-use std::io::Read;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::AtomicBool;
+
+use rg_core::http::{Client, ClientOpts, HttpError};
 
 use crate::{Error, Result};
 
@@ -14,41 +15,14 @@ pub(crate) fn https_get_max(url: &str, max: u64, cancel: &AtomicBool) -> Result<
     if !allowed {
         return Err(Error::Http(format!("refusing a non-HTTPS URL: {url}")));
     }
-    if cancel.load(Ordering::Relaxed) {
-        return Err(Error::Cancelled);
-    }
-    let agent: ureq::Agent = ureq::Agent::config_builder()
-        .https_only(!cfg!(test))
-        .max_redirects(5)
-        .timeout_global(Some(Duration::from_secs(60)))
-        .build()
-        .into();
-    let mut resp = agent
-        .get(url)
-        .call()
-        .map_err(|e| Error::Http(format!("{url}: {e}")))?;
-    if resp.status() != 200 {
-        return Err(Error::Http(format!("{url}: {}", resp.status())));
-    }
-    let mut body = resp.body_mut().as_reader();
-    let mut data = Vec::new();
-    let mut buf = vec![0; 64 << 10];
-    loop {
-        if cancel.load(Ordering::Relaxed) {
-            return Err(Error::Cancelled);
-        }
-        let n = body.read(&mut buf)?;
-        if n == 0 {
-            return Ok(data);
-        }
-        if (data.len() + n) as u64 > max {
-            return Err(Error::Http(format!(
-                "{url} is larger than {} MiB",
-                max >> 20
-            )));
-        }
-        data.extend_from_slice(&buf[..n]);
-    }
+    let client = Client::new(&ClientOpts {
+        plain_http: cfg!(test),
+        ..ClientOpts::default()
+    });
+    client.get_max(url, max, cancel).map_err(|e| match e {
+        HttpError::Cancelled => Error::Cancelled,
+        HttpError::Failed(s) => Error::Http(s),
+    })
 }
 
 #[cfg(test)]

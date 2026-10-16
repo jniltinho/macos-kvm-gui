@@ -12,42 +12,13 @@ use std::sync::atomic::AtomicBool;
 use std::time::Duration;
 
 use rg_core::Config;
+use rg_core::workspace::ROOT_PATCH_MARKER;
 
 use crate::boot::{KextCache, copy_kext};
 use crate::extrakexts::MAX_KEXT_FILE;
 use crate::http::https_get_max;
 use crate::util::{TempDir, exists, sha256_hex};
 use crate::{Context, Result, invalid};
-
-/// Go `RootPatchVersion`: Big Sur drives Kepler natively, and Tahoe is left out until OCLP
-/// supports it in a stable release.
-pub fn root_patch_version(version: &str) -> bool {
-    matches!(version, "monterey" | "ventura" | "sonoma" | "sequoia")
-}
-
-/// OCLP 2.5.1's kepler_ids (datasets/pci_data.py), NVIDIA vendor 10de: an explicit list, never
-/// ranges or marketing names (a GT 730 can be Fermi, a GTX 750 is Maxwell).
-const KEPLER_IDS: &[&str] = &[
-    "0fc0", "0fc1", "0fc2", "0fc5", "0fc6", "0fc8", "0fc9", "0fcd", "0fce", "0fd1", "0fd2", "0fd3",
-    "0fd4", "0fd5", "0fd6", "0fd8", "0fd9", "0fdb", "0fdf", "0fe0", "0fe1", "0fe2", "0fe3", "0fe4",
-    "0fe5", "0fe6", "0fe7", "0fe8", "0fe9", "0fea", "0fec", "0fed", "0fee", "0fef", "0ff1", "0ff2",
-    "0ff3", "0ff5", "0ff6", "0ff7", "0ff8", "0ff9", "0ffa", "0ffb", "0ffc", "0ffd", "0ffe", "0fff",
-    "1001", "1003", "1004", "1005", "1007", "1008", "100a", "100c", "101e", "101f", "1020", "1021",
-    "1022", "1023", "1024", "1026", "1027", "1028", "1029", "102a", "102d", "102e", "102f", "103a",
-    "103c", "103f", "1180", "1182", "1183", "1184", "1185", "1186", "1187", "1188", "1189", "118a",
-    "118b", "118c", "118d", "118e", "118f", "1191", "1193", "1194", "1195", "1198", "1199", "119a",
-    "119d", "119e", "119f", "11a0", "11a1", "11a2", "11a3", "11a7", "11a8", "11a9", "11af", "11b0",
-    "11b1", "11b4", "11b6", "11b7", "11b8", "11b9", "11ba", "11bc", "11bd", "11be", "11bf", "11c0",
-    "11c2", "11c3", "11c4", "11c5", "11c6", "11c7", "11c8", "11cb", "11e0", "11e1", "11e2", "11e3",
-    "11e7", "11fa", "11fc", "1280", "1281", "1282", "1284", "1286", "1287", "1288", "1289", "128a",
-    "128b", "128c", "1290", "1291", "1292", "1293", "1294", "1295", "1296", "1298", "1299", "129a",
-    "12a0", "12b9", "12ba",
-];
-
-/// Go `IsKepler`: whether a PCI ID (`vendor:device`) is an NVIDIA Kepler GPU.
-pub fn is_kepler(id: &str) -> bool {
-    matches!(id.split_once(':'), Some(("10de", d)) if KEPLER_IDS.contains(&d))
-}
 
 /// OCLP's 2.5.1 tag. The kexts are downloaded from that commit, never embedded: AMFIPass,
 /// RSRHelper and KDKlessWorkaround are published only as binaries inside OCLP.
@@ -212,11 +183,6 @@ pub(crate) fn add_root_patch_kexts(cache: &KextCache, kexts_dir: &Path) -> Resul
     Ok(())
 }
 
-/// In the VM's boot folder: the last boot had root-patch mode on, so the first boot with it off
-/// deletes the lowered SIP and RestrictEvents values from NVRAM (OpenCore's NVRAM Add never
-/// replaces a value that is already there).
-pub const ROOT_PATCH_MARKER: &str = "macos-kvm-gui/root-patch-on";
-
 /// The boot arguments OCLP adds with lowered SIP.
 pub(crate) const ROOT_PATCH_BOOT_ARGS: &str = " ipc_control_port_options=0 -nokcmismatchpanic";
 
@@ -279,47 +245,10 @@ pub fn clear_root_patch_marker(ws_dir: &Path, c: &Config, ran: Duration) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::boot::{BootOptions, BootState, EFI_DIR, Identity, opencore_config, prepare_boot};
+    use crate::boot::{BootOptions, BootState, Identity, opencore_config, prepare_boot};
     use crate::util::testutil::{serve, tempdir, zip_of};
     use crate::{BootAssets, Error};
-
-    #[test]
-    fn kepler_allowlist() {
-        for id in [
-            "10de:128b",
-            "10de:1287",
-            "10de:1180",
-            "10de:0fc6",
-            "10de:1004",
-            "10de:102d",
-        ] {
-            assert!(is_kepler(id), "{id} is Kepler");
-        }
-        // GT 730 GF108 is Fermi; GTX 745/750/750 Ti GM107 are Maxwell; AMD and Intel are not NVIDIA.
-        for id in [
-            "10de:0f02",
-            "10de:1380",
-            "10de:1381",
-            "10de:1382",
-            "10de:2786",
-            "1002:128b",
-            "8086:1287",
-        ] {
-            assert!(!is_kepler(id), "{id} is not Kepler");
-        }
-        assert!(KEPLER_IDS.len() >= 150);
-        for (v, want) in [
-            ("big-sur", false),
-            ("monterey", true),
-            ("ventura", true),
-            ("sonoma", true),
-            ("sequoia", true),
-            ("tahoe", false),
-            ("catalina", false),
-        ] {
-            assert_eq!(root_patch_version(v), want, "{v}");
-        }
-    }
+    use rg_core::workspace::EFI_DIR;
 
     #[test]
     fn root_patch_config_on_off_and_clear() -> Result<()> {

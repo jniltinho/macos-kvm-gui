@@ -1,8 +1,9 @@
 //! QEMU's command line for a VM: OpenCore-Boot.sh ported, for VMware SVGA and Reims vGPU (Go
 //! `vm.go` `BuildArgs`, `reimshost.go` `reimsArgs`, `network.go` `netArgs`).
 
-use crate::compat::{self, DISK_FILE, EFI_DIR, MEDIA_FILE, NET_BRIDGED, OVMF_CODE, VARS_FILE};
 use rg_core::Config;
+use rg_core::network::net_args;
+use rg_core::workspace::{DISK_FILE, EFI_DIR, MEDIA_FILE, OVMF_CODE, VARS_FILE};
 use std::path::{Path, PathBuf};
 
 /// isa-applesmc's key, as in OpenCore-Boot.sh.
@@ -26,9 +27,9 @@ pub struct ArgsEnv {
     pub bridge_helper: String,
     /// Reims vGPU's audio backend: `pipewire`, `pa` or `none`.
     pub audio: String,
-    /// VMware SVGA only: run QEMU's own GTK window (no menu bar, no tabs) for the app to embed,
-    /// plus the VNC socket. Off (the default) gives the Go app's arguments.
-    pub gtk_window: bool,
+    /// VMware SVGA only: run QEMU's own SDL window (`-display sdl`) for the app to embed, plus
+    /// the VNC socket. Off (the default) gives the Go app's arguments.
+    pub sdl_window: bool,
 }
 
 impl ArgsEnv {
@@ -37,10 +38,25 @@ impl ArgsEnv {
         Self {
             workspace: workspace.into(),
             qmp_socket: qmp_socket.into(),
-            bridge_helper: compat::bridge_helper(),
-            audio: compat::reims_audio().into(),
+            bridge_helper: rg_core::network::bridge_helper().unwrap_or_default().into(),
+            audio: reims_audio().into(),
             ..Self::default()
         }
+    }
+}
+
+/// `reimsAudio`: the host's sound server, PipeWire, PulseAudio or none.
+pub fn reims_audio() -> &'static str {
+    let Some(run) = std::env::var_os("XDG_RUNTIME_DIR").filter(|r| !r.is_empty()) else {
+        return "none";
+    };
+    let run = PathBuf::from(run);
+    if run.join("pipewire-0").exists() {
+        "pipewire"
+    } else if run.join("pulse/native").exists() {
+        "pa"
+    } else {
+        "none"
     }
 }
 
@@ -74,7 +90,7 @@ pub fn build_args(c: &Config, env: &ArgsEnv) -> Vec<String> {
     args.extend([
         c.ram_mib.to_string(),
         "-cpu".into(),
-        compat::profile_cpu(&c.version),
+        rg_core::config::profile_for(&c.version).cpu,
     ]);
     args.extend(s(&[
         "-machine",
@@ -175,12 +191,12 @@ pub fn build_args(c: &Config, env: &ArgsEnv) -> Vec<String> {
         }
     }
     args.extend(more_nics);
-    if env.gtk_window && !c.reims() {
-        // QEMU's own GTK window, for the app to embed (native scancodes); VNC still serves the
+    if env.sdl_window && !c.reims() {
+        // QEMU's own SDL window, for the app to embed (native scancodes); VNC still serves the
         // Preview and screen capture.
         args.extend([
             "-display".into(),
-            "gtk,show-menubar=off,show-tabs=off".into(),
+            "sdl".into(),
             "-vnc".into(),
             format!(
                 "unix:{},lock-key-sync=off",
@@ -246,58 +262,6 @@ fn reims_args(args: Vec<String>, ram_mib: u32, audio: &str) -> Vec<String> {
         }
     }
     out
-}
-
-/// The adapters' arguments. Adapter 1 keeps the position it always had; adapters 2–4 sit on
-/// fixed PCI slots so adding one never moves the display or a passed-through GPU. With no
-/// enabled adapter QEMU must not add its default one. The SSH forward goes on the first enabled
-/// NAT adapter; further NAT adapters get their own subnet.
-pub fn net_args(c: &Config, helper: &str) -> (Vec<String>, Vec<String>) {
-    let (mut first, mut rest) = (Vec::new(), Vec::new());
-    let (mut any, mut forwarded) = (false, false);
-    for (i, n) in compat::adapters(c).iter().enumerate() {
-        if !n.enabled {
-            continue;
-        }
-        any = true;
-        let id = format!("net{i}");
-        let netdev = if n.mode == NET_BRIDGED {
-            format!(
-                "bridge,id={id},br={},helper={}",
-                n.bridge,
-                qemu_path(helper)
-            )
-        } else {
-            let mut d = format!("user,id={id}");
-            if i > 0 {
-                d += &format!(",net=10.0.{}.0/24", 2 + i);
-            }
-            if !forwarded {
-                d += &format!(",hostfwd=tcp:127.0.0.1:{}-:22", c.ssh_port);
-                forwarded = true;
-            }
-            d
-        };
-        let dev = format!(
-            "{},netdev={id},id={id},mac={}",
-            n.model,
-            n.mac.to_lowercase()
-        );
-        if i == 0 {
-            first.extend(["-netdev".into(), netdev, "-device".into(), dev]);
-        } else {
-            rest.extend([
-                "-netdev".into(),
-                netdev,
-                "-device".into(),
-                format!("{dev},bus=pcie.0,addr={:#x}", 0x15 + i),
-            ]);
-        }
-    }
-    if !any {
-        first = s(&["-nic", "none"]);
-    }
-    (first, rest)
 }
 
 #[cfg(test)]
@@ -483,14 +447,11 @@ mod tests {
     }
 
     #[test]
-    fn gtk_window_keeps_vnc_for_svga_only() {
+    fn sdl_window_keeps_vnc_for_svga_only() {
         let mut e = env(false);
-        e.gtk_window = true;
+        e.sdl_window = true;
         let args = build_args(&Config::defaults(), &e);
-        assert_eq!(
-            arg_after(&args, "-display", ""),
-            "gtk,show-menubar=off,show-tabs=off"
-        );
+        assert_eq!(arg_after(&args, "-display", ""), "sdl");
         assert!(arg_after(&args, "-vnc", "unix:").ends_with("vnc.sock,lock-key-sync=off"));
         let mut c = Config::defaults();
         c.graphics = rg_core::config::GRAPHICS_REIMS.into();

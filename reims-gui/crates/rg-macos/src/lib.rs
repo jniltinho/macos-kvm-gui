@@ -6,7 +6,6 @@
 //! (checked between reads and chunks) and a progress callback.
 
 mod chunklist;
-mod compat;
 mod http;
 mod installer;
 mod recovery;
@@ -24,9 +23,8 @@ pub use installer::{
     use_disc,
 };
 pub use recovery::{
-    MEDIA_FILE, MEDIA_MARKER, RECOVERY_PRODUCTS, RecoveryProduct, STAGE_CHUNKLIST, STAGE_CONVERT,
-    STAGE_IMAGE, STAGE_VERIFY, STAGING_DIR, download_media, download_recovery, media_version,
-    recovery_product,
+    RECOVERY_PRODUCTS, RecoveryProduct, STAGE_CHUNKLIST, STAGE_CONVERT, STAGE_IMAGE, STAGE_VERIFY,
+    download_media, download_recovery, recovery_product,
 };
 
 /// Progress of a long operation, for the UI and the CLI.
@@ -69,6 +67,24 @@ pub enum Error {
     /// Anything else, with the Go app's message.
     #[error("{0}")]
     Other(String),
+}
+
+impl From<rg_core::Error> for Error {
+    fn from(e: rg_core::Error) -> Self {
+        match e {
+            rg_core::Error::Io(e) => Self::Io(e),
+            e => Self::Other(e.to_string()),
+        }
+    }
+}
+
+impl From<rg_core::http::HttpError> for Error {
+    fn from(e: rg_core::http::HttpError) -> Self {
+        match e {
+            rg_core::http::HttpError::Cancelled => Self::Cancelled,
+            rg_core::http::HttpError::Failed(s) => Self::Other(s),
+        }
+    }
 }
 
 /// Result of this crate.

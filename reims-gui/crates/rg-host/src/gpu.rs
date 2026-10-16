@@ -8,8 +8,8 @@ use std::path::PathBuf;
 
 use rg_core::Config;
 
-use crate::compat::{root_patch_version, version_display, version_index};
 use crate::host::{Host, HostError, failed, open_rw};
+use rg_core::config::{root_patch_version, version_display, version_index};
 
 /// Whether macOS drives a GPU.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -743,6 +743,40 @@ mod tests {
         assert_eq!(rx.funcs[1].id, "1002:ab28");
         assert!(gpu(&h, "0000:01:00.0")?.monitor);
         Ok(())
+    }
+
+    #[test]
+    fn kepler_allowlist() {
+        for id in [
+            "10de:128b",
+            "10de:1287",
+            "10de:1180",
+            "10de:0fc6",
+            "10de:1004",
+            "10de:102d",
+        ] {
+            assert!(is_kepler(id), "{id} is Kepler");
+        }
+        // GT 730 GF108 is Fermi; GTX 745/750/750 Ti GM107 are Maxwell; AMD and Intel are not NVIDIA.
+        for id in [
+            "10de:0f02",
+            "10de:1380",
+            "10de:1381",
+            "10de:1382",
+            "10de:2786",
+            "1002:128b",
+            "8086:1287",
+        ] {
+            assert!(!is_kepler(id), "{id} is not Kepler");
+        }
+        for (v, want) in [
+            ("big-sur", false),
+            ("monterey", true),
+            ("sequoia", true),
+            ("tahoe", false),
+        ] {
+            assert_eq!(root_patch_version(v), want, "{v}");
+        }
     }
 
     #[test]

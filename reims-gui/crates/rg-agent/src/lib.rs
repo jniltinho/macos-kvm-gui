@@ -161,21 +161,6 @@ impl Ctx {
 
 /// settings.yaml's kexts as rg-assets takes them.
 // ponytail: copy until rg-assets uses rg-core's ExtraKexts (its compat.rs goes at integration).
-fn assets_kexts(ks: &rg_core::ExtraKexts) -> rg_assets::ExtraKexts {
-    rg_assets::ExtraKexts {
-        disabled: ks.disabled.clone(),
-        entries: ks
-            .entries
-            .iter()
-            .map(|e| rg_assets::ExtraKext {
-                url: e.url.clone(),
-                sha256: e.sha256.clone(),
-                kexts: (!e.kexts.is_empty()).then(|| e.kexts.clone()),
-            })
-            .collect(),
-    }
-}
-
 /// The kexts snapshot `vm start --kexts-snapshot` takes from the MCP server, which already
 /// downloaded them.
 #[derive(serde::Serialize, serde::Deserialize)]

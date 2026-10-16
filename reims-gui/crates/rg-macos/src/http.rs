@@ -1,26 +1,25 @@
-//! HTTP clients (ureq + rustls) with the Go app's timeouts and redirect policy.
+//! Apple's endpoints over rg-core's shared HTTP client, with the Go app's timeouts and redirect
+//! policy.
 
 use std::io::Read;
 use std::sync::atomic::AtomicBool;
-use std::time::Duration;
 
-use ureq::Agent;
-use ureq::config::Config;
+use rg_core::http::{Client, ClientOpts};
 use ureq::http::Response;
 
-use crate::{Error, Result, other};
+use crate::{Error, Result};
 
 /// The HTTP clients this crate uses. Build one with [`Http::default`] and share it.
 #[derive(Clone, Debug)]
 pub struct Http {
     /// Apple's catalog, distributions and integrity data: HTTPS only (redirects too), 60 s.
-    pub(crate) api: Agent,
+    pub(crate) api: Client,
     /// The installer package: HTTPS only, no overall timeout (many GB), bounded connect/headers.
-    pub(crate) download: Agent,
+    pub(crate) download: Client,
     /// The recovery API (plain HTTP, as Apple serves it), 60 s.
-    pub(crate) recovery_api: Agent,
+    pub(crate) recovery_api: Client,
     /// The recovery image: no overall timeout, bounded connect/headers.
-    pub(crate) recovery_download: Agent,
+    pub(crate) recovery_download: Client,
     /// `http://osrecovery.apple.com`; tests point it at a local server (the Host header stays).
     pub(crate) recovery_base: String,
     /// Apple's catalogs, newest first.
@@ -36,32 +35,26 @@ const INSTALLER_CATALOGS: [&str; 2] = [
     "https://swscan.apple.com/content/catalogs/others/index-26-15-14-13-12-10.16-10.15-10.14-10.13-10.12-10.11-10.10-10.9-mountainlion-lion-snowleopard-leopard.merged-1.sucatalog",
 ];
 
-fn base() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
-    Config::builder()
-        .http_status_as_error(false)
-        .max_redirects(5)
-}
-
-fn api(b: ureq::config::ConfigBuilder<ureq::typestate::AgentScope>) -> Agent {
-    b.timeout_global(Some(Duration::from_secs(60)))
-        .build()
-        .new_agent()
-}
-
-fn download(b: ureq::config::ConfigBuilder<ureq::typestate::AgentScope>) -> Agent {
-    b.timeout_connect(Some(Duration::from_secs(30)))
-        .timeout_recv_response(Some(Duration::from_secs(60)))
-        .build()
-        .new_agent()
+fn client(download: bool, recovery: bool, roots: &[u8]) -> Client {
+    Client::new(&ClientOpts {
+        plain_http: recovery,
+        download,
+        user_agent: recovery.then(|| RECOVERY_USER_AGENT.to_owned()),
+        roots: if roots.is_empty() {
+            Vec::new()
+        } else {
+            vec![roots.to_vec()]
+        },
+    })
 }
 
 impl Default for Http {
     fn default() -> Self {
         Self {
-            api: api(base().https_only(true)),
-            download: download(base().https_only(true)),
-            recovery_api: api(base().user_agent(RECOVERY_USER_AGENT)),
-            recovery_download: download(base().user_agent(RECOVERY_USER_AGENT)),
+            api: client(false, false, &[]),
+            download: client(true, false, &[]),
+            recovery_api: client(false, true, &[]),
+            recovery_download: client(true, true, &[]),
             recovery_base: "http://osrecovery.apple.com".into(),
             catalogs: INSTALLER_CATALOGS.iter().map(|s| (*s).to_owned()).collect(),
         }
@@ -73,55 +66,29 @@ impl Http {
     /// recovery requests to `recovery_base`.
     #[cfg(test)]
     pub(crate) fn for_tests(root_der: &[u8], recovery_base: &str) -> Self {
-        use ureq::tls::{Certificate, RootCerts, TlsConfig};
-        let b = || {
-            let b = base().https_only(true);
-            if root_der.is_empty() {
-                return b;
-            }
-            let certs = RootCerts::new_with_certs(&[Certificate::from_der(root_der).to_owned()]);
-            b.tls_config(TlsConfig::builder().root_certs(certs).build())
-        };
         Self {
-            api: api(b()),
-            download: download(b()),
+            api: client(false, false, root_der),
+            download: client(true, false, root_der),
             recovery_base: recovery_base.to_owned(),
             ..Self::default()
         }
     }
 
     /// GET over HTTPS (redirects stay on HTTPS, 60 s), reading at most `limit` bytes; any
-    /// status but 200 is an error (`httpsGet`, also used by the kext downloads in rg-assets).
+    /// status but 200 is an error (`httpsGet`).
     pub fn https_get(&self, url: &str, limit: u64) -> Result<Vec<u8>> {
-        if !url.starts_with("https://") {
-            return other(format!("refusing a non-HTTPS URL: {url}"));
-        }
-        let resp = self.api.get(url).call().map_err(|e| http_err(url, e))?;
-        if resp.status() != 200 {
-            return other(format!("{url}: {}", status_text(&resp)));
-        }
-        let mut out = Vec::new();
-        resp.into_body()
-            .into_reader()
-            .take(limit)
-            .read_to_end(&mut out)?;
-        Ok(out)
+        Ok(self.api.get(url, limit)?)
     }
 
     /// [`Http::https_get`] that fails, instead of truncating, past `max` bytes (`httpsGetMax`).
     pub fn https_get_max(&self, url: &str, max: u64) -> Result<Vec<u8>> {
-        let data = self.https_get(url, max + 1)?;
-        if data.len() as u64 > max {
-            return other(format!("{url} is larger than {} MiB", max >> 20));
-        }
-        Ok(data)
+        Ok(self.api.get_max(url, max, &AtomicBool::new(false))?)
     }
 }
 
 /// "403 Forbidden", like Go's `resp.Status`.
 pub(crate) fn status_text<B>(resp: &Response<B>) -> String {
-    let s = resp.status();
-    format!("{} {}", s.as_u16(), s.canonical_reason().unwrap_or(""))
+    rg_core::http::status_text(resp.status())
 }
 
 pub(crate) fn http_err(what: &str, e: ureq::Error) -> Error {
@@ -136,20 +103,7 @@ pub(crate) fn copy_body(
     cancel: &AtomicBool,
     each: &mut dyn FnMut(u64),
 ) -> Result<u64> {
-    let mut buf = vec![0; 1 << 20];
-    let mut n = 0u64;
-    loop {
-        crate::check_cancel(cancel)?;
-        let r = match r.read(&mut buf) {
-            Ok(0) => return Ok(n),
-            Ok(r) => r,
-            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(e) => return Err(e.into()),
-        };
-        w.write_all(&buf[..r])?;
-        n += r as u64;
-        each(n);
-    }
+    Ok(rg_core::http::copy(r, w, cancel, each)?)
 }
 
 #[cfg(test)]

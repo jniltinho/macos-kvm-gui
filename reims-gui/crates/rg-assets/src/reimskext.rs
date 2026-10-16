@@ -95,11 +95,12 @@ pub(crate) fn add_reims_kext(cache: &KextCache, kexts_dir: &Path) -> Result<()> 
 mod tests {
     use super::*;
     use crate::BootAssets;
-    use crate::boot::{BootOptions, BootState, EFI_DIR, Identity, opencore_config, prepare_boot};
-    use crate::compat::ExtraKexts;
+    use crate::boot::{BootOptions, BootState, Identity, opencore_config, prepare_boot};
     use crate::util::testutil::{serve, tempdir};
     use rg_core::Config;
+    use rg_core::ExtraKexts;
     use rg_core::config::{GRAPHICS_REIMS, GRAPHICS_SVGA};
+    use rg_core::workspace::EFI_DIR;
 
     #[test]
     fn reims_kext_download_and_boot() -> Result<()> {

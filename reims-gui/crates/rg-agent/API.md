@@ -91,5 +91,3 @@ text; failures are tool errors (`isError`) with the Go messages.
   socket" and a VM in QEMU's own window works too.
 - `vm_start` uses a new process group, not `setsid` (no `unsafe`).
 - `setup` takes the user name from `$USER` (or `$LOGNAME`).
-- `assets_kexts` converts rg-core's `ExtraKexts` to rg-assets' copy until rg-assets uses
-  rg-core's type; then delete it.

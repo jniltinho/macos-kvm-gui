@@ -32,7 +32,7 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 
-use crate::{Ctx, KextsSnapshot, assets_kexts, go_duration, parent_exists};
+use crate::{Ctx, KextsSnapshot, go_duration, parent_exists};
 
 const VM_DESC: &str = "VM name or id; default: the VM selected in the app";
 
@@ -576,7 +576,7 @@ impl Server {
         let ks = self.ctx.app.load_extra_kexts()?;
         let cache = self.ctx.kext_cache()?;
         let reims_kext = e.config.reims_kext();
-        let aks = assets_kexts(&ks);
+        let aks = ks.clone();
         tokio::task::spawn_blocking(move || -> Result<()> {
             let cancel = AtomicBool::new(false);
             rg_assets::download_extra_kexts(&aks, &cache, &cancel)?;

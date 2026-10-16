@@ -7,7 +7,6 @@
 //! `qemu/current` is switched to a build only once it works on this host. See `API.md`.
 
 mod activate;
-pub mod compat;
 mod docker;
 mod install;
 mod process;
@@ -17,6 +16,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 
+use rg_core::AppDir;
+use rg_core::settings::find_reims_qemu;
 use serde::Deserialize;
 
 /// The Ubuntu releases packages and builds exist for.
@@ -110,7 +111,7 @@ pub struct Reims {
 }
 
 impl Reims {
-    /// Reims packages in `dir` (`<Workspace>/.reims`, see [`compat::reims_dir`]). Reads the
+    /// Reims packages in `dir` (`<Workspace>/.reims`, see `rg_core::config::reims_dir`). Reads the
     /// `reims_qemu` setting and `$XDG_DATA_HOME` now.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         Self {
@@ -122,7 +123,7 @@ impl Reims {
             manifest_json: MANIFEST_JSON.into(),
             max_expanded: MAX_EXPANDED,
             roots: None,
-            qemu_setting: compat::reims_qemu_setting(),
+            qemu_setting: AppDir::user().and_then(|a| a.reims_qemu_setting()),
             data_dir: dirs::data_dir(),
         }
     }
@@ -157,37 +158,12 @@ impl Reims {
     /// Finds the Reims QEMU: the `reims_qemu` setting, the app's own install in
     /// `<Workspace>/.reims`, then an upstream reims-ctl install.
     pub fn qemu(&self) -> Result<PathBuf> {
-        if let Some(p) = &self.qemu_setting {
-            return match fs::metadata(p) {
-                Ok(_) => Ok(p.clone()),
-                Err(e) => {
-                    let file = compat::settings_file().unwrap_or_default();
-                    Err(msg(format!(
-                        "reims_qemu in {}: {}: {e}",
-                        file.display(),
-                        p.display()
-                    )))
-                }
-            };
-        }
-        let bin = Path::new("qemu")
-            .join("current")
-            .join("bin")
-            .join("qemu-system-x86_64");
-        let mut tried = vec![self.dir.join(&bin)];
-        if let Some(data) = &self.data_dir {
-            tried.push(data.join("reims-ctl").join(&bin));
-        }
-        if let Some(p) = tried
-            .iter()
-            .find(|p| fs::metadata(p).is_ok_and(|m| m.is_file()))
-        {
-            return Ok(p.clone());
-        }
-        Err(msg(format!(
-            "Reims vGPU is not installed (looked for {}): install it in the Host tab or with `reims-gui reims install`",
-            tried[0].display()
-        )))
+        let mut roots = vec![self.dir.clone()];
+        roots.extend(self.data_dir.as_ref().map(|d| d.join("reims-ctl")));
+        let file = AppDir::user()
+            .map(|a| a.settings_file())
+            .unwrap_or_default();
+        find_reims_qemu(self.qemu_setting.as_deref(), &file, &roots).map_err(|e| msg(e.to_string()))
     }
 
     /// Describes the Reims QEMU a reims-vgpu VM would run.

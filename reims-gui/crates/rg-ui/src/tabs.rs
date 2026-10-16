@@ -5,7 +5,6 @@ use egui::{
     Align, Align2, Color32, CornerRadius, Frame, Layout, Margin, Rect, RichText, ScrollArea, Sense,
     Ui, vec2,
 };
-use rg_core::config;
 
 use crate::app::{Action, App, Tab, smbios_model, version_title};
 use crate::backend::{Check, Status, Task, VmState};

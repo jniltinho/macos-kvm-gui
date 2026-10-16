@@ -3,8 +3,8 @@
 //! are the Go app's `settings.go`, `network.go`, `wizard.go` and the Preferences dialog.
 
 use egui::{Align, Layout, RichText, Ui, vec2};
-use rg_core::config::{self, Config};
 use rg_core::Nic;
+use rg_core::config::{self, Config};
 
 use crate::app::{Action, App, Tab, VERSIONS, version_label, version_title};
 use crate::backend::{HostInfo, Status, Task, VmEntry, VmId};

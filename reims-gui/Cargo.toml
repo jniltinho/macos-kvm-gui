@@ -27,6 +27,7 @@ rg-host = { path = "crates/rg-host" }
 rg-macos = { path = "crates/rg-macos" }
 rg-qemu = { path = "crates/rg-qemu" }
 rg-reims = { path = "crates/rg-reims" }
+rg-ops = { path = "crates/rg-ops" }
 rg-x11 = { path = "crates/rg-x11" }
 rg-ui = { path = "crates/rg-ui" }
 rg-agent = { path = "crates/rg-agent" }

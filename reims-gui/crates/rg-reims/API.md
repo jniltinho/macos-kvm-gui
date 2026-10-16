@@ -16,7 +16,7 @@ line, possibly from another thread.
 | `RELEASES: [&str; 2]` (`24.04`, `26.04`) | `ReimsReleases` |
 | `DOCKERFILE: &str` | `reimsDockerfile` |
 | `manifest() -> Result<Manifest>` (`tag`, `commit`, `packages[release] = Package { file, sha256 }`) | `loadReimsManifest` |
-| `compat::reims_dir(workspace_root) -> Option<PathBuf>` | `ReimsDir` |
+| `rg_core::config::reims_dir(workspace_root) -> Result<PathBuf>` | `ReimsDir` |
 | `Reims::new(reims_dir)` | (globals) |
 | `Reims::dir()` | |
 | `Reims::host_ubuntu_release() -> Result<String>` | `HostUbuntuRelease` |
@@ -28,7 +28,7 @@ line, possibly from another thread.
 | `Error { Msg(String), Io(io::Error), Cancelled }`, `Result<T>` | `error` |
 
 ```rust
-let dir = rg_reims::compat::reims_dir(&workspace_root).ok_or("the Workspace must be absolute")?;
+let dir = rg_core::config::reims_dir(&workspace_root)?;
 let reims = rg_reims::Reims::new(dir);
 reims.install(&cancel, &|line| println!("{line}"))?;
 let info = reims.installed()?;
@@ -66,10 +66,9 @@ let info = reims.installed()?;
 
 - Globals that Go tests swapped (`osReleaseFile`, `lddCommand`, `reimsReleaseURL`,
   `maxReimsExpanded`, the HTTP transport) are private fields of `Reims`, set by the crate's tests.
-- `compat.rs` stands in for rg-core paths not ported yet: `reims_dir` (Go `WorkspaceDir` + `.reims`),
-  `settings_file`, and the `reims_qemu` setting (a line scan of settings.yaml, not a YAML parse).
+- `ReimsDir`, settings.yaml's `reims_qemu` and the lookup order are rg-core's (`reims_dir`,
+  `AppDir::reims_qemu_setting`, `find_reims_qemu`); downloads use rg-core's `http::Client`.
   The Workspace root itself (the `workspace` preference in the SQLite DB) is the caller's to pass.
-  Replace with rg-core once it has them.
 - Messages name `reims-gui reims install|build` instead of `macos-kvm-gui ...`.
 - Cancelling a download is seen between reads (Go's context aborts a blocked read).
 - Spawning a binary retries on `ETXTBSY` (a QEMU this process just unpacked).

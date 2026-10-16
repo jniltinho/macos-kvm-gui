@@ -5,8 +5,8 @@ use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 
 use egui::{Color32, ColorImage};
-use rg_core::config::{self, Config};
 use rg_core::Nic;
+use rg_core::config::{self, Config};
 
 use crate::backend::*;
 use crate::theme::ThemeMode;

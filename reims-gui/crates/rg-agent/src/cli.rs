@@ -19,7 +19,7 @@ use rg_core::workspace::MEDIA_FILE;
 use rg_core::{Config, Registry, VmEntry, Workspace};
 use rg_qemu::{VmEvent, VmState, find_running};
 
-use crate::{Ctx, KextsSnapshot, assets_kexts, go_duration};
+use crate::{Ctx, KextsSnapshot, go_duration};
 
 /// Output streams of one command (stdout, stderr).
 pub type Out<'a> = &'a mut (dyn Write + Send);
@@ -1023,7 +1023,7 @@ remaining root patches can prevent macOS from booting once its protections are r
         };
         let cache = ctx.kext_cache()?;
         let cancel = AtomicBool::new(false);
-        let aks = assets_kexts(&ks);
+        let aks = ks.clone();
         if !rg_assets::extra_kexts_ready(&aks, &cache) {
             writeln!(
                 out,
@@ -1151,8 +1151,7 @@ remaining root patches can prevent macOS from booting once its protections are r
                     writeln!(out, "disable: {}", ks.disabled.join(", "))?;
                 }
                 if !ks.entries.is_empty() {
-                    let ready =
-                        rg_assets::extra_kexts_ready(&assets_kexts(&ks), &self.ctx.kext_cache()?);
+                    let ready = rg_assets::extra_kexts_ready(&ks.clone(), &self.ctx.kext_cache()?);
                     writeln!(out, "kexts downloaded: {ready}")?;
                 }
                 Ok(())

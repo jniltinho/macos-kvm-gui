@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use rg_core::Config;
 
-use crate::compat;
+use rg_core::AppDir;
 
 /// A check's outcome.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,10 +171,32 @@ impl Host {
                     output: one_line(&out),
                 })
             }),
-            reims_qemu: Arc::new(compat::reims_qemu),
-            extra_kexts: Arc::new(compat::extra_kexts),
-            settings_file: compat::settings_file(),
+            reims_qemu: Arc::new(|| Self::reims_qemu_in(&[])),
+            extra_kexts: Arc::new(|| {
+                let app = AppDir::user().ok_or("no user config folder")?;
+                app.load_extra_kexts()
+                    .map(|k| k.entries.len())
+                    .map_err(|e| e.to_string())
+            }),
+            settings_file: AppDir::user()
+                .map(|a| a.settings_file().to_string_lossy().into_owned())
+                .unwrap_or_default(),
         }
+    }
+
+    /// rg-core's Reims QEMU lookup (the `reims_qemu` setting, then each of `reims_dirs`, then
+    /// an upstream reims-ctl install). [`Host::system`] passes no `<Workspace>/.reims`, which
+    /// lives in the registry; rg-ops sets `reims_qemu` to call this with it.
+    pub fn reims_qemu_in(reims_dirs: &[PathBuf]) -> Result<PathBuf, String> {
+        let app = AppDir::user();
+        let mut roots = reims_dirs.to_vec();
+        roots.extend(rg_core::settings::reims_ctl_dir());
+        rg_core::settings::find_reims_qemu(
+            app.as_ref().and_then(AppDir::reims_qemu_setting).as_deref(),
+            &app.map(|a| a.settings_file()).unwrap_or_default(),
+            &roots,
+        )
+        .map_err(|e| e.to_string())
     }
 
     /// Every host check for the chosen macOS version.
@@ -452,7 +474,7 @@ fn check_virt(flags: Option<&HashSet<String>>) -> Check {
 pub(crate) fn check_compat(flags: Option<&HashSet<String>>, version: &str) -> Check {
     let name = "CPU compatible with version";
     match flags {
-        _ if !compat::needs_avx2(version) => {
+        _ if !rg_core::config::profile_for(version).needs_avx2 => {
             Check::new(name, Status::Ok, "this version does not require AVX2", "")
         }
         None => Check::new(name, Status::Unknown, "could not read the CPU flags", ""),

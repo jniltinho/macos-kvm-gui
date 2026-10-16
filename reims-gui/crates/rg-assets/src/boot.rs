@@ -4,24 +4,18 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use rg_core::Config;
+use rg_core::config::smbios_model;
+use rg_core::workspace::{
+    BOOT_DIR, EFI_DIR, IDENTITY_FILE, OVMF_CODE, ROOT_PATCH_MARKER, VARS_FILE, write_file_atomic,
+};
+use rg_core::{Config, ExtraKexts};
 use serde::{Deserialize, Serialize};
 
 use crate::assets::BootAssets;
-use crate::compat::{ExtraKexts, reims_kext};
-use crate::rootpatch::{ROOT_PATCH_BOOT_ARGS, ROOT_PATCH_MARKER, kext_entry, root_patch_plist};
-use crate::util::{base64, copy_tree, exists, hex, hex_decode, random_bytes, write_atomic};
+use crate::rootpatch::{ROOT_PATCH_BOOT_ARGS, kext_entry, root_patch_plist};
+use crate::util::{base64, copy_tree, exists, hex, hex_decode, random_bytes};
 use crate::{Context, Result, extrakexts, invalid, reimskext, rootpatch};
 
-/// The app's folder in a VM's workspace.
-pub const BOOT_DIR: &str = "macos-kvm-gui";
-/// OpenCore's tree, exposed to QEMU as a FAT disk (vvfat).
-pub const EFI_DIR: &str = "macos-kvm-gui/efi";
-/// The firmware code.
-pub const OVMF_CODE: &str = "macos-kvm-gui/OVMF_CODE_4M.fd";
-/// The VM's NVRAM: created once, never overwritten.
-pub const VARS_FILE: &str = "macos-kvm-gui/OVMF_VARS_4M.fd";
-const IDENTITY_FILE: &str = "macos-kvm-gui/smbios.json";
 const RESOLUTION: &str = "1920x1080@32";
 /// OC_SCAN_FILE_SYSTEM_LOCK | OC_SCAN_ALLOW_FS_APFS | OC_SCAN_ALLOW_FS_HFS: hides OpenCore's
 /// own FAT disk, so the installed system is the default entry, and still finds HFS+ High
@@ -78,7 +72,7 @@ impl Identity {
             Ok(data) => Ok(serde_json::from_slice(&data)?),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let id = Self::generate()?;
-                write_atomic(&path, serde_json::to_string_pretty(&id)?.as_bytes(), 0o644)?;
+                write_file_atomic(&path, serde_json::to_string_pretty(&id)?.as_bytes(), 0o644)?;
                 Ok(id)
             }
             Err(e) => Err(e.into()),
@@ -116,16 +110,6 @@ impl KextCache {
     /// settings.yaml's kexts: `.kexts/extra`.
     pub fn extra_dir(&self) -> PathBuf {
         self.root.join("extra")
-    }
-}
-
-/// Go `SMBIOSModel`: a Mac that supports the macOS version. iMac models also keep
-/// AppleMCEReporter (which panics on AMD hosts) from loading.
-pub fn smbios_model(version: &str) -> &'static str {
-    match version {
-        "high-sierra" => "iMac18,3",
-        "mojave" => "iMac19,1",
-        _ => "iMac20,1", // Catalina 10.15.6 to Tahoe
     }
 }
 
@@ -254,7 +238,7 @@ pub fn prepare_boot(
     let vars = ws_dir.join(VARS_FILE);
     if !exists(&vars) {
         // A half-written NVRAM would never be retried, so it is published only once complete.
-        write_atomic(&vars, &assets.read("files/ovmf/OVMF_VARS_4M.fd")?, 0o644)?;
+        write_file_atomic(&vars, &assets.read("files/ovmf/OVMF_VARS_4M.fd")?, 0o644)?;
     }
     let id = Identity::load_or_create(ws_dir).context(|| "SMBIOS identity".into())?;
     let kexts_dir = efi.join("EFI/OC/Kexts");
@@ -264,7 +248,7 @@ pub fn prepare_boot(
     let mut state = BootState::default();
     // Only at a start (extras set), where the kext was downloaded first: creating a VM stays
     // offline, and config.plist is written again at every start.
-    if reims_kext(c) && opts.extras.is_some() {
+    if c.reims_kext() && opts.extras.is_some() {
         reimskext::add_reims_kext(cache, &kexts_dir)?;
         state.reims_kext = true;
     }
@@ -407,13 +391,6 @@ mod tests {
         assert!(verbose.contains("keepsyms=1 -v debug=0x100") && !installed.contains("-v"));
         assert!(gpu.contains("keepsyms=1 agdpmod=pikera") && !installed.contains("agdpmod"));
         Ok(())
-    }
-
-    #[test]
-    fn smbios_model_per_version() {
-        assert_eq!(smbios_model("high-sierra"), "iMac18,3");
-        assert_eq!(smbios_model("mojave"), "iMac19,1");
-        assert_eq!(smbios_model("tahoe"), "iMac20,1");
     }
 
     #[test]

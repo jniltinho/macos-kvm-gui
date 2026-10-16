@@ -14,7 +14,7 @@
 - [ ] 2.5 `rg-qemu`: QEMU args (golden tests against the Go args for SVGA and Reims), runtime, running detection, QMP, RFB client, key mapping.
 - [ ] 2.6 `rg-reims`: Reims packages install/build/activate/prune with the embedded manifest and Dockerfile; tests ported from Go.
 - [ ] 2.7 `rg-x11`: find (PID + title prefix), reparent, size, track ConfigureNotify, unmap/remap, focus; tests under Xvfb in Docker with a real SDL3 window and a QEMU-like SDL window as children.
-- [ ] 2.8 `rg-ops`: workspace preparation, media download, export/delete/move with running checks, VM start orchestration; tests with fakes.
+- [x] 2.8 `rg-ops`: workspace preparation, media download, export/delete/move with running checks, VM start orchestration; tests with fakes.
 
 ## 3. Interfaces (parallel after the core APIs exist)
 

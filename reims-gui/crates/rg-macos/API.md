@@ -12,8 +12,8 @@ Everything is blocking: call it from a worker thread. Long operations take
 
 | Item | Notes |
 | --- | --- |
-| `Http` | The HTTP clients (ureq 3 + rustls/ring). `Http::default()`; share one. API client: HTTPS only (redirects too, at most 5), 60 s. Download client: HTTPS only, 30 s connect, 60 s to the response headers, no overall timeout. Recovery clients: plain HTTP to `osrecovery.apple.com`, User-Agent `InternetRecovery/1.0`. Proxies from the environment. |
-| `Http::https_get(url, limit)` | Go's `httpsGet`: refuses non-HTTPS URLs, any status but 200 is an error, reads at most `limit` bytes. Also meant for rg-assets' kext downloads. |
+| `Http` | The HTTP clients, built on rg-core's `http::Client` (ureq 3 + rustls/ring). `Http::default()`; share one. API client: HTTPS only (redirects too, at most 5), 60 s. Download client: HTTPS only, 30 s connect, 60 s to the response headers, no overall timeout. Recovery clients: plain HTTP to `osrecovery.apple.com`, User-Agent `InternetRecovery/1.0`. Proxies from the environment. |
+| `Http::https_get(url, limit)` | Go's `httpsGet`: refuses non-HTTPS URLs, any status but 200 is an error, reads at most `limit` bytes. |
 | `Http::https_get_max(url, max)` | Go's `httpsGetMax`: fails instead of truncating past `max`. |
 | `Progress { phase, done, total }` | `total == 0` = indeterminate. Units: bytes (downloads, package check), chunks (recovery check), thousandths (conversion). `pct()` gives 0–100. |
 | `Error` | `Cancelled`, `Io(io::Error)`, `Other(String)` with the Go app's messages. `Result<T>`. |
@@ -26,8 +26,7 @@ Everything is blocking: call it from a worker thread. Long operations take
 | `download_recovery(http, version, dir, cancel, progress) -> (dmg, chunklist)` | Session cookie, `RecoveryImage` POST, then `BaseSystem.chunklist` and `BaseSystem.dmg` into `dir` (fixed names; server names never reach the disk) through exclusive `<name>.<random>.part` files renamed when complete. Fewer bytes than `Content-Length` is an error; on any error nothing is left. Phases `STAGE_CHUNKLIST`, `STAGE_IMAGE`. No resume (as in Go). |
 | `verify_image(dmg, chunklist, progress(done, total))` | Chunklist header checks, RSA-2048 PKCS#1 v1.5 SHA-256 signature with Apple's EFI ROM key (signature stored little-endian), per-chunk SHA-256, missing or trailing bytes rejected. |
 | `download_media(http, vm_dir, version, cancel, progress, log)` | `Workspace.DownloadMedia` without the lock (the caller holds the VM folder's lock, rg-core): free-space check (4 GiB), staging in `vm_dir/STAGING_DIR` (always removed), download, verify, `qemu-img convert -p -f dmg -O raw` (percentages to the bar, other lines to `log`), old `MEDIA_MARKER` removed, image renamed to `MEDIA_FILE`, marker written. Any failure keeps the previous media and marker. |
-| `media_version(vm_dir)` | `""` without media, `"unknown"` without a marker. |
-| `MEDIA_FILE`, `MEDIA_MARKER`, `STAGING_DIR`, `STAGE_*` | Same names and texts as Go. |
+| `STAGE_*` | Same texts as Go. `MEDIA_FILE`, `MEDIA_MARKER`, `STAGING_DIR` and `media_version` are rg-core's (`workspace`, `Workspace::media_version`). |
 
 ## Full installers (shared cache)
 
@@ -54,7 +53,7 @@ fetched over HTTPS.
 
 ## Not here
 
-- The workspace lock, `WorkspaceRoot` and `Config.WorkspaceDir`: rg-core. `compat.rs` holds
-  copies of `versionDisplay`, `SMBIOSModel`, `writeFileAtomic`, `freeBytes` and `bridgeNameRe`
-  until rg-core exports them.
+- The workspace lock, `WorkspaceRoot`, `Config.WorkspaceDir`, `version_display`, `smbios_model`,
+  `write_file_atomic`, `free_bytes`, `valid_bridge_name`: rg-core. Holding the lock around
+  `download_media`: rg-ops.
 - Attaching the disc to QEMU (`BuildArgs`), `GuestKeys`/`RecoveryTerminal`: rg-qemu.

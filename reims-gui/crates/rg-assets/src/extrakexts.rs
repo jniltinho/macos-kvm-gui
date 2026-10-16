@@ -10,7 +10,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::boot::{KextCache, copy_kext};
-use crate::compat::{ExtraKext, ExtraKexts};
+use rg_core::{ExtraKext, ExtraKexts};
+
 use crate::http::https_get_max;
 use crate::rootpatch::{root_patch_kexts, unpack_kext};
 use crate::util::{TempDir, sha256_hex};
@@ -30,21 +31,22 @@ pub(crate) fn valid_kext_name(n: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b"._+-".contains(&b))
 }
 
-/// `^[0-9a-f]{64}$`.
-pub(crate) fn valid_sha256(s: &str) -> bool {
-    s.len() == 64
-        && s.bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+/// A settings.yaml entry's cache (rg-core owns the type, this crate its download).
+trait Entry {
+    fn id(&self) -> String;
+    fn dir(&self, base: &Path) -> PathBuf;
+    fn cached(&self, base: &Path) -> Option<Vec<String>>;
+    fn download(&self, base: &Path, cancel: &AtomicBool) -> Result<()>;
 }
 
-impl ExtraKext {
+impl Entry for ExtraKext {
     /// Identifies the entry's cache folder: any change to the entry is another folder.
     fn id(&self) -> String {
         format!(
             "{} sha256={} load={}",
             self.url,
             self.sha256,
-            self.kexts.as_deref().unwrap_or_default().join(":")
+            self.kexts.join(":")
         )
     }
 
@@ -83,7 +85,7 @@ impl ExtraKext {
                 ));
             }
         }
-        let names = check_kext_archive(&data, self.kexts.as_deref())?;
+        let names = check_kext_archive(&data, (!self.kexts.is_empty()).then_some(&self.kexts[..]))?;
         let tmp = TempDir::new_in(base, ".tmp-")?;
         for n in &names {
             unpack_kext(&data, n, tmp.path()).context(|| format!("{n}.kext"))?;
@@ -309,10 +311,11 @@ pub(crate) fn add_extra_kexts(
 mod tests {
     use super::*;
     use crate::BootAssets;
-    use crate::boot::{BootOptions, BootState, EFI_DIR, Identity, opencore_config, prepare_boot};
+    use crate::boot::{BootOptions, BootState, Identity, opencore_config, prepare_boot};
     use crate::util::exists;
     use crate::util::testutil::{kext_files, serve, tempdir, zip_kexts, zip_of};
     use rg_core::Config;
+    use rg_core::workspace::EFI_DIR;
     use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
 
@@ -395,7 +398,7 @@ mod tests {
         ExtraKext {
             url,
             sha256: sha256.into(),
-            kexts: load.map(strings),
+            kexts: load.map(strings).unwrap_or_default(),
         }
     }
 
@@ -452,8 +455,7 @@ mod tests {
 
     #[test]
     fn cache_edges_and_cancelled_lock_wait() -> Result<()> {
-        let mut e = entry("https://example.com/a.zip".into(), "", Some(&[]));
-        e.check()?;
+        let e = entry("https://example.com/a.zip".into(), "", Some(&[]));
         assert_eq!(
             e.id(),
             entry("https://example.com/a.zip".into(), "", None).id(),
@@ -661,10 +663,5 @@ mod tests {
                 && !valid_kext_name("")
         );
         assert!(!valid_kext_name(&"a".repeat(65)));
-        assert!(
-            valid_sha256(&"ab".repeat(32))
-                && !valid_sha256(&"AB".repeat(32))
-                && !valid_sha256("abc")
-        );
     }
 }
