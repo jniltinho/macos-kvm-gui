@@ -213,6 +213,11 @@ func vmStart(ctx context.Context, _ *mcp.CallToolRequest, in vmStartIn) (*mcp.Ca
 	if err := core.DownloadExtraKexts(ctx, ks); err != nil {
 		return nil, nil, err
 	}
+	if e.Config.ReimsKext() {
+		if err := core.DownloadReimsKext(ctx); err != nil {
+			return nil, nil, err
+		}
+	}
 	snapshot, err := json.Marshal(ks)
 	if err != nil {
 		return nil, nil, err

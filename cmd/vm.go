@@ -54,6 +54,12 @@ With display=app there is no window: the screen is on the printed private VNC so
 				return err
 			}
 		}
+		if c.ReimsKext() && !core.ReimsKextReady() {
+			fmt.Fprintln(out, "vm: downloading ReimsVgpu.kext (Reims vGPU on Tahoe)")
+			if err := core.DownloadReimsKext(cmd.Context()); err != nil {
+				return err
+			}
+		}
 		c.Extras = &ks
 		stopped := make(chan string, 1)
 		vm := &core.VM{

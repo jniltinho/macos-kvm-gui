@@ -41,9 +41,11 @@ func (u *ui) settingsDialog() {
 	osIcon := canvas.NewImageFromResource(versionIcon(c.Version))
 	osIcon.FillMode = canvas.ImageFillContain
 	osIcon.SetMinSize(fyne.NewSquareSize(48))
+	onVersion := func() {} // set by the Display page
 	version := widget.NewSelect(labels, func(l string) {
 		osIcon.Resource = versionIcon(short[l])
 		osIcon.Refresh()
+		onVersion()
 	})
 	for _, v := range core.Versions {
 		if v.Short == c.Version {
@@ -99,11 +101,31 @@ func (u *ui) settingsDialog() {
 	if c.GPU != "" { // core refuses both; the GPU tab's choice is disabled the other way round
 		graphics.Disable()
 	}
+	// Resolution: Reims vGPU's display size; VMware SVGA keeps OpenCore's 1920x1080.
+	wideNote := wrapped("Wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)")
+	wideNote.Importance = widget.WarningImportance
+	resolution := widget.NewSelect(core.Resolutions, nil)
+	resolution.SetSelected(c.ReimsResolution())
+	updateResolution := func() {
+		reims := graphics.Selected == graphicsReimsLabel
+		if reims {
+			resolution.Enable()
+		} else {
+			resolution.Disable()
+		}
+		wideNote.Hidden = !reims || !core.WideResolution(resolution.Selected) || short[version.Selected] == "tahoe"
+		wideNote.Refresh()
+	}
+	resolution.OnChanged = func(string) { updateResolution() }
+	onVersion = updateResolution
+	onGraphics := graphics.OnChanged
+	graphics.OnChanged = func(l string) { onGraphics(l); updateResolution() }
+	updateResolution()
 	displayPage := container.NewVBox(widget.NewForm(
 		widget.NewFormItem("Shown", display),
 		widget.NewFormItem("Graphics Controller", graphics),
-		widget.NewFormItem("Resolution", widget.NewLabel("1920x1080 (set in OpenCore)")),
-	), gpuNote, reimsBox)
+		widget.NewFormItem("Resolution", resolution),
+	), wideNote, gpuNote, reimsBox)
 
 	// Storage: read-only here; the Install tab creates the disk and manages the media.
 	disk, media := "not created yet", "Empty"
@@ -175,6 +197,9 @@ func (u *ui) settingsDialog() {
 		n.Version = short[version.Selected]
 		n.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
 		n.Graphics = graphicsValue(graphics.Selected, c.Graphics)
+		if n.Reims() {
+			n.Resolution = resolution.Selected
+		}
 		var err error
 		if n.RAMMiB, err = ramValue(); err != nil {
 			return fmt.Errorf("Base Memory: %w", err)
@@ -340,7 +365,7 @@ func graphicsSelect(display *widget.Select) (*widget.Select, fyne.CanvasObject) 
 		cmd(metalDesktopCmd),
 		caption("On a new install, from the recovery's Utilities › Terminal (after macOS is installed):"),
 		cmd(metalRecoveryCmd),
-		note("Displays wider than 2048 pixels need ReimsVgpu.kext, which the app does not ship (list it under kexts in settings.yaml)."),
+		note("Tahoe VMs load ReimsVgpu.kext (downloaded at the first start), which macOS 26 needs for displays wider than 2048 pixels (upstream's off switch is the boot argument -reimsvgpuoff)."),
 	)
 	sel := widget.NewSelect([]string{graphicsSVGALabel, graphicsReimsLabel}, func(l string) {
 		on := l == graphicsReimsLabel

@@ -177,6 +177,9 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		bootArgs += rootPatchBootArgs
 	}
 	plist := rootPatchPlist(c.RootPatch, c.rootPatchWasOn)
+	if c.reimsKext {
+		plist["@@ROOTPATCHKEXTS@@"] += kextEntry("ReimsVgpu", reimsKextMinKernel, "ReimsVgpu.kext (Reims vGPU on macOS 26, from reims-util "+reimsUtilCommit[:7]+")")
+	}
 	for _, k := range c.extraKexts {
 		plist["@@ROOTPATCHKEXTS@@"] += kextEntry(k[1], "", k[1]+".kext (settings.yaml)")
 	}
@@ -248,6 +251,14 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 		if err := w.addRootPatchKexts(); err != nil {
 			return err
 		}
+	}
+	// Only at a start (Extras set), where the kext was downloaded first: creating a VM stays
+	// offline, and config.plist is written again at every start.
+	if c.ReimsKext() && c.Extras != nil {
+		if err := w.addReimsKext(); err != nil {
+			return err
+		}
+		c.reimsKext = true
 	}
 	if c.Extras != nil && len(c.Extras.Entries) > 0 {
 		builtin, err := fs.Glob(fsys, "files/EFI/OC/Kexts/*.kext")

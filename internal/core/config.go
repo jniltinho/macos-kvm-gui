@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -68,12 +69,17 @@ type Config struct {
 	// Graphics is the display adapter: "" or GraphicsSVGA (the default), or GraphicsReims, a
 	// paravirtual GPU with Metal through the host's Vulkan driver (reims.go, reimshost.go).
 	Graphics string `json:"graphics,omitempty"`
+	// Resolution is the Reims vGPU display size (one of Resolutions); "" = DefaultResolution.
+	// Other graphics adapters ignore it.
+	Resolution string `json:"resolution,omitempty"`
 	// rootPatchWasOn is set by PrepareBoot when the previous boot had root-patch mode on.
 	rootPatchWasOn bool
 	// Extras is a start's snapshot of settings.yaml, never saved; nil
 	// (creating a VM) loads no extra kext. extraKexts is set by PrepareBoot: {folder, name}.
 	Extras     *ExtraKexts `json:"-"`
 	extraKexts [][2]string
+	// reimsKext is set by PrepareBoot when it copied ReimsVgpu.kext into the EFI.
+	reimsKext bool
 	// VerboseBoot is a one-off start option, never saved: macOS prints its boot log on screen
 	// (-v) and stops on a panic with its details (debug=0x100) instead of showing the logo.
 	VerboseBoot bool `json:"-"`
@@ -112,6 +118,33 @@ const (
 
 // Reims reports whether the VM runs on Reims vGPU.
 func (c Config) Reims() bool { return c.Graphics == GraphicsReims }
+
+// Resolutions are the display sizes offered for Reims vGPU. Wider than 2048 px, WindowServer
+// may crash at login before macOS 26: see WideResolution.
+var Resolutions = []string{"1920x1080", "1920x1200", "2048x1152", "2304x1296", "2560x1440", "2560x1600", "3840x2160"}
+
+// DefaultResolution is a Reims VM's display size when Resolution is empty.
+const DefaultResolution = "1920x1080"
+
+// ReimsResolution is the display size apple-gfx-pci gets.
+func (c Config) ReimsResolution() string {
+	if c.Resolution == "" {
+		return DefaultResolution
+	}
+	return c.Resolution
+}
+
+// WideResolution reports whether a resolution is wider than 2048 px: upstream says WindowServer
+// dies at boot often enough to matter there without ReimsVgpu.kext, which loads on macOS 26 only.
+func WideResolution(r string) bool {
+	var w, h int
+	fmt.Sscanf(r, "%dx%d", &w, &h)
+	return w > 2048
+}
+
+// ReimsKext reports whether the VM loads ReimsVgpu.kext: Reims vGPU on Tahoe, the only
+// version the kext loads on (see reimskext.go).
+func (c Config) ReimsKext() bool { return c.Reims() && c.Version == "tahoe" }
 
 // InApp reports whether the VM's screen is shown inside the app (the default).
 func (c Config) InApp() bool { return c.Display != DisplayWindow }
@@ -172,6 +205,9 @@ func (c Config) Validate() error {
 	}
 	if c.Graphics != "" && c.Graphics != GraphicsSVGA && c.Graphics != GraphicsReims {
 		return &FieldError{"graphics", "expected " + GraphicsSVGA + " or " + GraphicsReims}
+	}
+	if c.Resolution != "" && !slices.Contains(Resolutions, c.Resolution) {
+		return &FieldError{"resolution", "expected one of " + strings.Join(Resolutions, ", ")}
 	}
 	if c.Reims() && c.GPU != "" {
 		return &FieldError{"graphics", "Reims vGPU and GPU passthrough cannot be used together: choose one of them (clear the GPU, or set graphics to " + GraphicsSVGA + ")"}

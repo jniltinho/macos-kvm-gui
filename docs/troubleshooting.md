@@ -113,7 +113,7 @@ Read the last `qemu-img` line for unsupported compression versus disk-space/perm
 - `<url>: the archive has several kexts (A, B): choose them, in load order, with load: [A, B]` — add `load` to the item.
 - `<url>: … larger than … MiB`, `unexpected path`, `unexpected link`, `has no Contents/Info.plist`, `no root-level <Name>.kext…` — the zip is not a plain kext release archive; the app refuses it before extracting anything.
 - `the settings.yaml entry <url> is not downloaded` — the start was prepared without downloading (for example `workspace create` followed by a manual boot); start the VM from the app, `vm start` or the MCP server.
-- `<Name>.kext from settings.yaml clashes with WhateverGreen.kext` — the kext has the name of a built-in, root-patch or other extra kext (case is ignored). To replace a built-in one, use `disable` and a kext with its own name.
+- `<Name>.kext from settings.yaml clashes with WhateverGreen.kext` — the kext has the name of a built-in, root-patch, ReimsVgpu or other extra kext (case is ignored). To replace a built-in one, use `disable` and a kext with its own name.
 - `settings.yaml disable: <Name> is not a built-in kext the config template in use can disable` — only `VirtualSMC` and `WhateverGreen` can be disabled, and an `assets_dir` template needs the `@@ENABLED_<Name>@@` switches.
 
 ## Stuck at the Apple logo
@@ -262,5 +262,6 @@ These are limitations, not translated core error messages:
 **In the guest**
 
 - **The desktop never appears:** `METAL_ERROR_MODE` is not set. Boot the recovery and set it from Terminal, see [first boot in macOS](reims-vgpu.md#first-boot-in-macos), or switch the VM back to `vmware-svga`, set it on the desktop, and switch again.
-- **WindowServer crashes at a larger resolution:** displays wider than 2048 pixels need upstream's `ReimsVgpu.kext`, which the app does not ship; the app fixes 1920x1080.
+- **WindowServer crashes at a larger resolution:** displays wider than 2048 pixels need upstream's `ReimsVgpu.kext`, which loads on macOS 26 only (the app adds it to Tahoe VMs). On earlier versions set the resolution back to 1920x1080 (`config set resolution=1920x1080`). See [resolution](reims-vgpu.md#resolution).
+- **`ReimsVgpu.kext: ... does not match reims-util b302389`:** the download was not the pinned file; nothing was cached. Check the network (a proxy rewriting downloads) and start again.
 - **The Screen tab stays empty:** expected. The screen is Reims vGPU's own window; the Preview and the MCP server's `screen_capture` still work.

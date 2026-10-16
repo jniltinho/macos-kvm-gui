@@ -25,22 +25,32 @@ A VM SHALL NOT have both `reims-vgpu` and a passed-through GPU.
 - **THEN** saving fails with an error saying to choose one of them
 
 ### Requirement: Reims QEMU build
-The app SHALL NOT embed or ship Reims vGPU; it installs it only when the user asks (Package install, Docker build). A VM with `reims-vgpu` SHALL run the `qemu-system-x86_64` of the user's Reims install: `reims_qemu` in `settings.yaml` when set, otherwise the app's build `<Workspace>/.reims/qemu/current/bin/qemu-system-x86_64`, otherwise an upstream install at `$XDG_DATA_HOME/reims-ctl/qemu/current/bin/qemu-system-x86_64`. The binary SHALL list `apple-gfx-pci` among its devices. Other VMs SHALL keep using the system QEMU.
+The app SHALL NOT embed or ship Reims vGPU; it installs it only when the user asks (Package install, Docker build). A VM with `reims-vgpu` SHALL run the `qemu-system-x86_64` of the user's Reims install: `reims_qemu` in `settings.yaml` when set, otherwise `<Workspace>/.reims/qemu/current/bin/qemu-system-x86_64`, otherwise `$XDG_DATA_HOME/reims-ctl/qemu/current/bin/qemu-system-x86_64`. Other VMs SHALL keep using the system QEMU.
 
 #### Scenario: Not installed
 - **WHEN** a VM with `reims-vgpu` starts and no Reims QEMU build is found
 - **THEN** it does not start, and the error names the path searched and points to reims-vgpu's installer
+
+### Requirement: Reims QEMU device
+The Reims QEMU binary SHALL list `apple-gfx-pci` among its devices before a VM runs on it.
 
 #### Scenario: Build without the device
 - **WHEN** the binary found does not list `apple-gfx-pci`
 - **THEN** the VM does not start and the error names the binary
 
 ### Requirement: Prebuilt packages
-This repository SHALL publish, on a release tagged `reims-<commit>`, one package per supported Ubuntu release (24.04, 26.04) named `reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz` with a `.sha256` file, built from upstream at that commit in an `ubuntu:<release>` container and stripped, and the corresponding source `reims-vgpu-src-<commit>.tar.gz` (upstream, its `vendor/qemu` with the meson subprojects its build fetches, and the vendored Rust crates, SDL3's source among them) with the license texts, in the same release.
+This repository SHALL publish, on a release tagged `reims-<commit>`, one package per supported Ubuntu release (24.04, 26.04) named `reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz` with a `.sha256` file, built from upstream at that commit in an `ubuntu:<release>` container and stripped.
 
 #### Scenario: Release
 - **WHEN** a `reims-<commit>` tag is pushed
-- **THEN** the release holds both packages, their SHA-256 files and the source archive
+- **THEN** the release holds both packages and their SHA-256 files
+
+### Requirement: Corresponding source
+The same release SHALL hold `reims-vgpu-src-<commit>.tar.gz` (upstream, its `vendor/qemu` with the meson subprojects its build fetches, and the vendored Rust crates, SDL3's source among them) with the license texts.
+
+#### Scenario: Source archive
+- **WHEN** a `reims-<commit>` release is published
+- **THEN** it holds the source archive beside the packages
 
 ### Requirement: Package install
 The app SHALL embed a manifest naming the reims release tag and each package's SHA-256, and install the package for the host's Ubuntu release from the Host tab's **Install Reims vGPU** button and `reims install`: download over HTTPS, verify the SHA-256, unpack into `<Workspace>/.reims/qemu/<build>` (no path may leave it, no links outside it), then activate it under the same rules as a build. A host release without a package SHALL get an error offering the Docker build.
@@ -123,14 +133,61 @@ When the host has an AMD GPU and the user cannot open `/dev/udmabuf` read-write,
 - **THEN** the VM starts, and the log and Host tab warn with the device's group to join; a QEMU exit mentioning udmabuf is explained the same way
 
 ### Requirement: Guest guidance
-The app SHALL tell the user, when Graphics is set to `reims-vgpu` and in the docs, that macOS needs `METAL_ERROR_MODE` 5 set once, with the commands for a working desktop (`sudo defaults write …`) and for a new install (from Recovery's Terminal), and that displays wider than 2048 pixels need a kext the app does not ship.
+The app SHALL tell the user, when Graphics is set to `reims-vgpu` and in the docs, that macOS needs `METAL_ERROR_MODE` 5 set once, with the commands for a working desktop (`sudo defaults write …`) and for a new install (from Recovery's Terminal), and that Tahoe VMs load ReimsVgpu.kext for displays wider than 2048 pixels.
 
 #### Scenario: Turning it on
 - **WHEN** the user selects `reims-vgpu` in Settings
 - **THEN** the dialog shows the `METAL_ERROR_MODE` commands
 
+### Requirement: Resolution
+Each VM SHALL have a Resolution, one of `1920x1080`, `1920x1200`, `2048x1152`, `2304x1296`, `2560x1440`, `2560x1600`, `3840x2160`, empty meaning `1920x1080`, saved, exported and imported with the VM. A VM with `reims-vgpu` SHALL pass it as `apple-gfx-pci`'s `resolution`; other VMs SHALL ignore it. Any other value SHALL be refused with an error listing the allowed values.
+
+#### Scenario: Default
+- **WHEN** a VM saved before this setting is started on `reims-vgpu`
+- **THEN** QEMU gets `apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080`
+
+#### Scenario: 4K
+- **WHEN** the user sets `resolution=3840x2160` on a Reims VM
+- **THEN** it is saved, and QEMU gets `resolution=3840x2160`
+
+#### Scenario: Invalid value
+- **WHEN** the user runs `config set resolution=1600x900`
+- **THEN** nothing is saved and the error lists the allowed values
+
+### Requirement: Resolution in the interfaces
+The Settings dialog SHALL offer the Resolution only while Reims vGPU is selected, and the Details pane SHALL show it. For a width above 2048 px on a version other than Tahoe, the dialog and `config set` SHALL warn that WindowServer may crash at login before macOS 26.
+
+#### Scenario: Wide display before Tahoe
+- **WHEN** the user picks `2560x1440` for a Sequoia VM on Reims vGPU
+- **THEN** it is saved with the warning "Wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)"
+
+### Requirement: Preview pacing
+The Preview of a Reims VM SHALL refresh no faster than about twice the time QEMU takes to read a frame of the current size (at least every 0.2 s otherwise).
+
+#### Scenario: 4K Preview
+- **WHEN** a Reims VM runs at 3840x2160
+- **THEN** the Preview refreshes about every 3.6 s, not every 0.2 s
+
+### Requirement: ReimsVgpu.kext on Tahoe
+A started VM with `reims-vgpu` and version `tahoe` SHALL load ReimsVgpu.kext with `MinKernel` 25.0.0, after Lilu and the built-in kexts and before extra kexts. Other VMs SHALL NOT load it, and an extra kext named ReimsVgpu SHALL be refused as a clash.
+
+#### Scenario: Tahoe start
+- **WHEN** a Tahoe VM on `reims-vgpu` starts and the kext is not cached
+- **THEN** the kext is downloaded and verified, copied into the EFI, and config.plist lists `ReimsVgpu.kext` after Lilu with `MinKernel` 25.0.0
+
+#### Scenario: Not Tahoe
+- **WHEN** a Sequoia VM on `reims-vgpu`, or a Tahoe VM on `vmware-svga`, starts
+- **THEN** ReimsVgpu.kext is neither copied nor listed in config.plist
+
+### Requirement: ReimsVgpu.kext download
+The app SHALL NOT embed ReimsVgpu.kext. Before a Tahoe VM on `reims-vgpu` starts (app, `vm start`, MCP `vm_start`), it SHALL download `Contents/Info.plist` and `Contents/MacOS/ReimsVgpu` over HTTPS from steelbrain/reims-util at commit `b302389a957c56fad8e5b3b3b16107932ea9e5e9`, check each against a pinned SHA-256, and cache the kext in `<Workspace>/.kexts/reims-util-b302389/ReimsVgpu.kext` only when every file matches. Creating a VM SHALL NOT download it.
+
+#### Scenario: Tampered download
+- **WHEN** a downloaded file does not match its pinned SHA-256
+- **THEN** the start stops and nothing is cached
+
 ### Requirement: CLI
-`config set graphics=vmware-svga|reims-vgpu` SHALL change the setting with the same validation as the app, and `config show` SHALL print it. `reims status` SHALL print the build in use, its commit and the host checks.
+`config set graphics=vmware-svga|reims-vgpu` and `config set resolution=<WxH>` SHALL change the settings with the same validation as the app, and `config show` SHALL print both. `reims status` SHALL print the build in use, its commit and the host checks.
 
 #### Scenario: Invalid value
 - **WHEN** the user runs `config set graphics=virtio`

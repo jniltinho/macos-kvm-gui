@@ -331,13 +331,13 @@ func kextSwitches(tmpl string, disabled []string) (string, error) {
 }
 
 // addExtraKexts copies the snapshot's kexts into the extracted EFI and records them for the
-// config, after the built-in and root-patch kexts.
+// config, after the built-in, root-patch and ReimsVgpu kexts.
 func (w Workspace) addExtraKexts(c *Config, builtin []string) error {
 	base, err := ExtraKextsDir()
 	if err != nil {
 		return err
 	}
-	taken := slices.Clone(builtin)
+	taken := append(slices.Clone(builtin), "ReimsVgpu")
 	for _, k := range rootPatchKexts {
 		taken = append(taken, k.Name)
 	}

@@ -219,6 +219,7 @@ func TestExtraKextsBoot(t *testing.T) {
 		"/foo.zip":  zipOf(t, kextFiles("Foo")...),
 		"/pair.zip": zipOf(t, kextFiles("Plugin", "Provider")...),
 		"/weg.zip":  zipOf(t, kextFiles("Whatevergreen")...),
+		"/rv.zip":   zipOf(t, kextFiles("ReimsVgpu")...),
 	})
 	foo := ExtraKext{URL: srv.URL + "/foo.zip"}
 	pair := ExtraKext{URL: srv.URL + "/pair.zip", Kexts: []string{"Provider", "Plugin"}}
@@ -288,6 +289,11 @@ func TestExtraKextsBoot(t *testing.T) {
 	DownloadExtraKexts(context.Background(), *c.Extras)
 	if err := w.PrepareBoot(c, false); err == nil || !strings.Contains(err.Error(), "WhateverGreen.kext") {
 		t.Fatalf("a clash ignoring case names both kexts: %v", err)
+	}
+	c.Extras = &ExtraKexts{Entries: []ExtraKext{{URL: srv.URL + "/rv.zip"}}}
+	DownloadExtraKexts(context.Background(), *c.Extras)
+	if err := w.PrepareBoot(c, false); err == nil || !strings.Contains(err.Error(), "clashes with ReimsVgpu.kext") {
+		t.Fatalf("ReimsVgpu is the app's own kext: %v", err)
 	}
 }
 

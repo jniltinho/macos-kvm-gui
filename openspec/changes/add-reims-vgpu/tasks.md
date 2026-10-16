@@ -21,6 +21,14 @@
 - [ ] 3.3 Host tab: Reims checks, installed build and commit, **Install Reims vGPU** (package) and **Build from source** (Docker) buttons with progress in the log.
 - [ ] 3.4 CLI `config set graphics=…`, `config show`, `reims install`, `reims build [--release]`, `reims status`; command tests for an invalid value, the exclusivity error and an unsupported release.
 
+## 5. Resolution and ReimsVgpu.kext
+
+- [x] 5.1 `Config.Resolution` with the allowed list, schema 5 migration, export/import, `resolution=` in `apple-gfx-pci`; tests for validation, an old database, a repeated migration, a round trip and the arguments.
+- [x] 5.2 Settings › Display Resolution choice (enabled with Reims, warning above 2048 px unless Tahoe), Details shows it, the wizard keeps the default; Preview pacing from the frame size.
+- [x] 5.3 CLI `config set resolution=…` (warning above 2048 px unless Tahoe), `config show`; command tests for an invalid value and the warning.
+- [x] 5.4 ReimsVgpu.kext: pinned commit and SHA-256s, download to `<Workspace>/.kexts/reims-util-b302389`, injection for Tahoe + Reims at a start only (MinKernel 25.0.0, after Lilu and the built-ins, before extra kexts), `ReimsVgpu` reserved for extra kexts, downloads in GUI start, `vm start` and MCP `vm_start`; tests with a local TLS server (hash mismatch caches nothing, injection only for Tahoe + Reims, entry order, the clash).
+- [x] 5.5 Docs (`docs/reims-vgpu.md`, `docs/cli.md`, `docs/architecture.md`, `docs/troubleshooting.md`) and `THIRD_PARTY_NOTICES.md`.
+
 ## 4. Docs and validation
 
 - [x] 4.1 `docs/reims-vgpu.md` (install, build from source, host setup, guest setup, limits), `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/troubleshooting.md`, `docs/cli.md`, `docs/references.md`.

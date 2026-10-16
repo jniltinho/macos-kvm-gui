@@ -13,6 +13,8 @@ The app embeds the files below, built by `scripts/fetch-assets.sh` from the sour
 
 Not embedded, downloaded at run time only when a VM's root-patch mode is turned on: AMFIPass, RSRHelper, RestrictEvents and KDKlessWorkaround, from [OpenCore Legacy Patcher](https://github.com/dortania/OpenCore-Legacy-Patcher)'s repository at the 2.5.1 commit (`payloads/Kexts`), checked against pinned SHA-256 sums. RestrictEvents is acidanthera's (BSD-3-Clause); OCLP's repository is under its own license (BSD-style, Copyright (c) 2020-2025 Dhinak G, Mykola Grymalyuk and individual contributors). This product includes software developed by Dortania and OpenCore Legacy Patcher contributors.
 
+Not embedded, downloaded at run time only before a Tahoe VM on Reims vGPU starts: ReimsVgpu.kext (`Contents/Info.plist` and `Contents/MacOS/ReimsVgpu`), from [steelbrain/reims-util](https://github.com/steelbrain/reims-util/tree/b302389a957c56fad8e5b3b3b16107932ea9e5e9/kext) at commit `b302389a957c56fad8e5b3b3b16107932ea9e5e9`, checked against pinned SHA-256 sums and cached in `<Workspace>/.kexts/reims-util-b302389`. It is under GPL-2.0-or-later OR LGPL-3.0-or-later and contains code from Lilu under BSD-3-Clause; its source is in that repository at that commit.
+
 The apple-smc key string passed to QEMU (`isa-applesmc,osk=…`) and the macOS recovery images downloaded from Apple's servers are not part of this project.
 
 ## Reims vGPU

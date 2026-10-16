@@ -88,6 +88,26 @@ The binary must list `apple-gfx-pci` in `-device help`; the app checks it once p
 
 Saving refuses a VM with both Reims vGPU and a GPU: `graphics: Reims vGPU and GPU passthrough cannot be used together: choose one of them (clear the GPU, or set graphics to vmware-svga)`. The setting is saved with the VM (database schema 4), and exported and imported with it. Switching back to VMware SVGA boots the same disk as before: OpenCore, NVRAM and the Mac identity do not change.
 
+### Resolution
+
+Reims vGPU's display size is set per VM: Settings › Display › **Resolution** (enabled while Reims vGPU is selected; new VMs get 1920x1080), or `macos-kvm-gui config set resolution=2560x1440`. The choices are `1920x1080` (the default), `1920x1200`, `2048x1152`, `2304x1296`, `2560x1440`, `2560x1600` and `3840x2160`; anything else is refused with that list. It is passed to QEMU as `apple-gfx-pci,...,resolution=<WxH>`, saved with the VM (database schema 5) and exported and imported with it. VMware SVGA ignores it and keeps OpenCore's 1920x1080. The Details pane shows the resolution in use.
+
+**The 2048 px rule.** Upstream (reims-vgpu `docs/qemu.md`): without ReimsVgpu.kext, WindowServer dies at boot often enough to matter on displays wider than 2048 px (the display is drawn in 1024 px tiles), and the kext loads on macOS 26 only. So the Settings page and `config set` warn for widths above 2048 unless the VM is Tahoe: *Wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)*. If it happens, set the resolution back to 1920x1080.
+
+Measured on the reference host (Sequoia 15.8.1, RTX 4070, no kext):
+
+| Resolution | Result | Preview frame read (VNC) |
+| --- | --- | --- |
+| 1920x1080 | Login window and desktop | 0.42 s |
+| 2560x1440 | Login window at 2560x1440; one WindowServer crash report in one boot | 0.79 s |
+| 3840x2160 | Login window at 3840x2160, no crash report | 1.82 s |
+
+The Preview's refresh follows the size: no faster than about twice a frame read (0.2 s minimum), so a 4K VM's Preview updates every few seconds without keeping QEMU busy.
+
+### ReimsVgpu.kext on Tahoe
+
+A Tahoe VM on Reims vGPU loads upstream's ReimsVgpu.kext ([steelbrain/reims-util](https://github.com/steelbrain/reims-util/tree/b302389a957c56fad8e5b3b3b16107932ea9e5e9/kext), commit `b302389`), which macOS 26 needs for displays wider than 2048 px. The app does not ship it: before such a VM starts (from the app, `vm start` or the MCP server's `vm_start`), it downloads `Contents/Info.plist` and `Contents/MacOS/ReimsVgpu` over HTTPS from that commit, checks each file's pinned SHA-256 and keeps it in `<Workspace>/.kexts/reims-util-b302389/ReimsVgpu.kext`; a file that does not match stops the start and caches nothing. Creating a VM stays offline. OpenCore gets it after Lilu (it is a Lilu 1.7.2 plugin, the version the app embeds) and the other built-in kexts, before any [extra kexts](architecture.md#extra-kexts), with `MinKernel` 25.0.0. Other versions and VMware SVGA VMs never load it, and `settings.yaml` cannot list another kext named ReimsVgpu. Upstream's off switch is the boot argument `-reimsvgpuoff`; the app writes OpenCore's `boot-args` at every start and has no setting for it yet, so it is mainly useful when debugging upstream's kext.
+
 ## First boot in macOS
 
 macOS needs `METAL_ERROR_MODE` set to 5 once, or the desktop never appears on Reims vGPU.
@@ -128,7 +148,7 @@ Only where upstream's measured x86-64 command differs; disks, network adapters, 
 | VMware SVGA | Reims vGPU | Why |
 | --- | --- | --- |
 | `qemu-system-x86_64` from `PATH` | The Reims QEMU ([which QEMU runs](#which-qemu-runs)), with `REIMS_VGPU_WINDOW` removed from its environment | The device exists only in Reims's QEMU fork; the variable would hide the window |
-| `-device vmware-svga` | `-device apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080`, no fixed PCI address | Upstream's `addr=0x4` is taken by the app's `ich9-ahci`; OpenCore boots by scanning |
+| `-device vmware-svga` | `-device apple-gfx-pci,id=gfx,displays=1,resolution=<WxH>` (1920x1080 by default, see [resolution](#resolution)), no fixed PCI address | Upstream's `addr=0x4` is taken by the app's `ich9-ahci`; OpenCore boots by scanning |
 | `-machine q35` | `-machine q35,memory-backend=ram -object memory-backend-memfd,id=ram,size=<RAM>M,share=on` | The library maps guest RAM |
 | (none) | `-global ICH9-LPC.disable_s3=1 -vga none` | No ACPI S3; no default VGA |
 | `-device qemu-xhci,id=xhci` | `...,conditional-intr-mapping=on` | macOS's xHCI driver |
@@ -139,7 +159,7 @@ The audio backend is PipeWire when its socket is in `$XDG_RUNTIME_DIR`, then Pul
 
 ## Limits and known issues
 
-- **1920x1080 only.** Displays wider than 2048 pixels crash WindowServer without upstream's `ReimsVgpu.kext`, which the app does not ship; you can list it in `kexts` of `settings.yaml` ([extra kexts](architecture.md#extra-kexts)), but the app still fixes the resolution. No multiple displays, HiDPI or `resolution=host`.
+- **Wide displays before macOS 26.** Wider than 2048 pixels, WindowServer may crash at login without ReimsVgpu.kext, which loads on macOS 26 only ([resolution](#resolution)). No multiple displays, HiDPI or `resolution=host`.
 - **Measured upstream on macOS 26 only.** Other versions are offered with a note; this app's reference host validated Sequoia 15.8.1.
 - **Sleep** is reduced to a dark wake: S3 is off.
 - **AMD GPUs** need `/dev/udmabuf` (see [requirements](#requirements)).

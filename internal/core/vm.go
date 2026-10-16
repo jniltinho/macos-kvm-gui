@@ -70,7 +70,7 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 	// console to deliver keyboard and mouse input, and it shows the boot screens.
 	if c.Reims() {
 		// No addr: upstream's 0x4 is taken by ich9-ahci, and OpenCore boots by scanning.
-		args = append(args, "-device", "apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080")
+		args = append(args, "-device", "apple-gfx-pci,id=gfx,displays=1,resolution="+c.ReimsResolution())
 	} else {
 		args = append(args, "-device", "vmware-svga")
 	}

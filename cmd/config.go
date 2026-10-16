@@ -27,6 +27,7 @@ var configShowCmd = &cobra.Command{
 		if c.Graphics == "" {
 			c.Graphics = core.GraphicsSVGA // the default, printed so it shows
 		}
+		c.Resolution = c.ReimsResolution() // used by Reims vGPU only
 		b, _ := json.MarshalIndent(c, "", "  ")
 		src := e.Path
 		if src == "" {
@@ -40,15 +41,16 @@ var configShowCmd = &cobra.Command{
 
 // configKeys lists the settable keys and how each one is applied.
 var configKeys = map[string]func(*core.Config, string) error{
-	"workspace": func(c *core.Config, v string) error { c.Workspace = v; return nil },
-	"version":   func(c *core.Config, v string) error { c.Version = v; return nil },
-	"display":   func(c *core.Config, v string) error { c.Display = v; return nil },
-	"gpu":       func(c *core.Config, v string) error { c.GPU = v; return nil },
-	"graphics":  func(c *core.Config, v string) error { c.Graphics = v; return nil },
-	"ram":       intKey(func(c *core.Config, n int) { c.RAMMiB = n }),
-	"cores":     intKey(func(c *core.Config, n int) { c.Cores = n }),
-	"vcpus":     intKey(func(c *core.Config, n int) { c.VCPUs = n }),
-	"ssh-port":  intKey(func(c *core.Config, n int) { c.SSHPort = n }),
+	"workspace":  func(c *core.Config, v string) error { c.Workspace = v; return nil },
+	"version":    func(c *core.Config, v string) error { c.Version = v; return nil },
+	"display":    func(c *core.Config, v string) error { c.Display = v; return nil },
+	"gpu":        func(c *core.Config, v string) error { c.GPU = v; return nil },
+	"graphics":   func(c *core.Config, v string) error { c.Graphics = v; return nil },
+	"resolution": func(c *core.Config, v string) error { c.Resolution = v; return nil },
+	"ram":        intKey(func(c *core.Config, n int) { c.RAMMiB = n }),
+	"cores":      intKey(func(c *core.Config, n int) { c.Cores = n }),
+	"vcpus":      intKey(func(c *core.Config, n int) { c.VCPUs = n }),
+	"ssh-port":   intKey(func(c *core.Config, n int) { c.SSHPort = n }),
 	"root-patch": func(c *core.Config, v string) error {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
@@ -111,7 +113,7 @@ func intKey(set func(*core.Config, int)) func(*core.Config, string) error {
 
 var configSetCmd = &cobra.Command{
 	Use:   "set key=value...",
-	Short: "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu, graphics, root-patch, nic<N>.enabled|mode|bridge|model|mac)",
+	Short: "Change settings (workspace, version, ram, cores, vcpus, ssh-port, display, gpu, graphics, resolution, root-patch, nic<N>.enabled|mode|bridge|model|mac)",
 	Example: "  macos-kvm-gui config set version=sonoma ram=16384 cores=8 vcpus=16 display=app\n" +
 		"  macos-kvm-gui config set nic2.enabled=true nic2.mode=bridged nic2.bridge=br0 nic2.model=vmxnet3 nic2.mac=random",
 	Args: cobra.MinimumNArgs(1),
@@ -150,6 +152,9 @@ var configSetCmd = &cobra.Command{
 		}
 		if err := core.SaveVM(e, c); err != nil {
 			return err
+		}
+		if c.Reims() && core.WideResolution(c.ReimsResolution()) && !c.ReimsKext() {
+			fmt.Fprintln(out, "warning: wider than 2048 px: on macOS before 26 WindowServer may crash at login (ReimsVgpu.kext loads on macOS 26 only)")
 		}
 		fmt.Fprintln(out, "saved", e.DisplayName())
 		return nil

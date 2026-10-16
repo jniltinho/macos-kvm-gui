@@ -366,7 +366,11 @@ func (u *ui) refreshDetails() {
 	}
 	set("Display/Shown", shown)
 	set("Display/Graphics Controller", ctrl)
-	set("Display/Resolution", "1920x1080")
+	res := "1920x1080"
+	if u.cfg.Reims() {
+		res = u.cfg.ReimsResolution()
+	}
+	set("Display/Resolution", res)
 	set("Display/Remote Display", remote)
 	adapters := u.cfg.Adapters()
 	for i := 0; i < core.MaxNICs; i++ {
@@ -458,13 +462,14 @@ func (u *ui) previewOnly(v *core.VNC, gen int) error {
 	defer close(done)
 	go func() {
 		var buf *image.RGBA
-		t := time.NewTicker(time.Second / 5)
+		t := time.NewTicker(previewInterval(v.Size()))
 		defer t.Stop()
 		for {
 			select {
 			case <-done:
 				return
 			case <-t.C:
+				t.Reset(previewInterval(v.Size())) // the guest may change its size
 				if dirty.Swap(false) {
 					fyne.Do(func() {
 						if u.previewGen != gen {
@@ -478,6 +483,13 @@ func (u *ui) previewOnly(v *core.VNC, gen int) error {
 		}
 	}()
 	return v.Run()
+}
+
+// previewInterval paces the Reims Preview at about twice the time QEMU takes to read a frame
+// from Reims vGPU, so the Preview never keeps it busy. Measured on an RTX 4070: 0.42 s at
+// 1920x1080, 0.79 s at 2560x1440, 1.82 s at 3840x2160, about 0.22 µs per pixel.
+func previewInterval(w, h int) time.Duration {
+	return max(time.Second/5, 2*time.Duration(w*h)*220*time.Nanosecond)
 }
 
 func (u *ui) statusBar() fyne.CanvasObject {
@@ -573,6 +585,11 @@ func (u *ui) start() { u.startWith(false) }
 func (u *ui) startWith(verbose bool) {
 	if u.cfg.RootPatch && !core.RootPatchKextsReady() { // an imported VM, a moved Workspace
 		u.run("Download OCLP's kexts for root-patch mode", func() error { return core.DownloadRootPatchKexts(context.Background()) },
+			func() { u.startWith(verbose) })
+		return
+	}
+	if u.cfg.ReimsKext() && !core.ReimsKextReady() {
+		u.run("Download ReimsVgpu.kext for Reims vGPU on Tahoe", func() error { return core.DownloadReimsKext(context.Background()) },
 			func() { u.startWith(verbose) })
 		return
 	}

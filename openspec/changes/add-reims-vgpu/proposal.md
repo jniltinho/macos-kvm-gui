@@ -14,6 +14,8 @@ Without a passed-through GPU, macOS draws on the CPU (VMware SVGA has no macOS d
 - The screen is Reims vGPU's own accelerated window. The app's VNC display stays for the Preview, the MCP server's screen capture and key input, but is not the VM's screen.
 - Host checks for the mode: the Reims QEMU build with `apple-gfx-pci`, a Vulkan driver, `vm.max_map_count` large enough for the VM's RAM, and on AMD GPUs access to `/dev/udmabuf`.
 - Reims vGPU and GPU passthrough are mutually exclusive per VM.
+- Per-VM **Resolution** for Reims VMs (1920x1080 by default, up to 3840x2160 from a fixed list), with a warning above 2048 px wide before macOS 26, and a Preview that refreshes more slowly at larger sizes.
+- Tahoe VMs on Reims vGPU load upstream's **ReimsVgpu.kext** (steelbrain/reims-util at a pinned commit), downloaded before the start and checked against pinned SHA-256 sums, never shipped.
 - Guest setup guidance: `METAL_ERROR_MODE` 5, set once (from Recovery on a new install), without which the desktop does not come up.
 - CLI `config set graphics=…`, the Settings dialog's Display page, the Details pane, docs.
 
