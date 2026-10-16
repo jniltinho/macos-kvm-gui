@@ -126,6 +126,7 @@ func TestSettingsAndKextsBeforeStart(t *testing.T) {
 func TestReimsCommands(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir()) // the default Workspace, ~/macOS-VMs, may hold a real install
 	t.Setenv("MKG_REIMS_QEMU", "")
 	t.Cleanup(func() { reimsRelease = "" })
 	if _, err := run(t, "reims", "build", "--release", "22.04"); err == nil || !strings.Contains(err.Error(), "24.04 and 26.04") {

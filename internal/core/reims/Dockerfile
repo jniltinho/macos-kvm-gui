@@ -32,11 +32,12 @@ WORKDIR /src
 # Not --locked: the committed Cargo.lock leaves out the git sources, which cargo adds.
 RUN cargo fetch
 # install-ctl.sh up to its reims-ctl part (the app runs QEMU itself and needs neither reims-ctl
-# nor reims-util), with the library's build kept in the mounted cache, then stripped binaries
-# owned by the caller.
+# nor reims-util), with the library's build kept in the mounted cache, then stripped binaries.
+# Everything in /build is the caller's on any exit, a failed build's too.
 RUN cat > /usr/local/bin/build-reims <<'EOF'
 #!/bin/bash
 set -euo pipefail
+trap 'chown -R "${HOST_UID:-0}:${HOST_GID:-0}" /build' EXIT
 cd /src
 grep -q '^# -* reims-ctl$' scripts/install-ctl.sh || { echo "install-ctl.sh changed: no reims-ctl section" >&2; exit 1; }
 sed '/^# -* reims-ctl$/,$d' scripts/install-ctl.sh > scripts/install-qemu.sh
@@ -46,7 +47,6 @@ XDG_DATA_HOME=/build/share XDG_CACHE_HOME=/build/cache CARGO_TARGET_DIR=/build/c
 q="$(readlink -f /build/share/reims-ctl/qemu/current)"
 find "$q/bin" "$q/libexec" -type f -perm -u+x -exec strip --strip-unneeded {} + 2>/dev/null || true
 echo "Built $q"
-chown -R "${HOST_UID:-0}:${HOST_GID:-0}" /build
 EOF
 RUN chmod +x /usr/local/bin/build-reims
 CMD ["build-reims"]

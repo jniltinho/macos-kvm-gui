@@ -49,6 +49,9 @@ func (u *ui) loadVMs(configPath string) error {
 }
 
 func (u *ui) setCurrent(e core.VMEntry) {
+	if e.ID != u.cur.ID {
+		u.previewGen++
+	}
 	u.cur, u.cfg, u.cfgPath = e, e.Config, e.Path
 }
 

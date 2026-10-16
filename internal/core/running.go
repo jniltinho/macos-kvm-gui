@@ -18,6 +18,7 @@ type RunInfo struct {
 	VNCSocket string // the in-app display socket, when there is one
 	Control   string // the second QMP socket, for a process other than the starter
 	Disc      bool   // the offline installer disc is attached
+	Reims     bool   // it runs on Reims vGPU (apple-gfx-pci), whatever the VM's config says now
 }
 
 // CheckRunDir accepts a socket only inside a private run directory this user owns (0700), as
@@ -93,6 +94,9 @@ func runningIn(proc string, c Config) (RunInfo, bool) {
 			}
 			if strings.HasPrefix(a, "id=InstallerDisc,") {
 				info.Disc = true
+			}
+			if strings.HasPrefix(a, "apple-gfx-pci") {
+				info.Reims = true
 			}
 			if a == "-vnc" && i+1 < len(args) {
 				sock, _, _ := strings.Cut(strings.TrimPrefix(args[i+1], "unix:"), ",lock-key-sync")

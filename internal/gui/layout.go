@@ -416,7 +416,8 @@ func (u *ui) refreshDetails() {
 		u.previewName.Text = u.vmName()
 		u.previewName.Refresh()
 	}
-	if state == core.Stopped { // the live preview ends with the VM
+	if state == core.Stopped && !(u.watching && u.watchID == u.cur.ID) { // the live preview ends with the VM
+		u.previewGen++
 		u.preview.Hide()
 		u.previewBg.Show()
 		u.previewIdle.Show()
@@ -448,8 +449,9 @@ func (u *ui) showPreview(f *image.RGBA) {
 }
 
 // previewOnly feeds the Details preview from v without attaching it as the Screen: a Reims vGPU
-// VM's screen is the library's own window. It returns when v.Run does.
-func (u *ui) previewOnly(v *core.VNC) error {
+// VM's screen is the library's own window. It returns when v.Run does. Frames are drawn only
+// while u.previewGen is still gen, so a switch or a stop drops those already queued.
+func (u *ui) previewOnly(v *core.VNC, gen int) error {
 	var dirty atomic.Bool
 	v.OnUpdate = func() { dirty.Store(true) }
 	done := make(chan struct{})
@@ -464,7 +466,13 @@ func (u *ui) previewOnly(v *core.VNC) error {
 				return
 			case <-t.C:
 				if dirty.Swap(false) {
-					fyne.Do(func() { buf = v.Frame(buf); u.showPreview(buf) })
+					fyne.Do(func() {
+						if u.previewGen != gen {
+							return
+						}
+						buf = v.Frame(buf)
+						u.showPreview(buf)
+					})
 				}
 			}
 		}
@@ -519,7 +527,8 @@ func (u *ui) watchOutside() {
 	if !ok || r.VNCSocket == "" || core.CheckRunDir(r.VNCSocket) != nil {
 		return
 	}
-	id, reims := u.cur.ID, u.cfg.Reims()
+	// The process, not the cached config: the CLI may have changed the VM's graphics since.
+	id, reims := u.cur.ID, r.Reims
 	u.watching, u.watchID = true, id
 	done := func() { u.watching, u.watchVNC = false, nil; u.refresh() }
 	go func() {
@@ -529,7 +538,7 @@ func (u *ui) watchOutside() {
 			fyne.Do(done)
 			return
 		}
-		attached := false
+		attached, gen := false, 0
 		fyne.DoAndWait(func() {
 			if u.cur.ID != id || u.vm.State() != core.Stopped { // another VM was selected meanwhile
 				return
@@ -539,6 +548,7 @@ func (u *ui) watchOutside() {
 				u.screen.attach(v)
 			}
 			u.refresh()
+			gen = u.previewGen
 		})
 		if !attached {
 			v.Close()
@@ -547,7 +557,7 @@ func (u *ui) watchOutside() {
 		}
 		u.logAsync(fmt.Sprintf("[VM] showing %s, run by another process (pid %d)", u.vmName(), r.PID))
 		if reims {
-			u.previewOnly(v)
+			u.previewOnly(v, gen)
 		} else {
 			v.Run()
 		}
@@ -602,13 +612,14 @@ func (u *ui) startKexts(verbose bool, ks core.ExtraKexts) {
 	}
 	u.refresh()
 	if c.Reims() { // the screen is Reims vGPU's window; VNC feeds the Preview only
+		gen := u.previewGen
 		go func() {
 			v, err := core.DialVNC(u.vm.VNCSocket())
 			if err != nil {
 				u.logAsync("preview: " + err.Error())
 				return
 			}
-			if err := u.previewOnly(v); err != nil && u.vm.State() != core.Stopped {
+			if err := u.previewOnly(v, gen); err != nil && u.vm.State() != core.Stopped {
 				u.logAsync("preview: " + err.Error())
 			}
 			v.Close()

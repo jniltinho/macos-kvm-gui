@@ -31,8 +31,15 @@ func TestRunningDetection(t *testing.T) {
 		"-drive", "id=InstallerDisc,if=none,format=raw,snapshot=on,file=/c/InstallAssistant.iso")
 	r, ok := runningIn(proc, c)
 	if !ok || r.PID != 200 || !r.ByApp || r.VNCSocket != "/run/user/1000/macos-kvm-gui-1/vnc.sock" ||
-		r.Control != "/run/user/1000/macos-kvm-gui-1/qmp-control.sock" || !r.Disc {
+		r.Control != "/run/user/1000/macos-kvm-gui-1/qmp-control.sock" || !r.Disc || r.Reims {
 		t.Fatalf("app-started VM: %+v %v", r, ok)
+	}
+	// The running process tells whether it is on Reims vGPU, not the config.
+	os.RemoveAll(filepath.Join(proc, "200"))
+	fakeProc(t, proc, "201", "qemu-system-x86", "", "qemu-system-x86_64", "-drive", "file=/vm/a,,b/mac_hdd_ng.img",
+		"-device", "apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080")
+	if r, ok := runningIn(proc, c); !ok || !r.Reims {
+		t.Fatalf("Reims VM: %+v %v", r, ok)
 	}
 
 	// OSX-KVM's OpenCore-Boot.sh: relative, quoted path under its working directory.
