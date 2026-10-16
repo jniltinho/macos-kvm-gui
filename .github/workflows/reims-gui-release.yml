@@ -1,0 +1,87 @@
+name: reims-gui release
+
+# Tag reims-gui-v<version> (the version in reims-gui/Cargo.toml): packages for Ubuntu 24.04 and
+# 26.04, each checked in a clean container, plus the corresponding source (vendored crates and
+# the build Dockerfile) and every crate's license text, on a GitHub Release of their own.
+
+on:
+  push:
+    tags:
+      - 'reims-gui-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        release: ['24.04', '26.04']
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Check the tag against the workspace version
+        run: |
+          version="$(sed -n 's/^version = "\(.*\)"$/\1/p' reims-gui/Cargo.toml | head -n 1)"
+          test "$GITHUB_REF_NAME" = "reims-gui-v$version" || { echo "the tag must be reims-gui-v$version"; exit 1; }
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          sudo docker image prune --all --force
+          df -h /
+
+      - name: Build
+        run: reims-gui/scripts/build.sh ${{ matrix.release }}
+
+      - name: Install and run in a clean ubuntu:${{ matrix.release }}
+        run: reims-gui/scripts/check-package.sh ${{ matrix.release }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reims-gui-${{ matrix.release }}
+          path: reims-gui/dist/*
+          if-no-files-found: error
+
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Source archive
+        run: reims-gui/scripts/source-archive.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reims-gui-source
+          path: reims-gui/dist/*
+          if-no-files-found: error
+
+  release:
+    needs: [build, source]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          make_latest: false # the Go app's releases stay "latest" until reims-gui replaces it
+          body: |
+            reims-gui, the Rust rewrite of macos-kvm-gui, for Ubuntu 24.04 and 26.04 (x86_64): `.deb` packages, `.tar.gz` archives and plain binaries, each with a `.sha256`.
+
+            The binaries are distributed under GPL-3.0-or-later (the source is GPL-2.0-or-later OR LGPL-3.0-or-later). `THIRD_PARTY_LICENSES` holds the license text of every crate compiled in; `reims-gui-*-source.tar.gz` is the corresponding source, with vendored crates and the build Dockerfile.
+          files: dist/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
