@@ -86,8 +86,11 @@ func TestOpenCoreConfig(t *testing.T) {
 	if !strings.Contains(install, "<key>ShowPicker</key>\n\t\t\t<true/>") || !strings.Contains(install, "<integer>0</integer>") {
 		t.Error("with install media the picker must show and everything must be scanned")
 	}
-	if !strings.Contains(installed, "<key>ShowPicker</key>\n\t\t\t<false/>") || !strings.Contains(installed, "<integer>257</integer>") {
-		t.Error("without media the picker is hidden and only APFS is scanned")
+	if !strings.Contains(installed, "<key>ShowPicker</key>\n\t\t\t<false/>") || !strings.Contains(installed, "<integer>769</integer>") {
+		t.Error("without media the picker is hidden and only APFS and HFS+ are scanned")
+	}
+	if !strings.Contains(installed, "<key>MinDate</key>\n\t\t\t<integer>-1</integer>") || !strings.Contains(installed, "<key>MinVersion</key>\n\t\t\t<integer>-1</integer>") {
+		t.Error("APFS drivers of every macOS version must be allowed (High Sierra to Catalina need it)")
 	}
 	if !strings.Contains(gpu, "keepsyms=1 agdpmod=pikera") || strings.Contains(installed, "agdpmod") {
 		t.Error("agdpmod=pikera only with a passed-through GPU")

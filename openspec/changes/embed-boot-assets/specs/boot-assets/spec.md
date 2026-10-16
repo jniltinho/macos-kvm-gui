@@ -18,14 +18,14 @@ The system SHALL embed OpenCore, the Lilu, VirtualSMC and WhateverGreen kexts an
 - **THEN** the rebuild stops and the previously built files are left untouched
 
 ### Requirement: Configurable asset sources
-The system SHALL read asset versions, URLs and checksums from a file in the repository, and SHALL let an environment variable or a local, untracked `.env` file override each value, with the environment taking precedence over `.env` and `.env` over the repository file, without executing those files.
+The system SHALL read asset versions, URLs and checksums from a file in the repository, and SHALL let an environment variable or a local, untracked `.env` file override each value, with the environment taking precedence over `.env` and `.env` over the repository file, without executing those files and accepting only the asset keys.
 
 #### Scenario: Override from the environment
 - **WHEN** `OPENCORE_URL` and `OPENCORE_SHA256` are set in the environment
 - **THEN** the rebuild downloads OpenCore from that URL and verifies it against that checksum
 
 ### Requirement: Runtime asset directory
-The system SHALL use, instead of the embedded files, a directory named by `MKG_ASSETS_DIR` (from the environment or from `~/.config/macos-kvm-gui/.env`) with the same layout as the embedded files, and SHALL refuse it when a required file is missing.
+The system SHALL use, instead of the embedded files, a directory named by `MKG_ASSETS_DIR` (from the environment or from `~/.config/macos-kvm-gui/.env`) with the same layout as the embedded files, and SHALL refuse it when any file of the embedded set is missing.
 
 #### Scenario: Newer OpenCore without rebuilding
 - **WHEN** `MKG_ASSETS_DIR` points to a complete directory
@@ -36,7 +36,7 @@ The system SHALL use, instead of the embedded files, a directory named by `MKG_A
 - **THEN** the VM does not start and the app names the missing file
 
 ### Requirement: Generated OpenCore configuration
-The system SHALL generate OpenCore's `config.plist` at every VM start from the settings: 1920x1080 output; with install media attached, the picker is shown and every file system is scanned; without it, the picker is hidden and only APFS volumes are scanned; a passed-through GPU adds `agdpmod=pikera` to the boot arguments.
+The system SHALL generate OpenCore's `config.plist` at every VM start from the settings: 1920x1080 output; with install media attached, the picker is shown and every file system is scanned; without it, the picker is hidden and only APFS and HFS+ volumes are scanned; APFS drivers of every macOS version are allowed; a passed-through GPU adds `agdpmod=pikera` to the boot arguments.
 
 #### Scenario: Installed system
 - **WHEN** the VM starts without `BaseSystem.img`

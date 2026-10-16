@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -73,11 +72,12 @@ func DownloadRecovery(ctx context.Context, version, dir string, progress func(st
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", "", err
 	}
-	chunklistPath, err = recoverySave(ctx, info["CU"], info["CT"], dir, "chunklist", progress)
+	// Local names are fixed: names from the server never reach the file system.
+	chunklistPath, err = recoverySave(ctx, info["CU"], info["CT"], filepath.Join(dir, "BaseSystem.chunklist"), "chunklist", progress)
 	if err != nil {
 		return "", "", err
 	}
-	dmgPath, err = recoverySave(ctx, info["AU"], info["AT"], dir, "image", progress)
+	dmgPath, err = recoverySave(ctx, info["AU"], info["AT"], filepath.Join(dir, "BaseSystem.dmg"), "image", progress)
 	if err != nil {
 		os.Remove(chunklistPath)
 		return "", "", err
@@ -191,17 +191,13 @@ func recoveryID(n int) (string, error) {
 	return string(b), nil
 }
 
-// recoverySave downloads rawURL into dir/<basename of URL path> via a .part file.
-func recoverySave(ctx context.Context, rawURL, token, dir, stage string, progress func(string, float64)) (dst string, err error) {
+// recoverySave downloads rawURL into dst through an exclusively created temporary file.
+func recoverySave(ctx context.Context, rawURL, token, dst, stage string, progress func(string, float64)) (_ string, err error) {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "", fmt.Errorf("recovery: bad %s URL: %w", stage, err)
 	}
-	name := path.Base(u.Path)
-	if name == "" || name == "." || name == "/" || strings.ContainsAny(name, `/\`) {
-		return "", fmt.Errorf("recovery: invalid save name from %s", rawURL)
-	}
-	dst = filepath.Join(dir, name)
+	name := filepath.Base(dst)
 
 	req, err := newRecoveryRequest(ctx, http.MethodGet, rawURL, u.Hostname(), nil)
 	if err != nil {
@@ -217,11 +213,11 @@ func recoverySave(ctx context.Context, rawURL, token, dir, stage string, progres
 		return "", fmt.Errorf("recovery: download %s: unexpected status %s", name, resp.Status)
 	}
 
-	part := dst + ".part"
-	f, err := os.Create(part)
+	f, err := os.CreateTemp(filepath.Dir(dst), name+".*.part")
 	if err != nil {
 		return "", err
 	}
+	part := f.Name()
 	defer func() {
 		if err != nil {
 			f.Close()

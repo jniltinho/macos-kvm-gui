@@ -23,9 +23,10 @@ const (
 	VarsFile     = BootDir + "/OVMF_VARS_4M.fd" // the VM's NVRAM: created once, never overwritten
 	identityFile = BootDir + "/smbios.json"
 	resolution   = "1920x1080@32"
-	// scanAPFS limits OpenCore to APFS volumes (OC_SCAN_FILE_SYSTEM_LOCK | OC_SCAN_ALLOW_FS_APFS),
-	// which hides OpenCore's own FAT disk so Macintosh HD is the only, default entry.
-	scanAPFS = 0x101
+	// scanInstalled limits OpenCore to APFS and HFS+ volumes (OC_SCAN_FILE_SYSTEM_LOCK |
+	// OC_SCAN_ALLOW_FS_APFS | OC_SCAN_ALLOW_FS_HFS): it hides OpenCore's own FAT disk, so the
+	// installed system is the default entry, and still finds HFS+ High Sierra installs.
+	scanInstalled = 0x301
 )
 
 // identity is the VM's SMBIOS identity, generated once per workspace.
@@ -93,12 +94,17 @@ func bootAssets() (fs.FS, error) {
 		return assets.FS, nil
 	}
 	fsys := os.DirFS(dir)
-	for _, f := range []string{"config.plist.tmpl", "files/EFI/OC/OpenCore.efi", "files/ovmf/OVMF_CODE_4M.fd", "files/ovmf/OVMF_VARS_4M.fd"} {
-		if _, err := fs.Stat(fsys, f); err != nil {
-			return nil, fmt.Errorf("MKG_ASSETS_DIR=%s is missing %s", dir, f)
+	// Every file the embedded set has must be there (kexts, drivers, BOOTx64.efi, firmware...).
+	err := fs.WalkDir(assets.FS, ".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || p == "files/VERSIONS" {
+			return err
 		}
-	}
-	return fsys, nil
+		if st, err := fs.Stat(fsys, p); err != nil || st.IsDir() {
+			return fmt.Errorf("MKG_ASSETS_DIR=%s is missing %s", dir, p)
+		}
+		return nil
+	})
+	return fsys, err
 }
 
 // AssetVersions describes the boot files in use, for the UI.
@@ -146,7 +152,7 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 	if err != nil || len(rom) != 6 {
 		return "", fmt.Errorf("invalid SMBIOS ROM %q", id.ROM)
 	}
-	picker, timeout, scan := "<false/>", "0", fmt.Sprint(scanAPFS)
+	picker, timeout, scan := "<false/>", "0", fmt.Sprint(scanInstalled)
 	if withMedia {
 		picker, timeout, scan = "<true/>", "5", "0"
 	}
@@ -198,7 +204,14 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 		return err
 	}
 	if !exists(w.Path(VarsFile)) {
-		if err := copyAsset(fsys, "files/ovmf/OVMF_VARS_4M.fd", w.Path(VarsFile)); err != nil {
+		// A half-written NVRAM would never be retried, so it is published only once complete.
+		tmp := w.Path(VarsFile) + ".tmp"
+		if err := copyAsset(fsys, "files/ovmf/OVMF_VARS_4M.fd", tmp); err != nil {
+			os.Remove(tmp)
+			return err
+		}
+		if err := os.Rename(tmp, w.Path(VarsFile)); err != nil {
+			os.Remove(tmp)
 			return err
 		}
 	}

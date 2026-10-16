@@ -187,3 +187,34 @@ func TestRecoveryCanceled(t *testing.T) {
 		t.Errorf("leftover files %v", got)
 	}
 }
+
+// Names in the server's URLs must never reach the file system.
+func TestRecoveryIgnoresServerFileNames(t *testing.T) {
+	newFakeRecovery(t) // restores recoveryBaseURL on cleanup
+	var u string // the fake server's own address; r.Host is osrecovery.apple.com by protocol
+	evil := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/InstallationPayload/RecoveryImage" {
+			io.WriteString(w, "AP: x\nAU: "+u+"/dl/%2e%2e\nAH: x\nAT: t\nCU: "+u+"/dl/%2e%2e%2f%2e%2e%2fvictim\nCH: x\nCT: t\n")
+			return
+		}
+		if r.URL.Path == "/" {
+			w.Header().Add("Set-Cookie", "session=abc")
+		}
+		io.WriteString(w, "payload")
+	}))
+	defer evil.Close()
+	u = evil.URL
+	recoveryBaseURL = evil.URL
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "staging")
+	dmg, cnk, err := DownloadRecovery(context.Background(), "sonoma", dir, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dmg != filepath.Join(dir, "BaseSystem.dmg") || cnk != filepath.Join(dir, "BaseSystem.chunklist") {
+		t.Fatalf("paths: %s %s", dmg, cnk)
+	}
+	if got := dirEntries(t, parent); len(got) != 1 {
+		t.Fatalf("nothing may be written outside the staging dir: %v", got)
+	}
+}

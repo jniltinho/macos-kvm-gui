@@ -10,12 +10,13 @@ OUT="$ROOT/internal/assets/files"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# load_env reads KEY=value lines without executing them; variables already set win.
+# load_env reads KEY=value lines without executing them. Only the asset keys are accepted
+# (never LD_PRELOAD, PATH and the like), they are not exported, and values already set win.
 load_env() {
   [ -f "$1" ] || return 0
   while IFS='=' read -r key value; do
-    [[ "$key" =~ ^[A-Z][A-Z0-9_]*$ ]] || continue
-    [ -n "${!key+x}" ] || export "$key=$value"
+    [[ "$key" =~ ^(OPENCORE|LILU|VIRTUALSMC|WHATEVERGREEN|OVMF)_(VERSION|URL|SHA256)$ ]] || continue
+    [ -n "${!key+x}" ] || printf -v "$key" '%s' "$value"
   done <"$1"
 }
 load_env "$ROOT/.env"

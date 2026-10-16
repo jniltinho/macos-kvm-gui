@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +40,16 @@ func TestAssetsDirOverride(t *testing.T) {
 	}
 	t.Setenv("MKG_ASSETS_DIR", t.TempDir())
 	if err := w.PrepareBoot(Defaults(), false); err == nil || !strings.Contains(err.Error(), "missing") {
-		t.Fatalf("an incomplete override must be refused: %v", err)
+		t.Fatalf("an empty override must be refused: %v", err)
+	}
+	// A copy without the firmware's fallback loader must be refused too.
+	partial := t.TempDir()
+	if err := os.CopyFS(partial, os.DirFS(dir)); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(filepath.Join(partial, "files/EFI/BOOT/BOOTx64.efi"))
+	t.Setenv("MKG_ASSETS_DIR", partial)
+	if err := w.PrepareBoot(Defaults(), false); err == nil || !strings.Contains(err.Error(), "BOOTx64.efi") {
+		t.Fatalf("an override without BOOTx64.efi must be refused: %v", err)
 	}
 }
