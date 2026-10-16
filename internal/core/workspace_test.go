@@ -238,7 +238,17 @@ func TestRecoveryLanguageIsEnglish(t *testing.T) {
 	data := cfg[i:]
 	data = data[strings.Index(data, "<data>")+len("<data>") : strings.Index(data, "</data>")]
 	b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(data))
-	if err != nil || string(b) != "en-US:0" {
-		t.Fatalf("prev-lang:kbd = %q %v, want en-US:0", b, err)
+	if err != nil || string(b) != RecoveryKeyboard() || !strings.HasPrefix(string(b), "en-US:") {
+		t.Fatalf("prev-lang:kbd = %q %v, want %s", b, err, RecoveryKeyboard())
+	}
+	// Add never overwrites an existing variable: without Delete, the first boot's value stays.
+	if del := cfg[strings.Index(cfg, "<key>Delete</key>\n\t\t<dict>\n\t\t\t<key>4D1EDE05"):]; !strings.Contains(del[:strings.Index(del, "</dict>")], "<string>prev-lang:kbd</string>") {
+		t.Fatal("prev-lang:kbd must be in NVRAM Delete")
+	}
+	if !GuestTypingOK() && RecoveryKeyboard() == "en-US:128" {
+		t.Fatal("ABNT2 types the install line")
+	}
+	if macKeyboardID("br", "") != 128 || macKeyboardID("us", "dvorak") != 16300 || macKeyboardID("xx", "") != 0 || macKeyboardID("de", "nodeadkeys") != 3 {
+		t.Fatal("keyboard layout IDs")
 	}
 }

@@ -114,6 +114,12 @@ func DialQMP(path string, onEvent func(QMPEvent), onDisconnect func()) (*QMP, er
 
 // Execute sends a command and waits for the reply, with a 5 s deadline.
 func (q *QMP) Execute(cmd string) error {
+	_, err := q.Query(cmd)
+	return err
+}
+
+// Query sends a command and returns its reply's "return" value.
+func (q *QMP) Query(cmd string) (json.RawMessage, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	select { // drop a late reply from a previous command
@@ -123,18 +129,18 @@ func (q *QMP) Execute(cmd string) error {
 	data, _ := json.Marshal(map[string]string{"execute": cmd})
 	q.conn.SetWriteDeadline(time.Now().Add(qmpTimeout))
 	if _, err := q.conn.Write(append(data, '\n')); err != nil {
-		return ErrQMPClosed
+		return nil, ErrQMPClosed
 	}
 	select {
 	case m := <-q.replies:
 		if m.Error != nil {
-			return fmt.Errorf("%s: %s", cmd, m.Error.Desc)
+			return nil, fmt.Errorf("%s: %s", cmd, m.Error.Desc)
 		}
-		return nil
+		return m.Return, nil
 	case <-q.done:
-		return ErrQMPClosed
+		return nil, ErrQMPClosed
 	case <-time.After(qmpTimeout):
-		return fmt.Errorf("%s: no reply from QEMU within %s", cmd, qmpTimeout)
+		return nil, fmt.Errorf("%s: no reply from QEMU within %s", cmd, qmpTimeout)
 	}
 }
 

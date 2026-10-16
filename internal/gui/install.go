@@ -230,6 +230,61 @@ func (u *ui) installTab() fyne.CanvasObject {
 				})
 			}, u.win)
 	})
+	// The full installer (Big Sur and later): downloaded once into the shared cache as a disc that
+	// the VM gets with its install media, so the recovery installs with no network.
+	u.btnFullInstaller = widget.NewButtonWithIcon("Download full installer", theme.DownloadIcon(), func() {
+		version := u.cfg.Version
+		u.run("Download full installer ("+version+")", func() error {
+			_, err := core.DownloadInstaller(context.Background(), version, func(p core.Progress) {
+				fyne.Do(func() { u.showProgress(p) })
+			}, u.logAsync)
+			return err
+		}, nil)
+	})
+	u.btnDeleteInstaller = widget.NewButtonWithIcon("Delete installer", theme.DeleteIcon(), func() {
+		ci, ok := core.CachedInstallerFor(u.cfg.Version)
+		if !ok {
+			return
+		}
+		dialog.ShowConfirm("Delete full installer", fmt.Sprintf("Delete the cached macOS %s installer (%.1f GB)? Every VM of this version uses it.", ci.Version, float64(ci.Size)/1e9),
+			func(yes bool) {
+				if yes {
+					if err := core.RemoveInstaller(ci.Build); err != nil {
+						dialog.ShowError(err, u.win)
+					}
+					u.refresh()
+				}
+			}, u.win)
+	})
+	u.installMode = widget.NewLabelWithStyle("", fyne.TextAlignLeading, fyne.TextStyle{Bold: true})
+	u.installMode.Wrapping = fyne.TextWrapWord
+	u.installerInfo = caption("")
+	u.installerInfo.Wrapping = fyne.TextWrapWord
+	u.installerCmd = widget.NewEntry()
+	unattended := widget.NewCheck("Unattended: erase the VM's empty disk and accept Apple's macOS license for me", func(on bool) {
+		u.installerCmd.SetText(core.DiscCommand + map[bool]string{true: " -u"}[on])
+	})
+	u.installerCmd.SetText(core.DiscCommand)
+	copyCmd := widget.NewButtonWithIcon("Copy", theme.ContentCopyIcon(), func() {
+		fyne.CurrentApp().Clipboard().SetContent(u.installerCmd.Text)
+	})
+	typeCmd := widget.NewButtonWithIcon("Type it in the VM", theme.MailForwardIcon(), func() {
+		line := core.DiscTyped + map[bool]string{true: " -u"}[unattended.Checked]
+		if err := u.screen.typeLine(line); err != nil {
+			dialog.ShowError(err, u.win)
+			return
+		}
+		u.tabs.SelectIndex(1) // watch it on the Screen tab
+	})
+	typeCmd.Importance = widget.HighImportance
+	cmdNote := caption("The installer is attached to the VM as the disc OFFLINE, so no network is needed. When the recovery shows its window, click Type it in the VM (with Caps Lock off): " +
+		"the app opens Utilities › Terminal and types the line. Without Unattended, first erase the disk in Disk Utility (APFS, named \"Macintosh HD\") and quit it; " +
+		"the line copies the installer onto that disk and opens it. Unattended erases the empty disk itself and installs with no questions: macOS restarts by itself and is ready at Setup Assistant.")
+	cmdNote.Wrapping = fyne.TextWrapWord
+	u.installerCmdBox = container.NewVBox(widget.NewSeparator(), widget.NewLabelWithStyle("Install from the full installer", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		unattended, container.NewBorder(nil, nil, nil, container.NewHBox(copyCmd, typeCmd), u.installerCmd), cmdNote)
+	u.installerCmdBox.Hide()
+
 	startVM := widget.NewButtonWithIcon("Start the VM", theme.MediaPlayIcon(), func() { u.btnStart.trigger() })
 	u.btnStartInstall = startVM
 	// The same start with macOS's boot log on screen, for an install stuck at the Apple logo.
@@ -255,10 +310,11 @@ func (u *ui) installTab() fyne.CanvasObject {
 	}
 	u.steps = []*itemCard{
 		add(1, "VM folder", "Creates the VM's folder and extracts the built-in OpenCore and OVMF.", right(u.btnPrepare)),
-		add(2, "macOS recovery", "Downloaded from Apple; the signature and every chunk's SHA-256 are verified.",
-			u.stage, u.bar, u.barInf, right(u.btnDownload)),
+		add(2, "macOS recovery", "Downloaded from Apple; the signature and every chunk's SHA-256 are verified. "+
+			"Optionally also download the full installer (12–18 GB) once for every VM of this version, instead of letting each install download macOS again.",
+			u.stage, u.bar, u.barInf, u.installerInfo, right(container.NewHBox(u.btnDeleteInstaller, u.btnFullInstaller, u.btnDownload))),
 		add(3, "Virtual hard disk", "A qcow2 disk that only takes the space macOS uses.", diskRow),
-		add(4, "Install macOS", "Start the VM, erase the disk in Disk Utility and run Reinstall macOS.", guide, debugNote,
+		add(4, "Install macOS", "Start the VM, erase the disk in Disk Utility and run Reinstall macOS, or install from the full installer.", u.installMode, guide, u.installerCmdBox, debugNote,
 			right(container.NewHBox(u.btnVerboseInstall, startVM))),
 		add(5, "Clean up", "Once macOS boots from its disk, remove the install media to free space.", right(u.btnRemove)),
 	}
@@ -326,7 +382,8 @@ func (u *ui) refreshInstall(w core.Workspace, wsErr error, ready, free bool) {
 			b.Importance = map[bool]widget.Importance{true: widget.HighImportance, false: widget.MediumImportance}[st == stepNext]
 			b.Refresh()
 		}
-		s.body.Hidden = st == stepDone
+		// The recovery's step stays open: the full installer is optional and usually comes after it.
+		s.body.Hidden = st == stepDone && !(i == 1 && !installed && core.InstallerSupported(u.cfg.Version))
 		s.body.Refresh()
 	}
 	u.stage.Hidden = u.stage.Text == ""
@@ -347,6 +404,33 @@ func (u *ui) refreshInstall(w core.Workspace, wsErr error, ready, free bool) {
 	}
 	enable(u.btnPrepare, free && wsErr == nil && !ready)
 	enable(u.btnDownload, free && wsErr == nil && !installed)
+	ci, cached := core.CachedInstallerFor(u.cfg.Version)
+	switch {
+	case !core.InstallerSupported(u.cfg.Version):
+		u.installerInfo.SetText("Full installer: Apple has none for this macOS version; the recovery installs it.")
+	case cached:
+		u.installerInfo.SetText(fmt.Sprintf("Full installer: macOS %s (%s), %.1f GB, cached for every VM of this version.", ci.Version, ci.Build, float64(ci.Size)/1e9))
+	default:
+		u.installerInfo.SetText("Full installer: not downloaded (optional).")
+	}
+	runningHere := u.runningID == u.cur.ID && u.vm.State() != core.Stopped
+	switch {
+	case cached && runningHere && u.vm.InstallerCommand() == "":
+		u.installMode.SetText("Install mode: Offline, once the VM restarts: it was started before the installer was cached, so it has no OFFLINE disc yet.")
+	case cached:
+		u.installMode.SetText(fmt.Sprintf("Install mode: Offline. The VM starts with the disc OFFLINE (macOS %s) and needs no network; use the box below.", ci.Version))
+	case core.InstallerSupported(u.cfg.Version):
+		u.installMode.SetText("Install mode: Online. Reinstall macOS downloads macOS (about 13 GB) inside the VM. To install offline, download the full installer in step 2 first.")
+	default:
+		u.installMode.SetText("Install mode: Online. Reinstall macOS downloads macOS inside the VM (Apple has no full installer for this version).")
+	}
+	enable(u.btnFullInstaller, free && core.InstallerSupported(u.cfg.Version) && !installed)
+	enable(u.btnDeleteInstaller, free && cached)
+	if u.vm.InstallerCommand() != "" && u.runningID == u.cur.ID {
+		u.installerCmdBox.Show()
+	} else {
+		u.installerCmdBox.Hide()
+	}
 	enable(u.btnDisk, free && ready && !hasDisk)
 	enable(u.btnRemove, free && hasMedia)
 	enable(u.btnStartInstall, free && ready && hasDisk && hasMedia)
@@ -373,4 +457,51 @@ func (u *ui) showProgress(p core.Progress) {
 	u.barInf.Hide()
 	u.bar.Show()
 	u.bar.SetValue(p.Pct / 100)
+}
+
+// offlineInstallersDialog lists every cached full installer (the offline install media), with
+// the VMs whose macOS version uses it, and deletes them.
+func (u *ui) offlineInstallersDialog() {
+	var d dialog.Dialog
+	list := container.NewVBox()
+	cached := core.CachedInstallers()
+	vms, _ := core.ListVMs()
+	for _, c := range cached {
+		var users []string
+		for _, e := range vms {
+			if ci, ok := core.CachedInstallerFor(e.Config.Version); ok && ci.Build == c.Build {
+				users = append(users, e.DisplayName())
+			}
+		}
+		use := "no VM of this version"
+		if len(users) > 0 {
+			use = "used by " + strings.Join(users, ", ")
+		}
+		del := widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), func() {
+			dialog.ShowConfirm("Delete offline installer", fmt.Sprintf("Delete the macOS %s installer (%.1f GB)? VMs of this version then install online, or download it again.", c.Version, float64(c.Size)/1e9),
+				func(yes bool) {
+					if !yes {
+						return
+					}
+					if err := core.RemoveInstaller(c.Build); err != nil {
+						dialog.ShowError(err, u.win)
+						return
+					}
+					d.Hide()
+					u.refresh()
+					u.offlineInstallersDialog()
+				}, u.win)
+		})
+		info := widget.NewLabel(fmt.Sprintf("macOS %s (%s) · %.1f GB · %s", c.Version, c.Build, float64(c.Size)/1e9, use))
+		info.Wrapping = fyne.TextWrapWord
+		list.Add(container.NewBorder(nil, nil, nil, del, info))
+	}
+	if len(cached) == 0 {
+		list.Add(note("No offline installers yet. Download one with Download full installer in a VM's Install step 2 (Big Sur and later); every VM of that macOS version then installs from it with no network."))
+	}
+	dir, _ := core.InstallersDir()
+	content := container.NewVBox(list, widget.NewSeparator(), note("Kept in "+dir+", one per macOS build, shared by every VM of that version."))
+	d = dialog.NewCustom("Offline installers", "Close", container.NewPadded(content), u.win)
+	d.Resize(fyne.NewSize(640, 0))
+	d.Show()
 }

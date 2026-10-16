@@ -168,6 +168,7 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		"@@TIMEOUT@@", timeout,
 		"@@SCANPOLICY@@", scan,
 		"@@BOOTARGS@@", bootArgs,
+		"@@PREVLANG@@", base64.StdEncoding.EncodeToString([]byte(RecoveryKeyboard())),
 		"@@PRODUCT@@", SMBIOSModel(c.Version),
 		"@@SERIAL@@", id.Serial,
 		"@@MLB@@", id.MLB,

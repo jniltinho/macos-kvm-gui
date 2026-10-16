@@ -1,10 +1,12 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -14,6 +16,33 @@ type RunInfo struct {
 	Started   time.Time
 	ByApp     bool   // started by macos-kvm-gui (its QMP socket is in the command line)
 	VNCSocket string // the in-app display socket, when there is one
+	Control   string // the second QMP socket, for a process other than the starter
+	Disc      bool   // the offline installer disc is attached
+}
+
+// CheckRunDir accepts a socket only inside a private run directory this user owns (0700), as
+// the app creates them, so a process never drives a socket another user could have placed.
+func CheckRunDir(sock string) error {
+	dir := filepath.Dir(sock)
+	if !strings.HasPrefix(filepath.Base(dir), "macos-kvm-gui-") {
+		return fmt.Errorf("%s is not in a run directory of this app", sock)
+	}
+	st, err := os.Lstat(dir)
+	if err != nil {
+		return err
+	}
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	if !st.IsDir() || st.Mode().Perm() != 0o700 || !ok || int(sys.Uid) != os.Getuid() {
+		return fmt.Errorf("%s is not a private directory of this user", dir)
+	}
+	st, err = os.Lstat(sock) // the socket itself, not what a symlink would point to
+	if err != nil {
+		return err
+	}
+	if sys, ok = st.Sys().(*syscall.Stat_t); st.Mode()&os.ModeSocket == 0 || !ok || int(sys.Uid) != os.Getuid() {
+		return fmt.Errorf("%s is not a socket of this user", sock)
+	}
+	return nil
 }
 
 // Uptime is how long the VM has been running.
@@ -57,6 +86,13 @@ func runningIn(proc string, c Config) (RunInfo, bool) {
 		for i, a := range args {
 			if a == "-qmp" && i+1 < len(args) && strings.Contains(args[i+1], "macos-kvm-gui-") {
 				info.ByApp = true
+			}
+			if a == "-qmp" && i+1 < len(args) && strings.Contains(args[i+1], "qmp-control.sock") {
+				sock, _, _ := strings.Cut(strings.TrimPrefix(args[i+1], "unix:"), ",server")
+				info.Control = strings.ReplaceAll(sock, ",,", ",")
+			}
+			if strings.HasPrefix(a, "id=InstallerDisc,") {
+				info.Disc = true
 			}
 			if a == "-vnc" && i+1 < len(args) {
 				sock, _, _ := strings.Cut(strings.TrimPrefix(args[i+1], "unix:"), ",lock-key-sync")

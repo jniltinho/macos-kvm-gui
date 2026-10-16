@@ -26,9 +26,12 @@ func TestRunningDetection(t *testing.T) {
 		t.Fatal("only qemu processes count")
 	}
 	fakeProc(t, proc, "200", "qemu-system-x86", "", "qemu-system-x86_64", "-drive", "id=MacHDD,if=none,format=qcow2,file=/vm/a,,b/mac_hdd_ng.img",
-		"-vnc", "unix:/run/user/1000/macos-kvm-gui-1/vnc.sock,lock-key-sync=off", "-qmp", "unix:/run/user/1000/macos-kvm-gui-1/qmp.sock,server=on,wait=off")
+		"-vnc", "unix:/run/user/1000/macos-kvm-gui-1/vnc.sock,lock-key-sync=off", "-qmp", "unix:/run/user/1000/macos-kvm-gui-1/qmp.sock,server=on,wait=off",
+		"-qmp", "unix:/run/user/1000/macos-kvm-gui-1/qmp-control.sock,server=on,wait=off",
+		"-drive", "id=InstallerDisc,if=none,format=raw,snapshot=on,file=/c/InstallAssistant.iso")
 	r, ok := runningIn(proc, c)
-	if !ok || r.PID != 200 || !r.ByApp || r.VNCSocket != "/run/user/1000/macos-kvm-gui-1/vnc.sock" {
+	if !ok || r.PID != 200 || !r.ByApp || r.VNCSocket != "/run/user/1000/macos-kvm-gui-1/vnc.sock" ||
+		r.Control != "/run/user/1000/macos-kvm-gui-1/qmp-control.sock" || !r.Disc {
 		t.Fatalf("app-started VM: %+v %v", r, ok)
 	}
 

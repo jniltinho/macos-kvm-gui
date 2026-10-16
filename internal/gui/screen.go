@@ -1,8 +1,11 @@
 package gui
 
 import (
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -130,15 +133,27 @@ func (s *screen) FocusLost()                   { s.releaseAll() }
 func (s *screen) TypedRune(rune)               {}
 func (s *screen) TypedKey(*fyne.KeyEvent)      {}
 func (s *screen) AcceptsTab() bool             { return true } // Tab goes to the guest, not to Fyne's focus chain
-func (s *screen) KeyDown(ev *fyne.KeyEvent)    { s.key(ev.Name, true) }
-func (s *screen) KeyUp(ev *fyne.KeyEvent)      { s.key(ev.Name, false) }
+func (s *screen) KeyDown(ev *fyne.KeyEvent)    { s.key(ev, true) }
+func (s *screen) KeyUp(ev *fyne.KeyEvent)      { s.key(ev, false) }
 func (s *screen) Scrolled(e *fyne.ScrollEvent) { s.wheel(e.Scrolled.DY) }
 
-func (s *screen) key(name fyne.KeyName, down bool) {
+// key sends a physical key. On Linux the X11 keycode identifies the key itself, whatever the
+// host's layout, so keys that a US key map lacks (such as ABNT2's ç and "/?") are not lost;
+// elsewhere, or for an unknown keycode, the Fyne key name is used.
+func (s *screen) key(ev *fyne.KeyEvent, down bool) {
+	name := ev.Name
 	v := s.conn()
 	k, ok := core.KeyFor(string(name))
-	if v == nil || !ok {
+	if runtime.GOOS == "linux" && ev.Physical.ScanCode > 8 {
+		if pk, pok := core.KeyForX11(ev.Physical.ScanCode); pok {
+			k, ok = pk, true
+		}
+	}
+	if !ok {
 		return
+	}
+	if name == "" {
+		name = fyne.KeyName(fmt.Sprintf("scancode:%d", ev.Physical.ScanCode)) // tracks unnamed keys too
 	}
 	if down && name == "F" && s.isHeld("LeftControl", "RightControl") && s.isHeld("LeftAlt", "RightAlt") {
 		s.releaseAll() // the guest saw Ctrl and Alt go down; let them go up
@@ -159,7 +174,9 @@ func (s *screen) key(name fyne.KeyName, down bool) {
 		delete(s.pressed, string(name))
 	}
 	s.mu.Unlock()
-	v.Key(down, k)
+	if v != nil { // keys are tracked without a VM too, so the host key still leaves full screen
+		v.Key(down, k)
+	}
 }
 
 func (s *screen) isHeld(names ...string) bool {
@@ -302,3 +319,36 @@ var (
 	_ desktop.Hoverable  = (*screen)(nil)
 	_ fyne.Scrollable    = (*screen)(nil)
 )
+
+// typeLine opens the recovery's Terminal and types line there, as key presses (see
+// core.GuestKeys). It returns at once; the keys follow at a typing pace.
+func (s *screen) typeLine(line string) error {
+	if !core.GuestTypingOK() {
+		return errors.New("this keyboard layout moves the letters of the line (Dvorak, Russian): open Utilities › Terminal and type it yourself")
+	}
+	chords, err := core.GuestKeys(line)
+	if err != nil {
+		return err
+	}
+	s.mu.Lock()
+	v := s.vnc
+	s.mu.Unlock()
+	if v == nil {
+		return errors.New("the VM screen is not connected")
+	}
+	go func() {
+		for _, c := range core.RecoveryTerminal() {
+			if v.Chord(c) != nil {
+				return
+			}
+			time.Sleep(120 * time.Millisecond) // the menu opens
+		}
+		time.Sleep(2 * time.Second) // the Terminal window opens
+		for _, c := range chords {
+			if v.Chord(c) != nil {
+				return
+			}
+		}
+	}()
+	return nil
+}

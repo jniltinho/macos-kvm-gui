@@ -57,6 +57,9 @@ With display=app there is no window: the screen is on the printed private VNC so
 		if sock := vm.VNCSocket(); sock != "" {
 			fmt.Fprintln(out, "vm: screen on VNC socket", sock)
 		}
+		if line := vm.InstallerCommand(); line != "" {
+			fmt.Fprintln(out, "vm: the full installer disc is attached; to install from it, type in the recovery's Terminal:", line)
+		}
 		sig := make(chan os.Signal, 2)
 		signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 		defer signal.Stop(sig)

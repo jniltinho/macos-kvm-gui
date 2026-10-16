@@ -106,6 +106,7 @@ func (u *ui) mainMenu() *fyne.MainMenu {
 	return fyne.NewMainMenu(
 		fyne.NewMenu("File",
 			fyne.NewMenuItem("Preferences…", u.preferencesDialog),
+			fyne.NewMenuItem("Offline installers…", u.offlineInstallersDialog),
 			fyne.NewMenuItemSeparator(),
 			item("Import VM…", u.btnImport), item("Export VM…", u.btnExport)),
 		fyne.NewMenu("Machine",
@@ -311,7 +312,7 @@ func (u *ui) detailsTab() fyne.CanvasObject {
 	top := container.NewBorder(nil, nil, nil, previewBox, container.NewVBox(general, system))
 	rest := container.NewVBox(
 		add("Display", "display", theme.ViewFullScreenIcon(), "Shown", "Graphics Controller", "Resolution", "Remote Display"),
-		add("Storage", "storage", theme.StorageIcon(), "Controller", "SATA Port 0", "SATA Port 1", "Boot Disk"),
+		add("Storage", "storage", theme.StorageIcon(), "Controller", "SATA Port 0", "SATA Port 1", "SATA Port 2", "Boot Disk"),
 		add("Audio", "audio", theme.VolumeUpIcon(), "Controller"),
 		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Adapter 2", "Adapter 3", "Adapter 4", "Port Forwarding"),
 		add("USB", "usb", theme.SettingsIcon(), "Controller", "Devices"),
@@ -371,7 +372,7 @@ func (u *ui) refreshDetails() {
 	}
 	set("GPU Passthrough/GPU", gpu)
 	set("GPU Passthrough/3D Acceleration", accel)
-	disk, media := "mac_hdd_ng.img (not created yet)", "Empty"
+	disk, media, disc := "mac_hdd_ng.img (not created yet)", "Empty", "Empty"
 	if w, err := u.workspace(); err == nil {
 		if w.HasDisk() {
 			disk = fmt.Sprintf("mac_hdd_ng.img (Normal, %.2f GB, %.2f GB used)",
@@ -379,10 +380,14 @@ func (u *ui) refreshDetails() {
 		}
 		if w.HasMedia() {
 			media = "BaseSystem.img (" + w.MediaVersion() + " recovery)"
+			if ci, ok := core.CachedInstallerFor(u.cfg.Version); ok {
+				disc = fmt.Sprintf("InstallAssistant.iso (offline installer, macOS %s, read-only)", ci.Version)
+			}
 		}
 	}
 	set("Storage/SATA Port 0", disk)
 	set("Storage/SATA Port 1", media)
+	set("Storage/SATA Port 2", disc)
 	set("Storage/Boot Disk", "OpenCore (built in, read-only)")
 	set("Storage/Controller", "SATA (ICH9 AHCI)")
 	set("Audio/Controller", "Intel HD Audio")
@@ -426,15 +431,72 @@ func (u *ui) statusBar() fyne.CanvasObject {
 	return container.NewVBox(widget.NewSeparator(), u.status)
 }
 
-func (u *ui) refreshStatus(s core.VMState) {
+func (u *ui) refreshStatus(s core.VMState, outside bool) {
 	text := "● " + stateText(s)
+	u.status.Importance = stateImportance(s) // the dot's color, like the header's
+	if outside {
+		u.status.Importance = stateImportance(core.Running)
+	}
+	defer u.status.Refresh()
 	switch {
+	case outside:
+		text = "● Running (outside the app)  ·  Started by the command line or an AI agent (MCP). Keys and clicks on the screen go to macOS; shut it down in macOS or where it was started."
 	case s != core.Stopped && u.cfg.InApp():
 		text += "  ·  Click the screen to type; keys go to macOS while it has focus. Ctrl+Alt+F leaves full screen."
 	case s != core.Stopped:
 		text += "  ·  In the QEMU window."
 	}
 	u.status.SetText(text)
+}
+
+// watchOutside shows the current VM's screen when another process runs it (for example an AI
+// agent through the MCP server's vm_start), as a shared VNC client: keys and the pointer work,
+// but the app does not own that run, so it cannot shut it down. Selecting another VM closes the
+// connection; attempts are at most one every 3 s.
+func (u *ui) watchOutside() {
+	if u.watching {
+		if u.watchID != u.cur.ID && u.watchVNC != nil {
+			u.watchVNC.Close() // its Run returns and the screen detaches
+		}
+		return
+	}
+	if u.vm.State() != core.Stopped || u.screen.conn() != nil || time.Since(u.lastWatch) < 3*time.Second {
+		return
+	}
+	u.lastWatch = time.Now()
+	r, ok := core.FindRunning(u.cfg)
+	if !ok || r.VNCSocket == "" || core.CheckRunDir(r.VNCSocket) != nil {
+		return
+	}
+	id := u.cur.ID
+	u.watching, u.watchID = true, id
+	done := func() { u.watching, u.watchVNC = false, nil; u.refresh() }
+	go func() {
+		v, err := core.DialVNC(r.VNCSocket)
+		if err != nil {
+			u.logAsync("screen: " + err.Error())
+			fyne.Do(done)
+			return
+		}
+		attached := false
+		fyne.DoAndWait(func() {
+			if u.cur.ID != id || u.vm.State() != core.Stopped { // another VM was selected meanwhile
+				return
+			}
+			attached, u.watchVNC = true, v
+			u.screen.attach(v)
+			u.refresh()
+		})
+		if !attached {
+			v.Close()
+			fyne.Do(done)
+			return
+		}
+		u.logAsync(fmt.Sprintf("[VM] showing %s, run by another process (pid %d)", u.vmName(), r.PID))
+		v.Run()
+		v.Close()
+		fyne.Do(func() { u.screen.detach(v); done() })
+	}()
 }
 
 // start launches the VM and, with the in-app display, connects the screen.

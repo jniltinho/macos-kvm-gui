@@ -38,8 +38,9 @@ type VNC struct {
 	img *image.RGBA
 
 	extKeys  atomic.Bool
-	resized  bool   // set by DesktopSize: the next request must be a full one; read loop only
-	OnUpdate func() // called after each framebuffer update; may be nil
+	pixels   atomic.Int64 // pixel rectangles received since the last resize (Snapshot waits for them)
+	resized  bool         // set by DesktopSize: the next request must be a full one; read loop only
+	OnUpdate func()       // called after each framebuffer update; may be nil
 }
 
 // DialVNC waits for QEMU to create the socket and completes the RFB handshake.
@@ -275,12 +276,14 @@ func (v *VNC) readUpdate() error {
 			if err := v.readRaw(x, y, w, hh); err != nil {
 				return err
 			}
+			v.pixels.Add(1)
 		case encCopyRect:
 			var src struct{ X, Y uint16 }
 			if err := binary.Read(v.r, binary.BigEndian, &src); err != nil {
 				return err
 			}
 			v.copyRect(int(src.X), int(src.Y), x, y, w, hh)
+			v.pixels.Add(1)
 		case encDesktopSize:
 			if w == 0 || hh == 0 || w > maxFrame || hh > maxFrame {
 				return fmt.Errorf("VNC: implausible screen size %dx%d", w, hh)
@@ -289,6 +292,7 @@ func (v *VNC) readUpdate() error {
 			v.img = blankFrame(w, hh)
 			v.mu.Unlock()
 			v.resized = true
+			v.pixels.Store(0)
 		case encQEMUExtKey:
 			v.extKeys.Store(true) // the server accepts QEMU extended key events
 		default:
@@ -359,6 +363,26 @@ func (v *VNC) Key(down bool, k KeyCode) error {
 	return v.write(b)
 }
 
+// Chord presses keys in order and releases them in reverse, as a person would. Each event waits
+// a moment: with none between them macOS misses the modifiers of a shortcut such as Shift+Command+T.
+func (v *VNC) Chord(keys []KeyCode) error {
+	for _, k := range keys {
+		if err := v.Key(true, k); err != nil {
+			return err
+		}
+		time.Sleep(chordPause)
+	}
+	for i := len(keys) - 1; i >= 0; i-- {
+		if err := v.Key(false, keys[i]); err != nil {
+			return err
+		}
+		time.Sleep(chordPause)
+	}
+	return nil
+}
+
+const chordPause = 30 * time.Millisecond
+
 // Pointer button bits.
 const (
 	ButtonLeft      = 1
@@ -378,3 +402,32 @@ func (v *VNC) Pointer(buttons uint8, x, y int) error {
 }
 
 func (v *VNC) Close() error { return v.conn.Close() }
+
+// Snapshot waits on a running connection for a complete frame: pixel data received since the
+// last resize (not just QEMU's acknowledgement of an encoding), then until updates stop for a
+// moment. updates gets a value per framebuffer update (from OnUpdate, set before Run starts)
+// and runErr Run's result, so a dropped connection is an error, not a blank image.
+func (v *VNC) Snapshot(updates <-chan struct{}, runErr <-chan error, timeout time.Duration) (*image.RGBA, error) {
+	deadline := time.After(timeout)
+	quiet := time.NewTimer(time.Hour)
+	if v.pixels.Load() > 0 { // a frame arrived already: wait only for the screen to settle
+		quiet.Reset(300 * time.Millisecond)
+	}
+	for {
+		select {
+		case <-updates:
+			if v.pixels.Load() > 0 {
+				quiet.Reset(300 * time.Millisecond)
+			}
+		case <-quiet.C:
+			return v.Frame(nil), nil
+		case err := <-runErr:
+			return nil, fmt.Errorf("the VM screen connection closed: %v", err)
+		case <-deadline:
+			if v.pixels.Load() > 0 {
+				return v.Frame(nil), nil
+			}
+			return nil, errors.New("no screen image from the VM in time")
+		}
+	}
+}

@@ -70,6 +70,16 @@ type ui struct {
 	installFiles               *widget.Label
 	btnStartInstall            *widget.Button
 	btnVerboseInstall          *widget.Button
+	btnFullInstaller           *widget.Button
+	btnDeleteInstaller         *widget.Button
+	installerInfo              *widget.Label
+	installMode                *widget.Label
+	watching                   bool      // the screen shows a VM another process runs (watchOutside)
+	watchID                    string    // which VM it shows
+	watchVNC                   *core.VNC // its connection, closed when another VM is selected
+	lastWatch                  time.Time // the last attempt, so they are at most one every 3 s
+	installerCmd               *widget.Entry
+	installerCmdBox            *fyne.Container
 	stage                      *widget.Label
 	bar                        *widget.ProgressBar
 	barInf                     *widget.ProgressBarInfinite
@@ -166,6 +176,18 @@ func Run(appVersion, configPath string) {
 	if err != nil {
 		dialog.ShowError(err, u.win)
 	}
+	// VMs that other processes start or stop (the CLI, an AI agent through the MCP server) show
+	// up in the list, and the current one's screen, without a click.
+	go func() {
+		for range time.Tick(3 * time.Second) {
+			fyne.Do(func() {
+				if u.vm.State() == core.Stopped {
+					u.vmItem.Refresh()
+					u.watchOutside()
+				}
+			})
+		}
+	}()
 	u.win.ShowAndRun()
 }
 
@@ -466,6 +488,10 @@ func (u *ui) refresh() {
 	state := u.vm.State()
 	running := state != core.Stopped
 	free := !u.busy && !running
+	u.watchOutside()
+	if !running && u.screenWin != nil && u.screenWin.FullScreen() {
+		u.screenWin.SetFullScreen(false) // a stopped VM leaves nothing to show full screen
+	}
 
 	w, err := u.workspace()
 	ready := err == nil && w.Exists()
@@ -490,8 +516,15 @@ func (u *ui) refresh() {
 		u.gpuSelect.Enable()
 	}
 
-	u.header.SetText("● " + stateText(state))
-	u.header.Importance = stateImportance(state)
+	// The screen shows a VM another process runs (watchOutside): say so instead of "Powered Off".
+	outside := state == core.Stopped && u.watching && u.watchID == u.cur.ID
+	if outside {
+		u.header.SetText("● Running (outside the app)")
+		u.header.Importance = stateImportance(core.Running)
+	} else {
+		u.header.SetText("● " + stateText(state))
+		u.header.Importance = stateImportance(state)
+	}
 	u.header.Refresh()
 	enable(u.btnDetach, u.cfg.InApp())
 	enable(u.btnNew, !running && !u.singleFile)
@@ -503,5 +536,5 @@ func (u *ui) refresh() {
 	u.vmItem.Refresh()
 	u.refreshMenu()
 	u.refreshDetails()
-	u.refreshStatus(state)
+	u.refreshStatus(state, outside)
 }

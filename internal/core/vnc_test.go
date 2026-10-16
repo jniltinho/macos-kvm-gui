@@ -186,3 +186,30 @@ func TestKeyTableAndFit(t *testing.T) {
 		t.Fatal("clicks in the letterbox bars must be ignored")
 	}
 }
+
+func TestKeyForX11(t *testing.T) {
+	for _, c := range []struct {
+		keycode int
+		sc      uint32
+	}{
+		{9, 0x01},   // Escape (evdev 1)
+		{38, 0x1e},  // A
+		{47, 0x27},  // the key right of L: ";" on US, "ç" on ABNT2
+		{94, 0x56},  // left of Z: ISO/ABNT2 "\|"
+		{97, 0x73},  // ABNT2 "/?" (KEY_RO)
+		{113, 0xcb}, // Left
+		{133, 0xdb}, // left Super: Command
+		{129, 0x7e}, // ABNT2 keypad "." (KEY_KPCOMMA)
+	} {
+		k, ok := KeyForX11(c.keycode)
+		if !ok || k.Scancode != c.sc {
+			t.Errorf("keycode %d: got %#x %v, want %#x", c.keycode, k.Scancode, ok, c.sc)
+		}
+	}
+	if k, _ := KeyForX11(38); k.Keysym != 'a' {
+		t.Errorf("known keys keep their US keysym: %#x", k.Keysym)
+	}
+	if _, ok := KeyForX11(8); ok {
+		t.Error("keycode 8 is not a key")
+	}
+}

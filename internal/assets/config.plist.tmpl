@@ -356,7 +356,7 @@
 			<key>7C436110-AB2A-4BBB-A880-FE41995C9F82</key>
 			<dict>
 				<key>#INFO (prev-lang:kbd)</key>
-				<string>en-US:0 (English, U.S. keyboard): the recovery and installer language. OpenCore's sample had ru-RU:252 (Russian).</string>
+				<string>English with the host keyboard layout (en-US:0 U.S., en-US:128 Brazilian ABNT2), set by the app. OpenCore's sample had ru-RU:252 (Russian).</string>
 				<key>ForceDisplayRotationInEFI</key>
 				<integer>0</integer>
 				<key>SystemAudioVolume</key>
@@ -371,7 +371,7 @@
 				</data>
 				<key>prev-lang:kbd</key>
 				<data>
-				ZW4tVVM6MA==
+				@@PREVLANG@@
 				</data>
 				<key>run-efi-updater</key>
 				<string>No</string>
@@ -391,6 +391,7 @@
 			<array>
 				<string>boot-args</string>
 				<string>ForceDisplayRotationInEFI</string>
+				<string>prev-lang:kbd</string>
 			</array>
 		</dict>
 		<key>LegacyOverwrite</key>

@@ -48,6 +48,13 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 		args = append(args,
 			"-device", "ide-hd,bus=sata.3,drive=InstallMedia",
 			"-drive", "id=InstallMedia,if=none,format=raw,file="+f(MediaFile))
+		// The cached full installer as a disc: the recovery installs from it with no network.
+		// SATA refuses read-only drives; snapshot=on keeps the guest's writes off the shared file.
+		if ci, ok := CachedInstallerFor(c.Version); ok {
+			args = append(args,
+				"-device", "ide-hd,bus=sata.2,drive=InstallerDisc",
+				"-drive", "id=InstallerDisc,if=none,format=raw,snapshot=on,file="+qemuPath(ci.Path))
+		}
 	}
 	args = append(args,
 		"-drive", "id=MacHDD,if=none,format=qcow2,file="+f(DiskFile),
@@ -68,12 +75,21 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 	if c.InApp() {
 		// No QEMU window: the screen goes to the app over VNC on a Unix socket in the same
 		// private 0700 directory as QMP, never on a TCP port.
-		// -k en-us: plain keysyms map to a US (English) layout; with QEMU extended key events
-		// the physical scancode goes through and the guest's layout applies. lock-key-sync=off
-		// keeps QEMU from injecting Caps Lock presses inferred from the keysym's case.
-		args = append(args, "-display", "none", "-vnc", "unix:"+qemuPath(VNCSocket(qmpSocket))+",lock-key-sync=off", "-k", "en-us")
+		// No -k: with it, QEMU remaps extended key events through that layout's keysyms and drops
+		// the physical scancode, so keys a US layout lacks (ABNT2's ç and "/?", the ISO key left
+		// of Z) were lost. Without it the scancode goes through and macOS's input source applies.
+		// lock-key-sync=off keeps QEMU from injecting Caps Lock presses inferred from keysyms.
+		args = append(args, "-display", "none", "-vnc", "unix:"+qemuPath(VNCSocket(qmpSocket))+",lock-key-sync=off")
 	}
-	return append(args, "-qmp", "unix:"+qemuPath(qmpSocket)+",server=on,wait=off")
+	// A second monitor for one other process (the MCP server or an attached app): QMP serves
+	// one client per monitor, and the starter keeps the first.
+	return append(args, "-qmp", "unix:"+qemuPath(qmpSocket)+",server=on,wait=off",
+		"-qmp", "unix:"+qemuPath(ControlSocket(qmpSocket))+",server=on,wait=off")
+}
+
+// ControlSocket is the second QMP socket next to a run's QMP socket.
+func ControlSocket(qmpSocket string) string {
+	return filepath.Join(filepath.Dir(qmpSocket), "qmp-control.sock")
 }
 
 // VNCSocket is the VNC socket next to a VM run's QMP socket.
@@ -135,13 +151,14 @@ type VM struct {
 	OnState func(VMState, string) // state and message (error or warning)
 	OnLog   func(string)
 
-	mu      sync.Mutex
-	proc    *os.Process
-	qmp     *QMP
-	vncSock string // set while running with the in-app display
-	state   VMState
-	ioError string
-	killed  bool
+	mu       sync.Mutex
+	proc     *os.Process
+	qmp      *QMP
+	vncSock  string // set while running with the in-app display
+	discDone func() // releases the attached installer disc, if any
+	state    VMState
+	ioError  string
+	killed   bool
 }
 
 func (v *VM) State() VMState {
@@ -218,6 +235,17 @@ func (v *VM) Start(c Config) error {
 		return fail(err)
 	}
 	sock := filepath.Join(qmpDir, "qmp.sock")
+	// The installer disc BuildArgs attaches is held (a shared lock) for the whole run, so no
+	// process deletes it meanwhile.
+	var discDone func()
+	if ci, ok := CachedInstallerFor(c.Version); ok && w.HasMedia() {
+		if err := RefreshInstallerDisc(ci); err != nil {
+			v.log("[installer] " + err.Error())
+		}
+		if done, err := useDisc(ci.Path); err == nil {
+			discDone = done
+		}
+	}
 	args := BuildArgs(c, w, sock, w.HasMedia(), gpuFuncs)
 	v.log("qemu-system-x86_64 " + strings.Join(args, " "))
 
@@ -232,6 +260,9 @@ func (v *VM) Start(c Config) error {
 		pr, pw := io.Pipe()
 		cmd.Stdout, cmd.Stderr = pw, pw
 		if err := cmd.Start(); err != nil {
+			if discDone != nil {
+				discDone()
+			}
 			started <- err
 			return
 		}
@@ -240,6 +271,7 @@ func (v *VM) Start(c Config) error {
 		if c.InApp() {
 			v.vncSock = VNCSocket(sock)
 		}
+		v.discDone = discDone
 		v.mu.Unlock()
 		v.setState(Running, "") // before any Stopped from this same goroutine
 		started <- nil
@@ -264,9 +296,12 @@ func (v *VM) Start(c Config) error {
 		pw.Close()
 		<-logDone
 		v.mu.Lock()
-		q, killed := v.qmp, v.killed
-		v.proc, v.qmp, v.killed, v.vncSock = nil, nil, false, ""
+		q, killed, discDone := v.qmp, v.killed, v.discDone
+		v.proc, v.qmp, v.killed, v.vncSock, v.discDone = nil, nil, false, "", nil
 		v.mu.Unlock()
+		if discDone != nil {
+			discDone()
+		}
 		if q != nil {
 			q.Close()
 		}
@@ -342,6 +377,17 @@ func (v *VM) VNCSocket() string {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	return v.vncSock
+}
+
+// InstallerCommand is the line to type in the recovery's Terminal to install from the attached
+// installer disc, or "" when the VM has none.
+func (v *VM) InstallerCommand() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.discDone == nil {
+		return ""
+	}
+	return DiscCommand
 }
 
 func (v *VM) Powerdown() error {

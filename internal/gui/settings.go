@@ -107,12 +107,22 @@ func (u *ui) settingsDialog() {
 			media = "BaseSystem.img (" + w.MediaVersion() + " recovery)"
 		}
 	}
+	// The install media can be removed here too, once macOS boots from its disk (the same action
+	// as Install step 5, with its confirmation).
+	removeMedia := widget.NewButtonWithIcon("Remove…", theme.DeleteIcon(), func() {
+		d.Hide()
+		u.btnRemove.OnTapped()
+	})
+	if u.btnRemove.Disabled() {
+		removeMedia.Disable()
+	}
+	mediaRow := container.NewBorder(nil, nil, nil, removeMedia, widget.NewLabel(media))
 	storage := container.NewVBox(widget.NewForm(
 		widget.NewFormItem("Controller", widget.NewLabel("SATA (ICH9 AHCI)")),
 		widget.NewFormItem("SATA Port 0", widget.NewLabel(disk)),
-		widget.NewFormItem("SATA Port 1", widget.NewLabel(media)),
+		widget.NewFormItem("SATA Port 1", mediaRow),
 		widget.NewFormItem("Boot Disk", widget.NewLabel("OpenCore (built in, read-only)")),
-	), note("Create the disk and add or remove the install media in the Install tab."))
+	), note("Remove the install media once macOS boots from its disk. Create the disk and download the media in the Install tab."))
 
 	// Network: VirtualBox's Adapter 1–4 tabs.
 	network, readNetwork := networkPage(c, func() string { return short[version.Selected] })
