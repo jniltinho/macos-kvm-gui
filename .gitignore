@@ -1,4 +1,4 @@
-/macos-kvm-gui
 *.test
 .env
 /dist
+internal/core/testdata/ocvalidate

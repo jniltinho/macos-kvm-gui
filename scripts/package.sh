@@ -9,7 +9,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 DIST="$ROOT/dist"
 NAME="macos-kvm-gui-$VERSION-linux-amd64"
 DEBVER="${VERSION#v}"
-rm -rf "$DIST" && mkdir -p "$DIST"
+mkdir -p "$DIST"
+# Remove earlier packages only: the binary may live in dist/ too.
+rm -rf "$DIST"/*.tar.gz "$DIST"/*.deb "$DIST"/*.sha256 "$DIST/$NAME" "$DIST/deb"
 
 # Tarball: binary plus README and licenses.
 mkdir -p "$DIST/$NAME"

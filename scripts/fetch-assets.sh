@@ -62,7 +62,7 @@ WhateverGreen $WHATEVERGREEN_VERSION
 OVMF $OVMF_VERSION
 EOF
 
-# OpenCore's validator, used by the tests on the generated config.plist (not embedded).
-install -m 0755 "$TMP/oc/Utilities/ocvalidate/ocvalidate.linux" "$ROOT/internal/core/testdata/ocvalidate"
+# OpenCore's validator for the tests (git-ignored, not embedded).
+install -D -m 0755 "$TMP/oc/Utilities/ocvalidate/ocvalidate.linux" "$ROOT/internal/core/testdata/ocvalidate"
 
 echo "assets ready in $OUT ($(du -sh "$OUT" | cut -f1))"
