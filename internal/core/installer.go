@@ -95,6 +95,15 @@ func httpsGet(ctx context.Context, rawURL string, limit int64) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, limit))
 }
 
+// httpsGetMax is httpsGet that fails, instead of truncating, past max bytes.
+func httpsGetMax(ctx context.Context, rawURL string, max int64) ([]byte, error) {
+	data, err := httpsGet(ctx, rawURL, max+1)
+	if err == nil && int64(len(data)) > max {
+		return nil, fmt.Errorf("%s is larger than %d MiB", rawURL, max>>20)
+	}
+	return data, err
+}
+
 // FindInstallers lists the catalog's installers for a macOS version that support the VM's Mac
 // model, newest first.
 func FindInstallers(ctx context.Context, version string) ([]InstallerProduct, error) {

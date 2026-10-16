@@ -101,7 +101,7 @@ func TestCompatTable(t *testing.T) {
 	cases := map[string]Compat{
 		"1002:73ff": CompatSupported,   // RX 6600
 		"1002:67df": CompatSupported,   // RX 580
-		"1002:73df": CompatUnsupported, // RX 6700 XT: needs NootRX
+		"1002:73df": CompatUnsupported, // RX 6700 XT: needs a patch kext
 		"1002:73ef": CompatUnsupported, // RX 6650 XT: needs spoof
 		"1002:744c": CompatUnsupported, // RX 7900
 		"1002:13c0": CompatUnknown,     // Ryzen 9000 iGPU
@@ -290,5 +290,34 @@ func TestKeplerGPU(t *testing.T) {
 	}
 	if !strings.Contains(reserveScript, "softdep nouveau pre: vfio-pci") || !strings.Contains(reserveScript, "softdep nvidia pre: vfio-pci") {
 		t.Error("vfio-pci must claim an NVIDIA card before nouveau or nvidia")
+	}
+}
+
+func TestPatchKextGPU(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	host := slices.Clone(referenceHost)
+	host[2].device = "73df" // RX 6700 XT
+	reason := func() (bool, string) {
+		g := gpuByAddr(fakeSysfs(t, host).GPUs(), "0000:03:00.0")
+		return g.Eligible, g.Reason
+	}
+	if ok, r := reason(); ok || !strings.Contains(r, "settings.yaml") {
+		t.Fatalf("without kexts the reason names settings.yaml: %v %q", ok, r)
+	}
+	kextsYAML(t, "kexts:\n  - url: https://example.com/a.zip\n")
+	if ok, r := reason(); !ok {
+		t.Fatalf("with a kext listed it is eligible: %q", r)
+	}
+	kextsYAML(t, "kexts: [")
+	if ok, r := reason(); ok || !strings.Contains(r, "settings.yaml") {
+		t.Fatalf("a broken file is the reason: %v %q", ok, r)
+	}
+
+	kextsYAML(t, "kexts:\n  - url: https://example.com/a.zip\n")
+	c := Defaults()
+	c.GPU, c.Version = "0000:03:00.0", "sequoia"
+	c.Extras = &ExtraKexts{} // the start's snapshot, taken before settings.yaml was edited
+	if _, err := fakeSysfs(t, host).GPUReady(c, 1<<40); err == nil || !strings.Contains(err.Error(), "settings.yaml") {
+		t.Fatalf("a start without kexts refuses the GPU: %v", err)
 	}
 }

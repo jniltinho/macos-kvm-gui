@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -153,6 +154,14 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 	if err != nil || len(rom) != 6 {
 		return "", fmt.Errorf("invalid SMBIOS ROM %q", id.ROM)
 	}
+	var disabled []string
+	if c.Extras != nil {
+		disabled = c.Extras.Disabled
+	}
+	text, err := kextSwitches(string(tmpl), disabled)
+	if err != nil {
+		return "", err
+	}
 	picker, timeout, scan := "<false/>", "0", fmt.Sprint(scanInstalled)
 	if withMedia {
 		picker, timeout, scan = "<true/>", "5", "0"
@@ -167,8 +176,12 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 	if c.RootPatch {
 		bootArgs += rootPatchBootArgs
 	}
+	plist := rootPatchPlist(c.RootPatch, c.rootPatchWasOn)
+	for _, k := range c.extraKexts {
+		plist["@@ROOTPATCHKEXTS@@"] += kextEntry(k[1], "", k[1]+".kext (settings.yaml)")
+	}
 	pairs := []string{}
-	for k, v := range rootPatchPlist(c.RootPatch, c.rootPatchWasOn) {
+	for k, v := range plist {
 		pairs = append(pairs, k, v)
 	}
 	return strings.NewReplacer(append(pairs,
@@ -183,7 +196,7 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		"@@UUID@@", id.UUID,
 		"@@ROM@@", base64.StdEncoding.EncodeToString(rom),
 		"@@RESOLUTION@@", resolution,
-	)...).Replace(string(tmpl)), nil
+	)...).Replace(text), nil
 }
 
 // PrepareBoot refreshes the embedded boot files and config.plist in the workspace.
@@ -233,6 +246,18 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 	}
 	if c.RootPatch {
 		if err := w.addRootPatchKexts(); err != nil {
+			return err
+		}
+	}
+	if c.Extras != nil && len(c.Extras.Entries) > 0 {
+		builtin, err := fs.Glob(fsys, "files/EFI/OC/Kexts/*.kext")
+		if err != nil {
+			return err
+		}
+		for i, b := range builtin {
+			builtin[i] = strings.TrimSuffix(path.Base(b), ".kext")
+		}
+		if err := w.addExtraKexts(&c, builtin); err != nil {
 			return err
 		}
 	}

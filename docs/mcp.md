@@ -20,7 +20,7 @@ Then ask, for example: "Install Sequoia on my VM offline and tell me when it rea
 | Tool | What it does |
 | --- | --- |
 | `vm_list`, `vm_status` | The VMs; for one, QEMU's state, whether the offline disc is attached, the keyboard layout the recovery uses and whether the screen is available. `guest_phase` is always `unknown`: the server does not read the screen, the agent does. |
-| `vm_start` | Starts a VM (optionally with `verbose_boot`) with its screen available. The VM runs in its own process, so it keeps running when the agent exits, and the app shows it within a few seconds. |
+| `vm_start` | Starts a VM (optionally with `verbose_boot`) with its screen available. It first downloads the [extra kexts](architecture.md#extra-kexts) in `settings.yaml` that are not cached yet, so the start timeout covers only QEMU. The VM runs in its own process, so it keeps running when the agent exits, and the app shows it within a few seconds. |
 | `vm_shutdown` | Presses the VM's power button: macOS shuts down by itself, or asks. Setup Assistant and the recovery may ignore it. |
 | `vm_force_stop` | Stops the VM at once, losing unsaved data. Needs `confirm: true`. |
 | `screen_capture` | The guest screen as a PNG image (scaled to `max_width`, default 1280), with its size and scale. |

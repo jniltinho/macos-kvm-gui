@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -79,4 +80,30 @@ func TestVMCommands(t *testing.T) {
 		t.Fatalf("delete: %v %s", err, out)
 	}
 	deletePurge, deleteYes = false, false
+}
+
+func TestSettingsAndKextsBeforeStart(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cfgFile, vmName = "", ""
+	if _, err := run(t, "settings", "reset"); err == nil || !strings.Contains(err.Error(), "--yes") {
+		t.Fatalf("reset needs --yes: %v", err)
+	}
+	if out, err := run(t, "settings", "reset", "--yes"); err != nil || !strings.Contains(out, "settings.yaml") {
+		t.Fatalf("reset: %v %s", err, out)
+	}
+	ws := filepath.Join(t.TempDir(), "lab")
+	if _, err := run(t, "vm", "create", "Lab", "--version", "sequoia", "--folder", ws); err != nil {
+		t.Fatal(err)
+	}
+	// An entry that cannot be downloaded stops vm start before anything else: no VM runs.
+	os.WriteFile(filepath.Join(cfg, "macos-kvm-gui", "settings.yaml"), []byte("kexts:\n  - url: https://127.0.0.1:1/x.zip\n"), 0o644)
+	if out, err := run(t, "settings", "show"); err != nil || !strings.Contains(out, "kext: https://127.0.0.1:1/x.zip") || !strings.Contains(out, "kexts downloaded: false") {
+		t.Fatalf("show: %v %s", err, out)
+	}
+	out, err := run(t, "vm", "start")
+	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") || !strings.Contains(out, "downloading the kexts") {
+		t.Fatalf("vm start downloads first: %v %s", err, out)
+	}
 }

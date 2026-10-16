@@ -1,0 +1,23 @@
+# macos-kvm-gui settings. Environment variables (MKG_THEME, MKG_ASSETS_DIR) win over this file.
+# Restore this default with File › Preferences › Reset to default, or `macos-kvm-gui settings reset --yes`.
+
+# Theme: dark, light or system. Unset, the one chosen in File › Preferences applies.
+# theme: system
+
+# Boot files (OpenCore, kexts, firmware) from a directory with the layout of internal/assets,
+# instead of the built-in ones.
+# assets_dir: /path/to/assets
+
+# Extra kexts OpenCore loads in every VM, after the built-in ones. The app ships no
+# third-party kext: list the ones you choose. Each archive is downloaded once (HTTPS only)
+# before a start, checked and kept in <Workspace>/.kexts/extra.
+#
+# kexts:
+#   - url: https://example.com/MyKext-1.0.zip   # a zip with MyKext.kext at its root
+#     sha256: <64 hex digits>                    # optional, recommended
+#   - url: https://example.com/Bundle.zip
+#     load: [Provider, Plugin]                   # only for a zip with several kexts, in load order
+kexts: []
+
+# Built-in kexts to disable, for a kext that replaces one (VirtualSMC or WhateverGreen):
+# disable: [WhateverGreen]

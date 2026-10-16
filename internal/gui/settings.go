@@ -3,6 +3,7 @@ package gui
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
@@ -230,7 +231,24 @@ func (u *ui) preferencesDialog() {
 		note("New and imported VMs get their own folder inside the Workspace (<Workspace>/<name>). Existing VMs stay where they are; use Machine › Move to move one."),
 		sectionBand("Interface", appIcon("display", theme.ViewFullScreenIcon())),
 		widget.NewForm(widget.NewFormItem("Theme", themeSel)),
-		note("System follows the desktop's light or dark setting. MKG_THEME in the environment or .env overrides it."),
+		note("System follows the desktop's light or dark setting. theme in settings.yaml (or MKG_THEME) overrides it."),
+		sectionBand("Settings file", appIcon("general", theme.DocumentIcon())),
+		container.NewHBox(
+			widget.NewButton("Open settings.yaml", func() {
+				core.LoadExtraKexts() // creates the default on first use
+				fyne.CurrentApp().OpenURL(&url.URL{Scheme: "file", Path: core.SettingsFile()})
+			}),
+			widget.NewButton("Reset to default", func() {
+				dialog.ShowConfirm("Reset settings.yaml", "Overwrite "+core.SettingsFile()+" with the default, which sets nothing?", func(ok bool) {
+					if ok {
+						if err := core.ResetSettings(); err != nil {
+							dialog.ShowError(err, u.win)
+						}
+					}
+				}, u.win)
+			}),
+		),
+		note(core.SettingsFile()+" holds the theme, the boot files override and the extra kexts OpenCore loads in every VM (for example a patch kext a GPU needs; the app ships none). Environment variables win over it."),
 	)
 	d := dialog.NewCustomConfirm("Preferences", "OK", "Cancel", form, func(ok bool) {
 		if !ok {

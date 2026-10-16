@@ -41,6 +41,9 @@ type Host struct {
 	LookPath func(string) (string, error)
 	Output   func(name string, args ...string) ([]byte, error)
 	Run      func(name string, args ...string) error
+	// extras, when set, is the start's kexts snapshot that eligibility uses instead of
+	// reading settings.yaml again.
+	extras *ExtraKexts
 }
 
 func SystemHost() Host {

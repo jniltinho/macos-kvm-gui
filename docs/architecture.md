@@ -102,11 +102,26 @@ Downloads use exclusive `.part` temporary files and fixed final names in staging
 | Source | Meaning and precedence |
 | --- | --- |
 | `macos-kvm-gui.db` | One row per VM: name, folder, version, `ram_mib`, cores, vCPUs, `ssh_port`, display, optional GPU PCI address; plus the Workspace and theme preferences. Save validates first. `--config <file.json>` uses a standalone JSON file instead. |
-| `MKG_ASSETS_DIR` | Runtime boot tree instead of embedded assets. Environment wins over the user-config `.env`; empty uses built-ins. |
-| `MKG_THEME` | `dark`, `light` or `system`; it wins over the theme chosen in File › Preferences. Environment wins over the user-config `.env`. |
+| `settings.yaml` | The user's settings file, `~/.config/macos-kvm-gui/settings.yaml`: `theme`, `assets_dir`, `kexts` and `disable` (below). Created on first use from a commented default that sets nothing; **File › Preferences › Reset to default** or `settings reset --yes` writes that default again. |
+| `MKG_ASSETS_DIR` / `assets_dir` | Runtime boot tree instead of embedded assets. **Environment > `settings.yaml` > the older `.env`**; empty uses built-ins. |
+| `MKG_THEME` / `theme` | `dark`, `light` or `system`; it wins over the theme chosen in File › Preferences. Same precedence. |
+| `kexts`, `disable` | Extra kexts OpenCore loads in every VM, and built-in kexts to disable: see [extra kexts](#extra-kexts). |
 | Repository `.env` and `assets.env` | Asset-fetch scripts only: **environment > repository `.env` > `assets.env`**. Not the runtime settings file. |
 
-The runtime `.env` accepts plain `KEY=value` lines, trims surrounding whitespace/quotes and skips comment lines; it does not execute shell code or expand `$HOME`/`~`. Use a literal absolute directory in it. For example:
+An example `settings.yaml`:
+
+```yaml
+theme: light
+assets_dir: /home/your-user/src/macos-kvm-gui/internal/assets
+kexts:
+  - url: https://example.com/MyKext-1.0.zip
+    sha256: 0123…(64 hex digits)
+disable: [WhateverGreen]
+```
+
+The file is one YAML document; an unknown key is an error, reported with the file's path when a VM starts and in the GPU tab (the theme and boot files then fall back to the environment, `.env` and defaults). `settings show` prints the path and the settings in effect.
+
+The older runtime `.env` still works below `settings.yaml`. It accepts plain `KEY=value` lines, trims surrounding whitespace/quotes and skips comment lines; it does not execute shell code or expand `$HOME`/`~`. Use a literal absolute directory in it. For example:
 
 ```text
 MKG_THEME=light
@@ -114,3 +129,19 @@ MKG_ASSETS_DIR=/home/your-user/src/macos-kvm-gui/internal/assets
 ```
 
 An override tree needs `config.plist.tmpl` and the same `files/` contents as `internal/assets`. Every embedded file except `files/VERSIONS` is checked for existence before preparation; missing versions merely display as unknown. This checks completeness, not trust or binary compatibility: use trusted boot assets and a matching OpenCore template. See [development](development.md#updating-boot-assets).
+
+### Extra kexts
+
+`kexts` in `settings.yaml` lists kexts the user chooses, for example a patch kext a GPU needs. The app ships, names and fetches none on its own: every URL comes from the user. Each item has:
+
+| Key | Meaning |
+| --- | --- |
+| `url` | `https://` URL of a zip with `<Name>.kext` at its root (`Contents/Info.plist` and `Contents/MacOS/<Name>`). |
+| `sha256` | Optional, recommended: the archive's SHA-256; a mismatch stops the start and caches nothing. |
+| `load` | Only for a zip with several kexts: which to load, in load order (`load: [Provider, Plugin]`). |
+
+Before a start, the app (GUI, `vm start` and the MCP server's `vm_start`) downloads the items that are not cached yet into `<Workspace>/.kexts/extra/<sha256 of the item>/`, under a host-wide lock so two starts download an item once. Archives are refused, before anything is extracted, when larger than 32 MiB, expanding past 128 MiB, holding more than 4096 entries or a file over 16 MiB, or with an absolute path, `..` or a symbolic link anywhere. Kext names must match `[A-Za-z0-9._+-]{1,64}`.
+
+Every start copies the cached kexts into the EFI and loads them after Lilu, VirtualSMC, WhateverGreen and root-patch mode's kexts, in list order. A name clashing with another kext, ignoring case (OpenCore's disk is FAT), stops the start. A start reads `settings.yaml` once and uses that snapshot throughout; creating a VM needs neither the kexts nor the network. Removing an item removes its kext from the next boot; the cache stays until deleted by hand.
+
+`disable` turns off built-in kexts, `VirtualSMC` or `WhateverGreen`, for a kext that replaces one; Lilu cannot be disabled. An `assets_dir` template without the `@@ENABLED_<Name>@@` switches works, but cannot disable a kext.

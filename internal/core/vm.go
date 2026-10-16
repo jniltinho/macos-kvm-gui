@@ -212,6 +212,13 @@ func (v *VM) Start(c Config) error {
 	if err := checkSSHPort(c); err != nil {
 		return err
 	}
+	if c.Extras == nil { // callers that downloaded the kexts pass the snapshot they used
+		ks, err := LoadExtraKexts()
+		if err != nil {
+			return err
+		}
+		c.Extras = &ks
+	}
 	var gpuFuncs []string
 	if c.GPU != "" {
 		var err error

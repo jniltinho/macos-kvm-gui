@@ -519,8 +519,31 @@ func (u *ui) startWith(verbose bool) {
 			func() { u.startWith(verbose) })
 		return
 	}
+	ks, err := core.LoadExtraKexts()
+	if err != nil {
+		dialog.ShowError(err, u.win)
+		return
+	}
+	if !ks.Ready() {
+		id := u.cur.ID
+		u.run("Download the kexts listed in "+core.SettingsFile(), func() error { return core.DownloadExtraKexts(context.Background(), ks) },
+			func() {
+				if u.cur.ID != id { // another VM was selected meanwhile
+					u.appendLog("[VM] the kexts are downloaded; the selected VM changed, so press Start again")
+					return
+				}
+				u.startKexts(verbose, ks)
+			})
+		return
+	}
+	u.startKexts(verbose, ks)
+}
+
+// startKexts starts the VM with the settings.yaml snapshot that was downloaded.
+func (u *ui) startKexts(verbose bool, ks core.ExtraKexts) {
 	u.runningID = u.cur.ID
 	c := u.cfg
+	c.Extras = &ks
 	c.VerboseBoot = verbose
 	if verbose {
 		u.appendLog("[VM] verbose boot: macOS prints its boot log on screen (boot-args -v debug=0x100)")

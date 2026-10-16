@@ -156,6 +156,9 @@ func unpackKext(data []byte, name, dir string) error {
 		if f.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("unexpected link %q in the archive", f.Name)
 		}
+		if f.UncompressedSize64 > maxKextFile {
+			return fmt.Errorf("%s is larger than %d MiB", f.Name, maxKextFile>>20)
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}
@@ -165,7 +168,11 @@ func unpackKext(data []byte, name, dir string) error {
 		}
 		out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 		if err == nil {
-			_, err = io.Copy(out, io.LimitReader(rc, 16<<20))
+			var n int64
+			// One byte more than the header says: a file is never cut short silently.
+			if n, err = io.Copy(out, io.LimitReader(rc, int64(f.UncompressedSize64)+1)); err == nil && uint64(n) != f.UncompressedSize64 {
+				err = fmt.Errorf("%s does not match its size in the archive", f.Name)
+			}
 			if cerr := out.Close(); err == nil {
 				err = cerr
 			}
@@ -203,14 +210,19 @@ func rootPatchPlist(on, clear bool) map[string]string {
 	r["@@REVBLOCKADD@@"] = "\n\t\t\t\t<key>revblock</key>\n\t\t\t\t<string>media</string>"
 	var b strings.Builder
 	for _, k := range rootPatchKexts {
-		fmt.Fprintf(&b, "\n\t\t\t<dict>\n\t\t\t\t<key>Arch</key>\n\t\t\t\t<string>x86_64</string>\n\t\t\t\t<key>BundlePath</key>\n\t\t\t\t<string>%[1]s.kext</string>"+
-			"\n\t\t\t\t<key>Comment</key>\n\t\t\t\t<string>%[1]s.kext (root-patch mode, from OCLP 2.5.1)</string>\n\t\t\t\t<key>Enabled</key>\n\t\t\t\t<true/>"+
-			"\n\t\t\t\t<key>ExecutablePath</key>\n\t\t\t\t<string>Contents/MacOS/%[1]s</string>\n\t\t\t\t<key>MaxKernel</key>\n\t\t\t\t<string></string>"+
-			"\n\t\t\t\t<key>MinKernel</key>\n\t\t\t\t<string>%[2]s</string>\n\t\t\t\t<key>PlistPath</key>\n\t\t\t\t<string>Contents/Info.plist</string>\n\t\t\t</dict>",
-			k.Name, k.MinKernel)
+		b.WriteString(kextEntry(k.Name, k.MinKernel, k.Name+".kext (root-patch mode, from OCLP 2.5.1)"))
 	}
 	r["@@ROOTPATCHKEXTS@@"] = b.String()
 	return r
+}
+
+// kextEntry is one Kernel > Add entry; name and comment need no XML escaping.
+func kextEntry(name, minKernel, comment string) string {
+	return fmt.Sprintf("\n\t\t\t<dict>\n\t\t\t\t<key>Arch</key>\n\t\t\t\t<string>x86_64</string>\n\t\t\t\t<key>BundlePath</key>\n\t\t\t\t<string>%[1]s.kext</string>"+
+		"\n\t\t\t\t<key>Comment</key>\n\t\t\t\t<string>%[3]s</string>\n\t\t\t\t<key>Enabled</key>\n\t\t\t\t<true/>"+
+		"\n\t\t\t\t<key>ExecutablePath</key>\n\t\t\t\t<string>Contents/MacOS/%[1]s</string>\n\t\t\t\t<key>MaxKernel</key>\n\t\t\t\t<string></string>"+
+		"\n\t\t\t\t<key>MinKernel</key>\n\t\t\t\t<string>%[2]s</string>\n\t\t\t\t<key>PlistPath</key>\n\t\t\t\t<string>Contents/Info.plist</string>\n\t\t\t</dict>",
+		name, minKernel, comment)
 }
 
 // rootPatchBootArgs are the boot arguments OCLP adds with lowered SIP.

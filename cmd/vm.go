@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,8 @@ var (
 	vmDisplay string
 	vmVerbose bool
 	vmBootLog bool
+	// vmKextsSnapshot is the MCP server's kexts snapshot (JSON), so its start uses what it downloaded.
+	vmKextsSnapshot string
 )
 
 var vmCmd = &cobra.Command{Use: "vm", Short: "Run the macOS VM"}
@@ -36,6 +39,22 @@ With display=app there is no window: the screen is on the printed private VNC so
 		}
 		c.VerboseBoot = vmBootLog
 		out := cmd.OutOrStdout()
+		var ks core.ExtraKexts
+		if vmKextsSnapshot != "" { // the MCP server's start, which already downloaded them
+			err = json.Unmarshal([]byte(vmKextsSnapshot), &ks)
+		} else {
+			ks, err = core.LoadExtraKexts()
+		}
+		if err != nil {
+			return err
+		}
+		if !ks.Ready() {
+			fmt.Fprintln(out, "vm: downloading the kexts listed in", core.SettingsFile())
+			if err := core.DownloadExtraKexts(cmd.Context(), ks); err != nil {
+				return err
+			}
+		}
+		c.Extras = &ks
 		stopped := make(chan string, 1)
 		vm := &core.VM{
 			OnState: func(s core.VMState, msg string) {
@@ -89,6 +108,8 @@ With display=app there is no window: the screen is on the printed private VNC so
 func init() {
 	vmStartCmd.Flags().StringVar(&vmDisplay, "display", "", "app (VNC socket, no window) or window (QEMU window); default from config")
 	vmStartCmd.Flags().BoolVarP(&vmVerbose, "verbose", "v", false, "print the QEMU command line and output")
+	vmStartCmd.Flags().StringVar(&vmKextsSnapshot, "kexts-snapshot", "", "")
+	vmStartCmd.Flags().MarkHidden("kexts-snapshot")
 	vmStartCmd.Flags().BoolVar(&vmBootLog, "verbose-boot", false, "show macOS's boot log on screen instead of the logo, for this start only (boot-args -v debug=0x100)")
 	vmCmd.AddCommand(vmStartCmd)
 	rootCmd.AddCommand(vmCmd)

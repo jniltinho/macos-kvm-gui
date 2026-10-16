@@ -205,13 +205,25 @@ func vmStart(ctx context.Context, _ *mcp.CallToolRequest, in vmStartIn) (*mcp.Ca
 	if err != nil {
 		return nil, nil, err
 	}
+	// Downloads happen here, under the client's request, so the wait below covers only QEMU.
+	ks, err := core.LoadExtraKexts()
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := core.DownloadExtraKexts(ctx, ks); err != nil {
+		return nil, nil, err
+	}
+	snapshot, err := json.Marshal(ks)
+	if err != nil {
+		return nil, nil, err
+	}
 	logPath := filepath.Join(dir, "macos-kvm-gui", "mcp-start.log")
 	log, err := os.Create(logPath)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer log.Close()
-	args := []string{"vm", "start", "--vm", e.ID, "--display", core.DisplayApp}
+	args := []string{"vm", "start", "--vm", e.ID, "--display", core.DisplayApp, "--kexts-snapshot", string(snapshot)}
 	if in.VerboseBoot {
 		args = append(args, "--verbose-boot")
 	}

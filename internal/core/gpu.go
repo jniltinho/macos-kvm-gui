@@ -183,13 +183,37 @@ func (h Host) pciName(addr, id string) string {
 	return "PCI device " + id
 }
 
+// needsPatchKext reports whether macOS drives the GPU only with a patch kext.
+func needsPatchKext(id string) bool {
+	vendor, device, _ := strings.Cut(id, ":")
+	return vendor == "1002" && amdNeedsPatch[device]
+}
+
+// patchKextReason is why a patch-dependent GPU cannot be used with this settings.yaml ("" = it can).
+func patchKextReason(ks ExtraKexts, err error) string {
+	switch {
+	case err != nil:
+		return err.Error()
+	case len(ks.Entries) == 0:
+		return "macOS drives this GPU only with a patch kext: list one in " + SettingsFile() + " (see docs/gpu-passthrough.md)"
+	}
+	return ""
+}
+
 func (h Host) eligibility(g GPU, gpus []GPU, all []string, iommu bool) (bool, string) {
+	patch, patchReason := needsPatchKext(g.ID), ""
+	switch {
+	case patch && h.extras != nil:
+		patchReason = patchKextReason(*h.extras, nil)
+	case patch:
+		patchReason = patchKextReason(LoadExtraKexts())
+	}
 	switch {
 	case !iommu:
 		return false, "IOMMU is disabled: enable AMD-Vi (or VT-d) in the BIOS"
-	case g.Compat == CompatUnsupported && amdNeedsPatch[strings.TrimPrefix(g.ID, "1002:")]:
-		return false, "works only with a device-id spoof or the NootRX kext in OpenCore, which this app does not set up"
-	case g.Compat == CompatUnsupported:
+	case patchReason != "":
+		return false, patchReason
+	case g.Compat == CompatUnsupported && !patch:
 		return false, "macOS has no driver for this GPU"
 	case g.Compat == CompatUnknown:
 		return false, "not in the list of macOS-supported GPUs; AMD Ryzen iGPUs have no macOS driver (see the Dortania GPU buyers guide)"
@@ -330,6 +354,11 @@ var gpuMinVersion = map[string]string{
 // GPUReady checks, right before QEMU starts, that the chosen GPU can really be used.
 // It returns the slot's functions, display function first.
 func (h Host) GPUReady(c Config, memlock uint64) ([]string, error) {
+	ks := ExtraKexts{}
+	if c.Extras != nil {
+		ks = *c.Extras
+	}
+	h.extras = &ks
 	var g *GPU
 	for _, cand := range h.GPUs() {
 		if cand.Addr == c.GPU {

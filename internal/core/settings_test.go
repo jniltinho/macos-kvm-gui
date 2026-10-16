@@ -23,6 +23,31 @@ func TestSetting(t *testing.T) {
 	}
 }
 
+func TestSettingsYAML(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	t.Setenv("MKG_THEME", "")
+	os.Unsetenv("MKG_THEME")
+	write(t, filepath.Join(cfg, "macos-kvm-gui", ".env"), "MKG_THEME=dark\nMKG_ASSETS_DIR=/from-env-file\n")
+	if got := Setting("MKG_THEME"); got != "dark" {
+		t.Errorf("the default settings.yaml sets nothing, so .env applies: %q", got)
+	}
+	write(t, SettingsFile(), "theme: light\nkexts: []\n")
+	if got, dir := Setting("MKG_THEME"), Setting("MKG_ASSETS_DIR"); got != "light" || dir != "/from-env-file" {
+		t.Errorf("settings.yaml wins over .env, per key: %q %q", got, dir)
+	}
+	t.Setenv("MKG_THEME", "system")
+	if got := Setting("MKG_THEME"); got != "system" {
+		t.Errorf("the environment wins over settings.yaml: %q", got)
+	}
+	if err := ResetSettings(); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(SettingsFile()); string(b) != string(defaultSettingsYAML) {
+		t.Error("reset writes the default")
+	}
+}
+
 func TestAssetsDirOverride(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	if v := AssetVersions(); !strings.Contains(v, "OpenCore 1.") || !strings.Contains(v, "built in") {

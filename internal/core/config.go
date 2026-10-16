@@ -67,6 +67,10 @@ type Config struct {
 	RootPatch bool `json:"root_patch,omitempty"`
 	// rootPatchWasOn is set by PrepareBoot when the previous boot had root-patch mode on.
 	rootPatchWasOn bool
+	// Extras is a start's snapshot of settings.yaml, never saved; nil
+	// (creating a VM) loads no extra kext. extraKexts is set by PrepareBoot: {folder, name}.
+	Extras     *ExtraKexts `json:"-"`
+	extraKexts [][2]string
 	// VerboseBoot is a one-off start option, never saved: macOS prints its boot log on screen
 	// (-v) and stops on a panic with its details (debug=0x100) instead of showing the logo.
 	VerboseBoot bool `json:"-"`

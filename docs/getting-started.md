@@ -146,4 +146,4 @@ With the default **Display: In the app**, starting the VM switches to the **Scre
 - The emulated display has no Metal acceleration. Use a static wallpaper and Reduce motion/transparency; see [display limitations](troubleshooting.md#display-and-graphics).
 - **File › Export VM…** writes the selected VM as a `.tar` with its settings, disk, NVRAM, identity and install media (stopped VMs only), or its settings alone as `.json`. **Import** adds a VM from either; a `.tar` is unpacked into a new folder inside the Workspace. A GPU address is never imported.
 - **Remove** removes the VM from the list; deleting its files is a separate, confirmed choice and only touches the files the app created.
-- The theme can also be forced with `MKG_THEME=dark|light|system`; see [settings and overrides](architecture.md#settings-and-overrides).
+- The theme can also be forced with `theme:` in `settings.yaml` or `MKG_THEME=dark|light|system`; see [settings and overrides](architecture.md#settings-and-overrides).

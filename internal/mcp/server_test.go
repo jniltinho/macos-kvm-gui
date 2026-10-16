@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -102,5 +104,27 @@ func TestOverallProgressOnlyGrows(t *testing.T) {
 			t.Fatalf("%v gives %v after %v", p, v, last)
 		}
 		last = v
+	}
+}
+
+// vm_start downloads the extra kexts itself, before spawning the VM and its 30 s wait.
+func TestVMStartDownloadsKextsFirst(t *testing.T) {
+	cs := session(t)
+	c := core.Defaults()
+	c.Name, c.Version = "Lab", "sequoia"
+	c.Workspace = filepath.Join(t.TempDir(), "lab")
+	c.Networks = core.NewNetworks(c.Version)
+	e, err := core.CreateVM(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.MkdirAll(filepath.Dir(core.SettingsFile()), 0o755)
+	os.WriteFile(core.SettingsFile(), []byte("kexts:\n  - url: https://127.0.0.1:1/x.zip\n"), 0o644)
+	msg, isErr := call(t, cs, "vm_start", map[string]any{"vm": e.ID})
+	if !isErr || !strings.Contains(msg, "127.0.0.1:1") {
+		t.Fatalf("vm_start: %q (error %v)", msg, isErr)
+	}
+	if _, err := os.Stat(filepath.Join(c.Workspace, "macos-kvm-gui", "mcp-start.log")); err == nil {
+		t.Fatal("no VM process is spawned when a kext cannot be downloaded")
 	}
 }

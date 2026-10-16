@@ -34,9 +34,11 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 | `vm export <name> [file] [--full]` | Writes the settings as JSON, or with `--full` a `.tar` with the disk, NVRAM, identity and install media. |
 | `vm import <file> [--folder dir]` | Adds a VM from a `.json` or a `.tar`; a `.tar` is unpacked into a new folder. |
 | `vm delete <name> --yes [--purge]` | Removes the VM from the list; `--purge` also deletes the files the app created in its folder. |
-| `vm start [--display app\|window] [-v] [--verbose-boot]` | Starts the VM in the foreground and returns when QEMU exits. `--verbose-boot` shows macOS's boot log on screen for this start (see [stuck at the Apple logo](troubleshooting.md#stuck-at-the-apple-logo)). See below. |
+| `vm start [--display app\|window] [-v] [--verbose-boot]` | Downloads the [extra kexts](architecture.md#extra-kexts) listed in `settings.yaml` that are not cached yet, then starts the VM in the foreground and returns when QEMU exits. `--verbose-boot` shows macOS's boot log on screen for this start (see [stuck at the Apple logo](troubleshooting.md#stuck-at-the-apple-logo)). See below. |
 | `gpu list` | Lists the display adapters, whether each can be passed to the VM, and why not. |
 | `gpu reserve <pci-address>` / `gpu release` | Reserves an eligible GPU for `vfio-pci`, or releases it. Both need a host reboot. Experimental. |
+| `settings show` | Prints the path of `settings.yaml` and the settings in effect: theme, boot files override, extra kexts and whether they are downloaded. |
+| `settings reset --yes` | Overwrites `settings.yaml` with the built-in default, which sets nothing. |
 | `version` | Shows the app version and the built-in boot file versions. |
 
 ### `vm start`

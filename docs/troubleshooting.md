@@ -48,6 +48,8 @@ Host status `kvm module not loaded` is inconclusive, not proof that the setting 
 
 See [GPU passthrough](gpu-passthrough.md) for eligibility and broken-reservation recovery. The feature is **untested on real hardware**.
 
+- `macOS drives this GPU only with a patch kext: list one in …/settings.yaml` — a patch-dependent AMD GPU (for example an RX 6700 XT) needs a kext you supply; see [patch-dependent AMD GPUs](gpu-passthrough.md#patch-dependent-amd-gpus).
+
 | Message template | Action |
 | --- | --- |
 | `GPU <address> not found on this host` | Revisit GPU selection after changing hardware/PCI slots, or select None. |
@@ -105,7 +107,14 @@ Read the last `qemu-img` line for unsupported compression versus disk-space/perm
 - `the host has only <free> GiB free: the disk is thin and the VM may stop when space runs out` — creation succeeded but storage is not reserved. Free space before filling the guest disk.
 - `I/O error on disk <device> (<operation>): out of space on the host` — QEMU paused the guest. Free host space and preserve data; there is no resume button in this app. Avoid Force stop unless necessary.
 - `QMP control unavailable: use Force stop` or `warning: QMP connection closed; graceful shutdown is unavailable` — wait briefly if just started, or shut down inside macOS. Force stop is destructive; the app never escalates automatically.
-- `could not prepare the boot files: MKG_ASSETS_DIR=<directory> is missing <file>` — fix the complete override tree or unset the override/use built-ins. The setting may come from the user-config `.env`.
+- `could not prepare the boot files: MKG_ASSETS_DIR=<directory> is missing <file>` — fix the complete override tree or unset the override/use built-ins. The setting may come from `assets_dir` in `settings.yaml` or the older `.env`.
+- `…/settings.yaml: …` (a YAML error, `field … not found`, or `only one YAML document is allowed`) — fix the file, or **File › Preferences › Reset to default** / `settings reset --yes`. Until then VMs do not start and patch-dependent GPUs are not eligible.
+- `<url>: the download's SHA-256 is <a>, the entry expects <b>` — the archive changed or the hash is wrong; check it and update `sha256`. Nothing was cached.
+- `<url>: the archive has several kexts (A, B): choose them, in load order, with load: [A, B]` — add `load` to the item.
+- `<url>: … larger than … MiB`, `unexpected path`, `unexpected link`, `has no Contents/Info.plist`, `no root-level <Name>.kext…` — the zip is not a plain kext release archive; the app refuses it before extracting anything.
+- `the settings.yaml entry <url> is not downloaded` — the start was prepared without downloading (for example `workspace create` followed by a manual boot); start the VM from the app, `vm start` or the MCP server.
+- `<Name>.kext from settings.yaml clashes with WhateverGreen.kext` — the kext has the name of a built-in, root-patch or other extra kext (case is ignored). To replace a built-in one, use `disable` and a kext with its own name.
+- `settings.yaml disable: <Name> is not a built-in kext the config template in use can disable` — only `VirtualSMC` and `WhateverGreen` can be disabled, and an `assets_dir` template needs the `@@ENABLED_<Name>@@` switches.
 
 ## Stuck at the Apple logo
 

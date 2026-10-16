@@ -25,11 +25,12 @@ The guards compare **release families only**; they do not inspect the installed 
 
 NVIDIA Kepler GPUs (vendor `10de`) are accepted by an explicit device-ID list, OCLP 2.5.1's `kepler_ids` (160 IDs: GK104, GK106, GK107, GK110/GK110B, GK180, GK208/GK208B, GK210), never by marketing name: a GT 730 can be Fermi (`0f02`) and a GTX 745/750/750 Ti is Maxwell (`1380`–`1382`). They work natively up to Big Sur and need root-patch mode from Monterey to Sequoia; the VM refuses to start otherwise.
 
+Accepted only with a patch kext you supply: `699f` (Lexa), `6fdf` (RX 580 2048SP), `73af`/`73a5` (Navi 21 XTXH/RX 6950 XT), `73df` (RX 6700/6750), `73ef` (RX 6650 XT). macOS has no driver for these IDs. They become eligible once `kexts` in `settings.yaml` lists at least one item (see [patch-dependent AMD GPUs](#patch-dependent-amd-gpus)); the app neither ships such a kext nor checks which one you list.
+
 Refused by the app:
 
 - NVIDIA GPUs other than Kepler (Fermi, Maxwell, Pascal and newer: GTX 750, 900, 10, 16, RTX) and every Intel (`8086`) GPU.
 - Navi 24 `743f` (RX 6400/6500) and RDNA3 `744c`, `7448`, `747e`, `7480` (RX 7000).
-- Patch-dependent IDs: `699f` (Lexa), `6fdf` (RX 580 2048SP), `73af`/`73a5` (Navi 21 XTXH/RX 6950 XT), `73df` (RX 6700/6750), `73ef` (RX 6650 XT). The app does not provide device-ID spoofing or NootRX.
 - Other AMD IDs are **unknown**, hence ineligible, including Ryzen iGPUs. NootedRed is not bundled or configured; it is not a supported VM workaround here.
 
 ## Eligibility rules
@@ -99,6 +100,24 @@ If the host no longer reaches its desktop:
 
 The reservation scripts assume Debian/Ubuntu's `update-initramfs`, `flock` and a functioning polkit authentication agent. Other initramfs tooling is not implemented.
 
+## Patch-dependent AMD GPUs
+
+For an RX 6700 XT, for example (`1002:73df`):
+
+1. Pick a kext that supports the card, read its license and documentation, and put its release zip's URL (and SHA-256) in `~/.config/macos-kvm-gui/settings.yaml` (File › Preferences › Open settings.yaml):
+
+   ```yaml
+   kexts:
+     - url: https://example.com/TheKext-1.0.zip
+       sha256: <64 hex digits>
+   disable: [WhateverGreen]   # only if the kext's documentation says it replaces WhateverGreen
+   ```
+
+2. The GPU tab now lists the card as eligible (if every other rule below passes). Reserve it, reboot the host, choose it in the VM's settings and connect a monitor to it.
+3. Start the VM. The app downloads the zip first, then OpenCore loads the kext after the built-in ones ([extra kexts](architecture.md#extra-kexts)).
+
+Try it with a disposable VM or a backup first: a kext that does not fit the card or the macOS version can stop the guest from booting. Removing the item (or **Reset to default**) restores the earlier boot. A VM that has such a GPU refuses to start while `kexts` is empty.
+
 ## NVIDIA Kepler and root-patch mode
 
 Apple dropped the Kepler drivers after Big Sur. OpenCore Legacy Patcher (OCLP) puts them back inside macOS ("Post-Install Root Patch"), which needs OpenCore settings the app does not use by default. **Root-patch mode** (GPU tab, per VM, off by default, experimental; CLI `config set root-patch=true`) turns them on, for **Monterey 12 to Sequoia 15** only (Big Sur needs nothing; Tahoe is left out until OCLP supports it in a stable release). It matches OCLP 2.5.1's own profile for Kepler:
@@ -129,5 +148,5 @@ Turning the mode off removes the kexts and boot arguments, and the next start de
 - Polaris, Vega and RX 5000 cards can encounter the AMD reset bug after guest shutdown/restart; a host reboot may be needed. `vendor-reset` is an external, manual option, not managed by this app.
 - Navi black screens can relate to board policy; `agdpmod=pikera` is already generated when a GPU is selected, but it does not guarantee a working board or driver.
 - The physical AMD display and emulated console are separate displays. The QEMU window is not a mirror of the GPU output.
-- No ROM-file configuration, device-ID spoofing, physical USB-controller passthrough or ACS override is provided. NVIDIA support is limited to Kepler with root-patch mode; the app never runs OCLP.
+- No ROM-file configuration, built-in patch kext, device-ID spoofing, physical USB-controller passthrough or ACS override is provided. NVIDIA support is limited to Kepler with root-patch mode; the app never runs OCLP.
 - Unit-test success does not validate PCI isolation, GPU reset, firmware, monitor routing or Metal on real hardware. **Full passthrough remains untested.**
