@@ -19,3 +19,8 @@ var Logo []byte
 //
 //go:embed logo/versions/*.svg
 var VersionIcons embed.FS
+
+// Icons are the app's own toolbar, state and section icons (original artwork, BSD-3-Clause).
+//
+//go:embed icons/*.svg
+var Icons embed.FS

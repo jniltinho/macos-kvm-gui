@@ -67,7 +67,7 @@ func Defaults() Config {
 func Recommended(c Config, hostThreads, hostMemMiB int) Config {
 	vcpus := min(max(hostThreads/2/2*2, 2), 16)
 	c.VCPUs, c.Cores = vcpus, max(vcpus/2, 1)
-	c.RAMMiB = min(max(hostMemMiB/4/1024*1024, 4096), 16384)
+	c.RAMMiB = min(max(hostMemMiB/4/1024*1024, MinRAMMiB), 16384)
 	return c
 }
 
@@ -87,6 +87,9 @@ type FieldError struct {
 }
 
 func (e *FieldError) Error() string { return e.Field + ": " + e.Msg }
+
+// MinRAMMiB is the least guest RAM macOS installs with.
+const MinRAMMiB = 4096
 
 // WorkspaceDir expands "~" and requires an absolute path.
 func (c Config) WorkspaceDir() (string, error) {
@@ -111,8 +114,8 @@ func (c Config) Validate() error {
 	if versionIndex(c.Version) < 0 {
 		return &FieldError{"version", "unknown version: " + c.Version}
 	}
-	if c.RAMMiB < 4096 {
-		return &FieldError{"ram", "minimum is 4096 MiB"}
+	if c.RAMMiB < MinRAMMiB {
+		return &FieldError{"ram", fmt.Sprintf("minimum is %d MiB", MinRAMMiB)}
 	}
 	if c.Cores < 1 {
 		return &FieldError{"cores", "minimum is 1 core"}

@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"image/color"
+	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -19,185 +20,166 @@ import (
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
 )
 
-// newVMDialog is the New VM wizard: name and macOS version, resources, storage, summary. Create
-// adds the VM, makes its folder and disk and, when asked, downloads the recovery.
+// newVMDialog is the New VM wizard in VirtualBox's expert style: an illustration on the left and
+// three folding sections (name and operating system, hardware, hard disk). Finish adds the VM,
+// makes its folder and disk and, when asked, downloads the recovery.
 func (u *ui) newVMDialog() {
 	if u.vm.State() != core.Stopped {
 		dialog.ShowInformation("New VM", "Shut down the running VM first.", u.win)
 		return
 	}
-	c := core.Recommended(core.Defaults(), runtime.NumCPU(), u.host.MemTotalMiB())
-	c.Display = core.DisplayApp
+	threadsN, hostMem := runtime.NumCPU(), u.host.MemTotalMiB()
+	rec := core.Recommended(core.Defaults(), threadsN, hostMem)
 
-	// Step 1: name and macOS version.
+	// Name and operating system.
 	name := widget.NewEntry()
 	name.SetPlaceHolder("for example macOS Tahoe lab")
+	folder := widget.NewEntry()
+	folder.SetText(core.VMFolder("macOS"))
+	folderEdited := false
+	var showLocation func()
+	folder.OnChanged = func(string) {
+		folderEdited = true
+		if showLocation != nil {
+			showLocation()
+		}
+	}
 	var labels []string
 	short := map[string]string{}
 	for _, v := range core.Versions {
 		labels = append(labels, versionLabel(v))
 		short[versionLabel(v)] = v.Short
 	}
-	icon := canvas.NewImageFromResource(versionIcon("sonoma"))
-	icon.FillMode = canvas.ImageFillContain
-	icon.SetMinSize(fyne.NewSquareSize(96))
+	art := canvas.NewImageFromResource(versionIcon("sonoma"))
+	art.FillMode = canvas.ImageFillContain
+	art.SetMinSize(fyne.NewSquareSize(128))
+	osIcon := canvas.NewImageFromResource(versionIcon("sonoma"))
+	osIcon.FillMode = canvas.ImageFillContain
+	osIcon.SetMinSize(fyne.NewSquareSize(36))
 	version := widget.NewSelect(labels, func(l string) {
-		icon.Resource = versionIcon(short[l])
-		icon.Refresh()
+		for _, img := range []*canvas.Image{art, osIcon} {
+			img.Resource = versionIcon(short[l])
+			img.Refresh()
+		}
 	})
 	version.SetSelected(labels[6]) // Sonoma, the validated version
-	step1 := container.NewBorder(nil, nil, container.NewCenter(icon), nil, container.NewVBox(
-		widget.NewForm(widget.NewFormItem("Name", name), widget.NewFormItem("macOS version", version)),
-		wrapped("Only Sonoma has been validated end to end. Newer versions need more RAM and disk."),
-	))
-
-	// Step 2: resources, filled in with what is recommended for this host.
-	ram, cores, vcpus := widget.NewEntry(), widget.NewEntry(), widget.NewEntry()
-	ram.SetText(strconv.Itoa(c.RAMMiB))
-	cores.SetText(strconv.Itoa(c.Cores))
-	vcpus.SetText(strconv.Itoa(c.VCPUs))
-	display := widget.NewSelect([]string{displayAppLabel, displayWindowLabel}, nil)
-	display.SetSelected(displayAppLabel)
-	step2 := container.NewVBox(
-		widget.NewForm(
-			widget.NewFormItem("RAM (MiB)", ram),
-			widget.NewFormItem("Cores", cores),
-			widget.NewFormItem("vCPUs (total)", vcpus),
-			widget.NewFormItem("Display", display),
-		),
-		wrapped(fmt.Sprintf("Recommended for this host (%d threads, %d MiB). Without a supported GPU the CPU draws the screen, so more vCPUs make it smoother.",
-			runtime.NumCPU(), u.host.MemTotalMiB())),
-	)
-
-	// Step 3: storage. The folder follows the name until it is edited.
-	folder := widget.NewEntry()
-	folderEdited := false
-	folder.OnChanged = func(string) { folderEdited = true }
 	name.OnChanged = func(n string) {
 		if !folderEdited {
 			folder.SetText(core.VMFolder(strings.TrimSpace(n)))
 			folderEdited = false
 		}
 	}
-	size := widget.NewEntry()
-	size.SetText("80")
+	identity := container.NewVBox(widget.NewForm(
+		widget.NewFormItem("VM Name", name),
+		widget.NewFormItem("VM Folder", folder),
+		widget.NewFormItem("OS Version", container.NewBorder(nil, nil, nil, osIcon, version)),
+	), note("Only Sonoma has been validated end to end. Newer versions need more memory and disk."))
+
+	// Hardware, prefilled with what is recommended for this host.
+	ramRow, ramValue, ramSet := sliderRow(core.MinRAMMiB, float64(max(hostMem, core.MinRAMMiB*2)), 512, "MB")
+	ramSet(rec.RAMMiB)
+	cpuRow, cpuValue, cpuSet := sliderRow(1, float64(threadsN), 1, "CPUs")
+	cpuSet(rec.VCPUs)
+	display := widget.NewSelect([]string{displayAppLabel, displayWindowLabel}, nil)
+	display.SetSelected(displayAppLabel)
+	hardware := container.NewVBox(widget.NewForm(
+		widget.NewFormItem("Base Memory", ramRow),
+		widget.NewFormItem("Number of CPUs", cpuRow),
+		widget.NewFormItem("Display", display),
+	), note(fmt.Sprintf("Recommended for this host: %d MB and %d CPUs. Without a supported GPU the CPU draws the screen, so more CPUs make it smoother.", rec.RAMMiB, rec.VCPUs)))
+
+	// Hard disk.
+	diskRow, diskValue, diskSet := sliderRow(core.MinDiskGiB, 2048, 8, "GB")
+	diskSet(80)
 	download := widget.NewCheck("Download the macOS recovery from Apple now", nil)
 	download.SetChecked(true)
-	step3 := container.NewVBox(
-		widget.NewForm(widget.NewFormItem("Folder", folder), widget.NewFormItem("Disk size (GiB)", size)),
-		download,
-		wrapped(fmt.Sprintf("The folder holds the disk, the NVRAM and the boot files. The disk is thin: it grows as macOS uses it. At least %d GiB.", core.MinDiskGiB)),
+	location := widget.NewLabel("")
+	location.Truncation = fyne.TextTruncateEllipsis
+	showLocation = func() { location.SetText(filepath.Join(strings.TrimSpace(folder.Text), core.DiskFile)) }
+	showLocation()
+	disk := container.NewVBox(widget.NewForm(
+		widget.NewFormItem("Location", location),
+		widget.NewFormItem("Disk Size", diskRow),
+		widget.NewFormItem("Format", widget.NewLabel("QCOW2 (QEMU Copy-On-Write), dynamically allocated")),
+	), download)
+
+	sections := widget.NewAccordion(
+		widget.NewAccordionItem("Virtual machine name and operating system", identity),
+		widget.NewAccordionItem("Specify virtual hardware", hardware),
+		widget.NewAccordionItem("Specify virtual hard disk", disk),
 	)
+	sections.Open(0)
 
-	summary := wrapped("")
-	steps := []struct {
-		title string
-		body  fyne.CanvasObject
-	}{
-		{"Name and operating system", step1},
-		{"Hardware", step2},
-		{"Storage", step3},
-		{"Summary", summary},
+	// collect validates everything and opens the section with the first problem.
+	collect := func() (core.Config, int, error) {
+		c := rec
+		c.Display = core.DisplayApp
+		fail := func(i int, err error) (core.Config, int, error) {
+			sections.CloseAll()
+			sections.Open(i)
+			return c, 0, err
+		}
+		c.Name, c.Version = strings.TrimSpace(name.Text), short[version.Selected]
+		if c.Name == "" {
+			return fail(0, errors.New("VM Name: give the VM a name"))
+		}
+		for _, e := range u.vms {
+			if strings.EqualFold(e.Config.Name, c.Name) {
+				return fail(0, errors.New("VM Name: a VM with this name already exists"))
+			}
+		}
+		c.Workspace = strings.TrimSpace(folder.Text)
+		dir, err := c.WorkspaceDir()
+		if err != nil {
+			return fail(0, fmt.Errorf("VM Folder: %w", err))
+		}
+		if err := core.RequireEmpty(dir); err != nil {
+			return fail(0, fmt.Errorf("VM Folder: %w", err))
+		}
+		if c.RAMMiB, err = ramValue(); err != nil {
+			return fail(1, fmt.Errorf("Base Memory: %w", err))
+		}
+		if c.VCPUs, err = cpuValue(); err != nil {
+			return fail(1, fmt.Errorf("Number of CPUs: %w", err))
+		}
+		c.Cores = c.VCPUs // one thread per core unless the count splits evenly into two
+		if c.VCPUs%2 == 0 && threadsN > 1 {
+			c.Cores = c.VCPUs / 2
+		}
+		c.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
+		if err := c.Validate(); err != nil {
+			return fail(1, err)
+		}
+		size, err := diskValue()
+		if err != nil || size < core.MinDiskGiB {
+			return fail(2, fmt.Errorf("Disk Size: at least %d GB", core.MinDiskGiB))
+		}
+		return c, size, nil
 	}
 
-	// check validates step i and fills c; it returns the problem to show, if any.
-	var sizeGiB int
-	check := func(i int) error {
-		switch i {
-		case 0:
-			c.Name, c.Version = strings.TrimSpace(name.Text), short[version.Selected]
-			if c.Name == "" {
-				return errors.New("give the VM a name")
-			}
-			for _, e := range u.vms {
-				if strings.EqualFold(e.Config.Name, c.Name) {
-					return errors.New("a VM with this name already exists")
-				}
-			}
-			if !folderEdited || folder.Text == "" {
-				folder.SetText(core.VMFolder(c.Name))
-				folderEdited = false
-			}
-		case 1:
-			for _, n := range []struct {
-				label string
-				e     *widget.Entry
-				dst   *int
-			}{{"RAM", ram, &c.RAMMiB}, {"Cores", cores, &c.Cores}, {"vCPUs", vcpus, &c.VCPUs}} {
-				v, err := strconv.Atoi(strings.TrimSpace(n.e.Text))
-				if err != nil {
-					return fmt.Errorf("%s: enter a whole number", n.label)
-				}
-				*n.dst = v
-			}
-			c.Display = map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[display.Selected]
-			return c.Validate()
-		case 2:
-			c.Workspace = strings.TrimSpace(folder.Text)
-			dir, err := c.WorkspaceDir()
-			if err != nil {
-				return err
-			}
-			if err := core.RequireEmpty(dir); err != nil {
-				return err
-			}
-			if sizeGiB, err = strconv.Atoi(strings.TrimSpace(size.Text)); err != nil || sizeGiB < core.MinDiskGiB {
-				return fmt.Errorf("disk size: at least %d GiB", core.MinDiskGiB)
-			}
-			dl := "no: download it later from the Install tab"
-			if download.Checked {
-				dl = "yes, from Apple, checking its signature"
-			}
-			summary.SetText(fmt.Sprintf("Name: %s\nmacOS: %s (%s)\nRAM: %d MiB\nCPU: %d vCPUs (%d cores)\nDisplay: %s\nFolder: %s\nDisk: %d GiB (thin)\nDownload recovery: %s\n\nCreate makes the folder and the disk. Then start the VM and install macOS from the recovery.",
-				c.Name, version.Selected, core.SMBIOSModel(c.Version), c.RAMMiB, c.VCPUs, c.Cores, display.Selected, dir, sizeGiB, dl))
-		}
-		return nil
-	}
-
-	cur := 0
-	title := widget.NewLabel("")
-	title.TextStyle = fyne.TextStyle{Bold: true}
-	body := container.NewStack()
-	back := widget.NewButtonWithIcon("Back", theme.NavigateBackIcon(), nil)
-	next := widget.NewButtonWithIcon("Next", theme.NavigateNextIcon(), nil)
-	next.Importance = widget.HighImportance
-	cancel := widget.NewButton("Cancel", nil)
-	show := func() {
-		title.SetText(fmt.Sprintf("Step %d of %d · %s", cur+1, len(steps), steps[cur].title))
-		body.Objects = []fyne.CanvasObject{steps[cur].body}
-		body.Refresh()
-		back.Disable()
-		if cur > 0 {
-			back.Enable()
-		}
-		next.SetText("Next")
-		next.SetIcon(theme.NavigateNextIcon())
-		if cur == len(steps)-1 {
-			next.SetText("Create")
-			next.SetIcon(theme.ConfirmIcon())
-		}
-	}
-	d := dialog.NewCustomWithoutButtons("New VM", container.NewBorder(
-		container.NewVBox(title, widget.NewSeparator()),
-		container.NewVBox(widget.NewSeparator(), container.NewHBox(cancel, layout.NewSpacer(), back, next)),
-		nil, nil, body), u.win)
+	panel := themedRect(theme.ColorNameHeaderBackground)
+	left := container.NewStack(panel, container.NewPadded(container.NewVBox(layout.NewSpacer(), art, layout.NewSpacer())))
+	sizer := canvas.NewRectangle(color.Transparent)
+	sizer.SetMinSize(fyne.NewSize(150, 0))
+	finish := widget.NewButtonWithIcon("Finish", theme.ConfirmIcon(), nil)
+	finish.Importance = widget.HighImportance
+	cancel := widget.NewButtonWithIcon("Cancel", theme.CancelIcon(), nil)
+	content := container.NewBorder(nil,
+		container.NewVBox(widget.NewSeparator(), container.NewHBox(layout.NewSpacer(), finish, cancel)),
+		container.NewStack(sizer, left), nil,
+		container.NewVScroll(container.NewPadded(sections)))
+	d := dialog.NewCustomWithoutButtons("New Virtual Machine", content, u.win)
 	cancel.OnTapped = d.Hide
-	back.OnTapped = func() { cur--; show() }
-	next.OnTapped = func() {
-		if cur < len(steps)-1 {
-			if err := check(cur); err != nil {
-				dialog.ShowError(err, u.win)
-				return
-			}
-			cur++
-			show()
+	finish.OnTapped = func() {
+		c, size, err := collect()
+		if err != nil {
+			dialog.ShowError(err, u.win)
 			return
 		}
 		d.Hide()
-		u.createVM(c, sizeGiB, download.Checked)
+		u.createVM(c, size, download.Checked)
 	}
-	show()
-	d.Resize(fyne.NewSize(680, 460))
+	d.Resize(fyne.NewSize(860, 600))
 	d.Show()
 	u.win.Canvas().Focus(name)
 }

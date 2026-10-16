@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"net/url"
 	"strings"
 	"time"
 
@@ -23,103 +24,170 @@ import (
 // (Details, Screen and the tools) and a status bar at the bottom.
 
 func (u *ui) toolbar() fyne.CanvasObject {
-	icon := canvas.NewImageFromResource(logo)
-	icon.FillMode = canvas.ImageFillContain
-	icon.SetMinSize(fyne.NewSquareSize(32))
-	title := widget.NewLabel("macOS KVM")
-	title.TextStyle = fyne.TextStyle{Bold: true}
-	title.SizeName = theme.SizeNameSubHeadingText
+	u.btnNew = newToolButton("New", appIcon("new", theme.ContentAddIcon()), theme.ColorNamePrimary, u.newVMDialog)
+	u.btnImport = newToolButton("Import", appIcon("import", theme.DownloadIcon()), theme.ColorNameSuccess, u.importVMDialog)
+	u.btnEdit = newToolButton("Settings", appIcon("settings", theme.SettingsIcon()), theme.ColorNameWarning, u.settingsDialog)
+	u.btnDelete = newToolButton("Remove", appIcon("remove", theme.DeleteIcon()), theme.ColorNameError, u.deleteVMDialog)
+	u.btnExport = newToolButton("Export", appIcon("export", theme.UploadIcon()), theme.ColorNamePrimary, u.exportVMDialog)
+	u.btnStart = newToolButton("Start", appIcon("start", theme.MediaPlayIcon()), theme.ColorNameSuccess, u.start)
+	u.btnPowerdown = newToolButton("Shut down", appIcon("shutdown", powerIcon), theme.ColorNameWarning, u.powerdown)
+	u.btnKill = newToolButton("Force stop", appIcon("forcestop", theme.CancelIcon()), theme.ColorNameError, u.forceStop)
+	u.btnDetach = newToolButton("Window", appIcon("window", theme.ViewRestoreIcon()), theme.ColorNamePrimary, func() { u.detachScreen(false) })
+	u.btnFull = newToolButton("Full screen", appIcon("fullscreen", theme.ViewFullScreenIcon()), theme.ColorNamePrimary, func() { u.detachScreen(true) })
 
-	u.btnNew = widget.NewButtonWithIcon("New", theme.ContentAddIcon(), u.newVMDialog)
-	u.btnEdit = widget.NewButtonWithIcon("Edit", theme.DocumentCreateIcon(), func() { u.tabs.SelectIndex(3) }) // Settings
-	u.btnDelete = widget.NewButtonWithIcon("Delete", theme.DeleteIcon(), u.deleteVMDialog)
-	u.btnExport = widget.NewButtonWithIcon("Export", theme.UploadIcon(), u.exportVMDialog)
-	u.btnImport = widget.NewButtonWithIcon("Import", theme.DownloadIcon(), u.importVMDialog)
-	u.btnStart = widget.NewButtonWithIcon("Start", theme.MediaPlayIcon(), u.start)
-	u.btnPowerdown = widget.NewButtonWithIcon("Shut down", theme.LogoutIcon(), func() {
-		go func() {
-			err := u.vm.Powerdown()
-			fyne.Do(func() {
-				if err != nil {
-					dialog.ShowError(err, u.win)
-					return
-				}
-				u.appendLog("[VM] ACPI power button sent to macOS")
-				dialog.ShowInformation("Shut down",
-					"The power button was sent to macOS. Many macOS versions treat it as Sleep, which does nothing in a VM.\n\n"+
-						"If macOS keeps running, shut it down from the Apple menu (Apple › Shut Down) inside the VM: "+
-						"the app notices when it powers off. Use Force stop only if macOS is frozen.", u.win)
-			})
-		}()
-	})
-	u.btnKill = widget.NewButtonWithIcon("Force stop", theme.CancelIcon(), func() {
-		dialog.ShowConfirm("Force stop", "This is like pulling the power cord: unsaved data in macOS will be lost. Continue?",
-			func(ok bool) {
-				if ok {
-					if err := u.vm.Kill(); err != nil {
-						dialog.ShowError(err, u.win)
-					}
-				}
-			}, u.win)
-	})
-	u.btnDetach = widget.NewButtonWithIcon("Open in window", theme.ViewRestoreIcon(), func() { u.detachScreen(false) })
-	u.btnFull = widget.NewButtonWithIcon("Full screen", theme.ViewFullScreenIcon(), func() { u.detachScreen(true) })
-	u.btnStart.Importance = widget.HighImportance
-	u.btnPowerdown.Importance = widget.WarningImportance
-	u.btnKill.Importance = widget.DangerImportance
-
-	u.header = widget.NewLabel("")
-	u.header.TextStyle = fyne.TextStyle{Bold: true}
-	// Everything sits on one centered row: brand, three button groups (VM, run, screen) and the
-	// state chip, over a band like VirtualBox's toolbar.
-	group := func(objs ...fyne.CanvasObject) fyne.CanvasObject { return container.NewHBox(objs...) }
-	// The band and separators are plain rectangles, so they are recolored when the theme changes.
-	var lines []*canvas.Rectangle
 	gap := func() fyne.CanvasObject {
-		r := canvas.NewRectangle(theme.Color(theme.ColorNameSeparator))
-		r.SetMinSize(fyne.NewSize(1, 28))
-		lines = append(lines, r)
+		r := themedRect(theme.ColorNameSeparator)
+		r.SetMinSize(fyne.NewSize(1, 40))
 		return container.NewCenter(r)
 	}
-	brand := container.NewHBox(container.NewCenter(icon), container.NewCenter(title))
+	// VirtualBox's order: New, Open | Settings, Discard | Start. Export lives in the File menu.
 	row := container.NewHBox(
-		brand, gap(),
-		group(u.btnNew, u.btnEdit, u.btnDelete, u.btnExport, u.btnImport), gap(),
-		group(u.btnStart, u.btnPowerdown, u.btnKill), gap(),
-		group(u.btnDetach, u.btnFull),
+		u.btnNew, u.btnImport, gap(),
+		u.btnEdit, u.btnDelete, gap(),
+		u.btnStart, u.btnPowerdown, u.btnKill, gap(),
+		u.btnDetach, u.btnFull,
 	)
-	band := canvas.NewRectangle(theme.Color(theme.ColorNameHeaderBackground))
-	fyne.CurrentApp().Settings().AddListener(func(fyne.Settings) {
-		band.FillColor = theme.Color(theme.ColorNameHeaderBackground)
-		band.Refresh()
-		for _, r := range lines {
-			r.FillColor = theme.Color(theme.ColorNameSeparator)
-			r.Refresh()
-		}
-	})
-	bar := container.NewStack(band, container.NewPadded(container.NewBorder(nil, nil, row, container.NewCenter(u.header))))
-	return container.NewVBox(bar, widget.NewSeparator())
+	u.header = widget.NewLabel("") // the VM state, at the right like VirtualBox's tools
+	u.header.TextStyle = fyne.TextStyle{Bold: true}
+	return container.NewVBox(container.NewBorder(nil, nil, row, container.NewCenter(u.header)), widget.NewSeparator())
 }
 
-// vmList is the left pane. The app manages one VM per configuration, shown like VirtualBox's list.
+// powerdown sends the ACPI power button and explains macOS's usual Sleep reaction.
+func (u *ui) powerdown() {
+	go func() {
+		err := u.vm.Powerdown()
+		fyne.Do(func() {
+			if err != nil {
+				dialog.ShowError(err, u.win)
+				return
+			}
+			u.appendLog("[VM] ACPI power button sent to macOS")
+			dialog.ShowInformation("Shut down",
+				"The power button was sent to macOS. Many macOS versions treat it as Sleep, which does nothing in a VM.\n\n"+
+					"If macOS keeps running, shut it down from the Apple menu (Apple › Shut Down) inside the VM: "+
+					"the app notices when it powers off. Use Force stop only if macOS is frozen.", u.win)
+		})
+	}()
+}
+
+func (u *ui) forceStop() {
+	dialog.ShowConfirm("Force stop", "This is like pulling the power cord: unsaved data in macOS will be lost. Continue?",
+		func(ok bool) {
+			if ok {
+				if err := u.vm.Kill(); err != nil {
+					dialog.ShowError(err, u.win)
+				}
+			}
+		}, u.win)
+}
+
+// mainMenu is VirtualBox's File / Machine / Help menu bar. Items act through the toolbar
+// buttons, so they follow the same enabled state.
+func (u *ui) mainMenu() *fyne.MainMenu {
+	u.menuFor = map[*fyne.MenuItem]*toolButton{}
+	item := func(label string, b *toolButton) *fyne.MenuItem {
+		m := fyne.NewMenuItem(label, b.trigger)
+		u.menuFor[m] = b
+		return m
+	}
+	link := func(label, to string) *fyne.MenuItem {
+		return fyne.NewMenuItem(label, func() {
+			if p, err := url.Parse(to); err == nil {
+				fyne.CurrentApp().OpenURL(p)
+			}
+		})
+	}
+	docs := link("Online Documentation", "https://github.com/jniltinho/macos-kvm-gui/tree/main/docs")
+	site := link("Web Site", "https://github.com/jniltinho/macos-kvm-gui")
+	issues := link("Bug Tracker", "https://github.com/jniltinho/macos-kvm-gui/issues")
+	about := fyne.NewMenuItem("About macOS KVM", func() {
+		dialog.ShowInformation("About macOS KVM", "macOS KVM "+version+"\n\nBoot files: "+core.AssetVersions()+"\n\n"+homeLab, u.win)
+	})
+	return fyne.NewMainMenu(
+		fyne.NewMenu("File",
+			fyne.NewMenuItem("Preferences…", u.preferencesDialog),
+			fyne.NewMenuItemSeparator(),
+			item("Import VM…", u.btnImport), item("Export VM…", u.btnExport)),
+		fyne.NewMenu("Machine",
+			item("New…", u.btnNew), item("Settings…", u.btnEdit),
+			u.moveItem(),
+			item("Remove…", u.btnDelete),
+			fyne.NewMenuItemSeparator(),
+			item("Start", u.btnStart), item("Shut down", u.btnPowerdown), item("Force stop", u.btnKill),
+			fyne.NewMenuItemSeparator(),
+			item("Show in a window", u.btnDetach), item("Full screen", u.btnFull)),
+		fyne.NewMenu("Help", docs, site, issues, fyne.NewMenuItemSeparator(), about),
+	)
+}
+
+// moveItem follows the Settings button's state, since moving needs a stopped VM too.
+func (u *ui) moveItem() *fyne.MenuItem {
+	m := fyne.NewMenuItem("Move…", func() {
+		if !u.btnEdit.Disabled() {
+			u.moveVMDialog()
+		}
+	})
+	u.menuFor[m] = u.btnEdit
+	return m
+}
+
+// refreshMenu greys out the menu items whose toolbar button is disabled, like VirtualBox.
+func (u *ui) refreshMenu() {
+	changed := false
+	for m, b := range u.menuFor {
+		if m.Disabled != b.Disabled() {
+			m.Disabled, changed = b.Disabled(), true
+		}
+	}
+	if changed && u.win.MainMenu() != nil {
+		u.win.MainMenu().Refresh()
+	}
+}
+
+// appIcon is one of the app's own icons (internal/assets/icons), or fallback when it is missing.
+func appIcon(name string, fallback fyne.Resource) fyne.Resource {
+	if b, err := assets.Icons.ReadFile("icons/" + name + ".svg"); err == nil {
+		return fyne.NewStaticResource(name+".svg", b)
+	}
+	return fallback
+}
+
+// stateIcon is the small symbol before a VM's state, like VirtualBox's list.
+func stateIcon(s core.VMState) fyne.Resource {
+	switch s {
+	case core.Running:
+		return appIcon("state-running", theme.NewColoredResource(theme.MediaPlayIcon(), theme.ColorNameSuccess))
+	case core.Paused:
+		return appIcon("state-paused", theme.NewColoredResource(theme.MediaPauseIcon(), theme.ColorNameWarning))
+	}
+	return appIcon("state-off", theme.NewColoredResource(powerIcon, theme.ColorNamePrimary))
+}
+
+// stateText is VirtualBox's wording for a VM state.
+func stateText(s core.VMState) string {
+	if s == core.Stopped {
+		return "Powered Off"
+	}
+	return s.String()
+}
+
+// vmList is the left pane, like VirtualBox's machine list: the version icon, the name in bold
+// and the state with its symbol.
 func (u *ui) vmList() fyne.CanvasObject {
 	u.vmItem = widget.NewList(
 		func() int { return len(u.vms) },
 		func() fyne.CanvasObject {
 			img := canvas.NewImageFromResource(versionIcon(u.cfg.Version))
 			img.FillMode = canvas.ImageFillContain
-			img.SetMinSize(fyne.NewSquareSize(40))
-			name := widget.NewLabel("")
-			name.TextStyle = fyne.TextStyle{Bold: true}
+			img.SetMinSize(fyne.NewSquareSize(32))
+			name := widget.NewRichText(&widget.TextSegment{Style: widget.RichTextStyle{Inline: true, TextStyle: fyne.TextStyle{Bold: true}}},
+				&widget.TextSegment{Style: widget.RichTextStyleInline})
 			name.Truncation = fyne.TextTruncateEllipsis
-			sub := widget.NewLabel("")
-			sub.SizeName = theme.SizeNameCaptionText
-			sub.Truncation = fyne.TextTruncateEllipsis
 			state := widget.NewLabel("")
-			state.SizeName = theme.SizeNameCaptionText
-			// Spacers center the lines vertically while keeping them left-aligned; zero spacing
-			// keeps name, details and state together like VirtualBox's list.
-			text := container.New(layout.NewCustomPaddedVBoxLayout(-8), layout.NewSpacer(), name, sub, state, layout.NewSpacer())
+			state.Truncation = fyne.TextTruncateEllipsis
+			icon := widget.NewIcon(stateIcon(core.Stopped))
+			stateRow := container.NewBorder(nil, nil, icon, nil, state)
+			text := container.New(layout.NewCustomPaddedVBoxLayout(-12), layout.NewSpacer(), name, stateRow, layout.NewSpacer())
 			return container.NewBorder(nil, nil, container.NewCenter(img), nil, text)
 		},
 		func(id widget.ListItemID, o fyne.CanvasObject) {
@@ -130,30 +198,33 @@ func (u *ui) vmList() fyne.CanvasObject {
 			row := o.(*fyne.Container)
 			box := row.Objects[0].(*fyne.Container)
 			img := row.Objects[1].(*fyne.Container).Objects[0].(*canvas.Image)
-			name, sub, state := box.Objects[1].(*widget.Label), box.Objects[2].(*widget.Label), box.Objects[3].(*widget.Label)
-			if t := fmt.Sprintf("%s · %d GiB · %d vCPUs", strings.TrimPrefix(versionTitle(e.Config.Version), "macOS "), e.Config.RAMMiB/1024, e.Config.VCPUs); sub.Text != t {
-				sub.SetText(t)
-			}
+			name := box.Objects[1].(*widget.RichText)
+			stateRow := box.Objects[2].(*fyne.Container)
+			state, icon := stateRow.Objects[0].(*widget.Label), stateRow.Objects[1].(*widget.Icon)
 			if r := versionIcon(e.Config.Version); img.Resource != r {
 				img.Resource = r
 				img.Refresh()
 			}
-			if n := e.DisplayName(); name.Text != n {
-				name.SetText(n)
+			bold, os := name.Segments[0].(*widget.TextSegment), name.Segments[1].(*widget.TextSegment)
+			if n, o := e.DisplayName(), " ("+strings.TrimPrefix(versionTitle(e.Config.Version), "macOS ")+")"; bold.Text != n || os.Text != o {
+				bold.Text, os.Text = n, o
+				name.Refresh()
 			}
 			s := core.Stopped
 			if e.ID == u.runningID {
 				s = u.vm.State()
 			}
-			t, imp := "● "+s.String(), stateImportance(s)
+			t, r := stateText(s), stateIcon(s)
 			if s == core.Stopped {
 				if _, ok := core.FindRunning(e.Config); ok { // e.g. started by OSX-KVM's script
-					t, imp = "● Running (outside the app)", widget.WarningImportance
+					t, r = "Running (outside the app)", stateIcon(core.Running)
 				}
 			}
-			if state.Text != t || state.Importance != imp {
-				state.Text, state.Importance = t, imp
-				state.Refresh()
+			if state.Text != t {
+				state.SetText(t)
+			}
+			if icon.Resource != r {
+				icon.SetResource(r)
 			}
 		},
 	)
@@ -161,7 +232,7 @@ func (u *ui) vmList() fyne.CanvasObject {
 	u.selectRow()
 	width := canvas.NewRectangle(color.Transparent) // keeps the pane wide enough for the name and state
 	width.SetMinSize(fyne.NewSize(200, 0))
-	return container.NewStack(width, u.vmItem)
+	return container.NewStack(width, themedRect(colorListBackground), u.vmItem)
 }
 
 // versionIcon is the version's own icon, or the app logo when there is none.
@@ -195,128 +266,107 @@ func stateImportance(s core.VMState) widget.Importance {
 	return widget.MediumImportance
 }
 
-// detailsTab mirrors VirtualBox's Details pane: a header with the VM's icon, name, state and a
-// live preview, then one compact block per hardware area.
+// detailsTab mirrors VirtualBox's Details pane: stacked sections, each a tinted band with an
+// icon and a title over compact "Key:  value" lines, with the Preview beside General and System.
 func (u *ui) detailsTab() fyne.CanvasObject {
-	u.details = map[string]*widget.Label{}
-	block := func(title string, icon fyne.Resource, rows ...string) fyne.CanvasObject {
-		form := widget.NewForm()
-		for _, r := range rows {
-			l := widget.NewLabel("")
-			l.Wrapping = fyne.TextWrapWord
-			u.details[r] = l
-			form.Append(r, l)
+	u.details = map[string]*canvas.Text{}
+	add := func(title, icon string, fallback fyne.Resource, keys ...string) fyne.CanvasObject {
+		box, values := infoSection(title, appIcon(icon, fallback), keys...)
+		for k, v := range values {
+			u.details[title+"/"+k] = v
 		}
-		head := container.NewHBox(widget.NewIcon(icon), widget.NewLabelWithStyle(title, fyne.TextAlignLeading, fyne.TextStyle{Bold: true}))
-		return widget.NewCard("", "", container.NewBorder(container.NewVBox(head, widget.NewSeparator()), nil, nil, nil, form))
+		return box
 	}
+	general := add("General", "general", theme.InfoIcon(), "Name", "Operating System", "Mac Model")
+	system := add("System", "system", theme.ComputerIcon(), "Base Memory", "Processors", "CPU Model", "Firmware", "Acceleration")
 
-	u.detailIcon = canvas.NewImageFromResource(versionIcon(u.cfg.Version))
-	u.detailIcon.FillMode = canvas.ImageFillContain
-	u.detailIcon.SetMinSize(fyne.NewSquareSize(96))
-	u.detailName = widget.NewLabel("")
-	u.detailName.TextStyle = fyne.TextStyle{Bold: true}
-	u.detailName.SizeName = theme.SizeNameHeadingText
-	u.detailState = widget.NewLabel("")
-	u.detailState.TextStyle = fyne.TextStyle{Bold: true}
-	u.detailSummary = widget.NewLabel("")
-	u.detailSummary.Wrapping = fyne.TextWrapWord
-
-	// 16:9 box: the live screen fills it while running; when stopped, a small icon and a caption.
+	// Preview: a framed 16:9 screen; the live picture while running, the VM's name when not.
 	u.preview = canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 1, 1)))
 	u.preview.FillMode = canvas.ImageFillContain
 	u.preview.ScaleMode = canvas.ImageScaleFastest
-	u.preview.SetMinSize(fyne.NewSize(320, 180))
+	u.preview.SetMinSize(fyne.NewSize(220, 124)) // with its frame, 242 px wide like VirtualBox's
 	u.previewBg = canvas.NewRectangle(color.Black)
-	u.previewIcon = canvas.NewImageFromResource(versionIcon(u.cfg.Version))
-	u.previewIcon.FillMode = canvas.ImageFillContain
-	u.previewIcon.SetMinSize(fyne.NewSquareSize(72))
-	caption := widget.NewLabel("Not running")
-	caption.Alignment = fyne.TextAlignCenter
-	caption.TextStyle = fyne.TextStyle{Italic: true}
-	u.previewIdle = container.NewCenter(container.NewVBox(container.NewCenter(u.previewIcon), caption))
-	previewBox := container.NewStack(u.previewBg, u.preview, u.previewIdle)
-	previewCard := widget.NewCard("", "", container.NewVBox(
-		widget.NewLabelWithStyle("Preview", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}), previewBox))
+	u.previewBg.SetMinSize(fyne.NewSize(220, 124))
+	u.previewName = canvas.NewText("", color.White)
+	u.previewName.TextStyle = fyne.TextStyle{Bold: true}
+	u.previewName.TextSize = theme.TextSubHeadingSize()
+	u.previewIdle = container.NewCenter(u.previewName)
+	frame := themedRect(theme.ColorNameShadow)
+	screen := container.NewStack(u.previewBg, u.preview, u.previewIdle)
+	previewBox := container.NewVBox(sectionBand("Preview", appIcon("preview", theme.MediaPhotoIcon())),
+		container.NewPadded(container.NewStack(frame, container.NewPadded(screen))))
 
-	header := widget.NewCard("", "", container.NewBorder(nil, nil, u.detailIcon, nil,
-		container.NewVBox(container.NewHBox(u.detailName, u.detailState), u.detailSummary)))
-
-	grid := container.NewGridWithColumns(3,
-		block("General", theme.InfoIcon(), "Name", "Operating system", "Mac model"),
-		block("System", theme.ComputerIcon(), "Base memory", "Processors", "CPU model"),
-		block("Display", theme.ViewFullScreenIcon(), "Shown", "Graphics", "Resolution"),
-		block("Storage", theme.StorageIcon(), "Disk", "Install media", "Boot"),
-		block("Network", theme.MailSendIcon(), "Adapter", "SSH"),
-		block("GPU passthrough", theme.ColorPaletteIcon(), "GPU", "Acceleration"),
+	top := container.NewBorder(nil, nil, nil, previewBox, container.NewVBox(general, system))
+	rest := container.NewVBox(
+		add("Display", "display", theme.ViewFullScreenIcon(), "Shown", "Graphics Controller", "Resolution", "Remote Display"),
+		add("Storage", "storage", theme.StorageIcon(), "Controller", "SATA Port 0", "SATA Port 1", "Boot Disk"),
+		add("Audio", "audio", theme.VolumeUpIcon(), "Controller"),
+		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Port Forwarding"),
+		add("USB", "usb", theme.SettingsIcon(), "Controller", "Devices"),
+		add("GPU Passthrough", "gpu", theme.ColorPaletteIcon(), "GPU", "3D Acceleration"),
 	)
-	tip := widget.NewLabel("Tip: without a passed-through AMD GPU the CPU draws the screen. More vCPUs (Settings › Recommended), " +
-		"Reduce motion and Reduce transparency in macOS, and a static wallpaper keep it smooth.")
-	tip.Wrapping = fyne.TextWrapWord
-	tip.TextStyle = fyne.TextStyle{Italic: true}
-	return container.NewVScroll(container.NewVBox(
-		container.NewBorder(nil, nil, nil, previewCard, header),
-		grid,
-		tip,
-	))
+	return container.NewVScroll(container.NewVBox(top, rest))
 }
 
 func (u *ui) refreshDetails() {
-	set := func(k, v string) { u.details[k].SetText(v) }
-	p := core.ProfileFor(u.cfg.Version)
-	set("Name", u.vmName())
-	set("Mac model", core.SMBIOSModel(u.cfg.Version)+" (SMBIOS)")
-	set("Acceleration", map[bool]string{true: "Metal through the passed-through GPU", false: "None: the CPU draws the screen"}[u.cfg.GPU != ""])
-	state := u.vm.State()
-	u.detailName.SetText(u.vmName())
-	u.detailState.SetText("● " + state.String())
-	u.detailState.Importance = stateImportance(state)
-	u.detailState.Refresh()
-	if r := versionIcon(u.cfg.Version); u.detailIcon.Resource != r {
-		u.detailIcon.Resource = r
-		u.detailIcon.Refresh()
+	set := func(k, v string) {
+		if t := u.details[k]; t != nil && t.Text != v {
+			t.Text = v
+			t.Refresh()
+		}
 	}
-	if r := versionIcon(u.cfg.Version); u.previewIcon.Resource != r {
-		u.previewIcon.Resource = r
-		u.previewIcon.Refresh()
+	p := core.ProfileFor(u.cfg.Version)
+	state := u.vm.State()
+	os := versionTitle(u.cfg.Version)
+	if p.Experimental {
+		os += " (experimental)"
+	}
+	set("General/Name", u.vmName())
+	set("General/Operating System", os)
+	set("General/Mac Model", core.SMBIOSModel(u.cfg.Version)+" (SMBIOS)")
+	set("System/Base Memory", fmt.Sprintf("%d MB", u.cfg.RAMMiB))
+	set("System/Processors", fmt.Sprintf("%d (%d cores × %d threads)", u.cfg.VCPUs, u.cfg.Cores, u.cfg.VCPUs/max(u.cfg.Cores, 1)))
+	set("System/CPU Model", strings.SplitN(p.CPU, ",", 2)[0])
+	set("System/Firmware", "UEFI (OVMF) with OpenCore")
+	set("System/Acceleration", "KVM, Q35 chipset")
+	set("Display/Shown", map[bool]string{true: "In the app", false: "QEMU window"}[u.cfg.InApp()])
+	set("Display/Graphics Controller", "VMware SVGA")
+	set("Display/Resolution", "1920x1080")
+	set("Display/Remote Display", map[bool]string{true: "VNC on a private socket", false: "Disabled"}[u.cfg.InApp()])
+	set("Network/Adapter 1", p.NIC+" (NAT)")
+	set("Network/Port Forwarding", fmt.Sprintf("SSH 127.0.0.1:%d → 22", u.cfg.SSHPort))
+	set("USB/Devices", "Keyboard, Tablet")
+	gpu, accel := "None", "Disabled: the CPU draws the screen"
+	if u.cfg.GPU != "" {
+		gpu, accel = u.cfg.GPU+" (vfio-pci)", "Metal through the passed-through GPU"
+	}
+	set("GPU Passthrough/GPU", gpu)
+	set("GPU Passthrough/3D Acceleration", accel)
+	disk, media := "mac_hdd_ng.img (not created yet)", "Empty"
+	if w, err := u.workspace(); err == nil {
+		if w.HasDisk() {
+			disk = fmt.Sprintf("mac_hdd_ng.img (Normal, %.2f GB used)", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30))
+		}
+		if w.HasMedia() {
+			media = "BaseSystem.img (" + w.MediaVersion() + " recovery)"
+		}
+	}
+	set("Storage/SATA Port 0", disk)
+	set("Storage/SATA Port 1", media)
+	set("Storage/Boot Disk", "OpenCore (built in, read-only)")
+	set("Storage/Controller", "SATA (ICH9 AHCI)")
+	set("Audio/Controller", "Intel HD Audio")
+	set("USB/Controller", "xHCI (USB 3.0)")
+
+	if u.previewName.Text != u.vmName() {
+		u.previewName.Text = u.vmName()
+		u.previewName.Refresh()
 	}
 	if state == core.Stopped { // the live preview ends with the VM
 		u.preview.Hide()
-		u.previewBg.Hide()
+		u.previewBg.Show()
 		u.previewIdle.Show()
 	}
-	set("Operating system", map[bool]string{true: versionTitle(u.cfg.Version) + " (experimental)", false: versionTitle(u.cfg.Version)}[p.Experimental])
-	set("Base memory", fmt.Sprintf("%d MiB", u.cfg.RAMMiB))
-	set("Processors", fmt.Sprintf("%d vCPUs (%d cores × %d threads)", u.cfg.VCPUs, u.cfg.Cores, u.cfg.VCPUs/max(u.cfg.Cores, 1)))
-	set("CPU model", strings.SplitN(p.CPU, ",", 2)[0])
-	set("Shown", map[bool]string{true: "In the app (VNC on a private socket)", false: "QEMU window"}[u.cfg.InApp()])
-	set("Graphics", "VMware SVGA (no acceleration)")
-	set("Resolution", "1920x1080")
-	set("Adapter", p.NIC+" (NAT)")
-	set("SSH", fmt.Sprintf("127.0.0.1:%d → guest port 22", u.cfg.SSHPort))
-	gpu := "None"
-	if u.cfg.GPU != "" {
-		gpu = u.cfg.GPU + " (vfio-pci)"
-	}
-	set("GPU", gpu)
-	disk, media := "not created yet", "none"
-	if w, err := u.workspace(); err == nil {
-		if w.HasDisk() {
-			disk = fmt.Sprintf("mac_hdd_ng.img, %.2f GiB used on the host", float64(core.Allocated(w.Path(core.DiskFile)))/(1<<30))
-		}
-		if w.HasMedia() {
-			media = "BaseSystem.img (" + w.MediaVersion() + ")"
-		}
-	}
-	exp := ""
-	if core.ProfileFor(u.cfg.Version).Experimental {
-		exp = " (experimental)"
-	}
-	u.detailSummary.SetText(fmt.Sprintf("%s%s · %s · %d MiB · %d vCPUs\nFolder %s", versionTitle(u.cfg.Version), exp,
-		core.SMBIOSModel(u.cfg.Version), u.cfg.RAMMiB, u.cfg.VCPUs, u.cfg.Workspace))
-	set("Disk", disk)
-	set("Install media", media)
-	set("Boot", "OpenCore (built in)")
 }
 
 // screenTab holds the live VM screen; "Open in window" moves it to its own window.
@@ -347,11 +397,12 @@ func (u *ui) statusBar() fyne.CanvasObject {
 }
 
 func (u *ui) refreshStatus(s core.VMState) {
-	text := "● " + s.String() + "  ·  Display: "
-	if u.cfg.InApp() {
-		text += "in the app. Click the screen to type; keys go to macOS while it has focus. Ctrl+Alt+F leaves full screen."
-	} else {
-		text += "QEMU window (change it in Settings)."
+	text := "● " + stateText(s)
+	switch {
+	case s != core.Stopped && u.cfg.InApp():
+		text += "  ·  Click the screen to type; keys go to macOS while it has focus. Ctrl+Alt+F leaves full screen."
+	case s != core.Stopped:
+		text += "  ·  In the QEMU window."
 	}
 	u.status.SetText(text)
 }

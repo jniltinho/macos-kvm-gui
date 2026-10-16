@@ -71,7 +71,6 @@ func (u *ui) reloadVMs(id string) {
 	}
 	u.vmItem.Refresh()
 	u.selectRow()
-	u.loadSettings()
 	u.refresh()
 }
 
@@ -97,7 +96,6 @@ func (u *ui) selectVM(i int) {
 	if !u.singleFile {
 		core.SelectVM(u.cur.ID)
 	}
-	u.loadSettings()
 	u.refresh()
 }
 

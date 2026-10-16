@@ -59,16 +59,17 @@ cd macos-kvm-gui-vX.Y.Z-linux-amd64
 
 ## First run through the tabs
 
-The window works like VirtualBox: a toolbar, the VM list on the left and the tabs **Details, Screen, Install, Settings, Host, GPU, Log** on the right. For a first install, use the order below.
+The window works like VirtualBox's manager: the **File / Machine / Help** menus, a toolbar (**New**, **Import** | **Settings**, **Remove** | **Start**, **Shut down**, **Force stop** | **Window**, **Full screen**), the VM list on the left with each VM's state, and the tabs **Details, Screen, Install, Host, GPU, Log** on the right. **Details** shows the VM in sections (General, System, Display, Storage, Audio, Network, USB, GPU passthrough) with a **Preview** of its screen. For a first install, use the order below.
 
 ### New VM
 
-Click **New**. The wizard has four steps:
+Click **New**. Like VirtualBox's wizard in expert mode, it has three folding sections:
 
-1. **Name and operating system:** a name and the macOS version. Only Sonoma has been validated end to end.
-2. **Hardware:** RAM, cores and vCPUs, filled in with what is recommended for this host, and the display (in the app or a QEMU window).
-3. **Storage:** the VM's folder, by default `<Workspace>/<name>` (the Workspace is `~/macOS-VMs` unless you change it in Settings), the disk size (thin qcow2, at least 40 GiB) and whether to download the macOS recovery now.
-4. **Summary:** **Create** makes the folder, extracts the boot files, creates the disk and, when asked, downloads and verifies the recovery. Progress shows in the Install tab.
+1. **Virtual machine name and operating system:** the name, the VM's folder (by default `<Workspace>/<name>`; the Workspace is `~/macOS-VMs` unless you change it in **File › Preferences**) and the macOS version. Only Sonoma has been validated end to end.
+2. **Specify virtual hardware:** Base Memory and Number of CPUs sliders, filled in with what is recommended for this host, and the display (in the app or a QEMU window).
+3. **Specify virtual hard disk:** the disk size (thin qcow2, at least 40 GB) and whether to download the macOS recovery now.
+
+**Finish** checks every section (it opens the one with a problem), makes the folder, extracts the boot files, creates the disk and, when asked, downloads and verifies the recovery. Progress shows in the Install tab.
 
 The first time the app opens it adds a VM named "macOS Sonoma" with the defaults, so you can also go straight to Install. Only one VM runs at a time.
 
@@ -86,7 +87,7 @@ If KVM loads from an initramfs, also rebuild that initramfs after the persistent
 
 ### Settings
 
-The selected VM's settings; click **Save** after changing them. Paths may start with `~/`. Defaults:
+**Settings** (toolbar or **Machine › Settings…**) opens the selected VM's settings window, like VirtualBox's: categories on the left (**General, System, Display, Storage, Audio, Network, USB**) and the page on the right. Nothing is saved until **OK**. Defaults for a VM created on first run:
 
 | Setting | Default |
 | --- | --- |
@@ -96,9 +97,9 @@ The selected VM's settings; click **Save** after changing them. Paths may start 
 | Cores / total vCPUs | 4 / 8 |
 | SSH host port | 2222, bound to `127.0.0.1` |
 
-vCPUs must be a positive multiple of cores; the SSH port must be 1024–65535. **Recommended for this host** fills CPU/RAM fields but does not save them: click **Save**. Settings cannot be saved while the VM runs.
+**System** has the Base Memory and Processors sliders and **Threads per core**; with 2 threads, choose an even number of processors. The SSH port (in **Network**) must be 1024–65535. **Recommended for this host** fills in memory and processors but does not save them: click **OK**. Settings cannot be changed while the VM runs. **Storage**, **Audio** and **USB** show what the VM uses; the Install tab creates the disk and manages the install media.
 
-**Workspace** (lower in the tab) is the folder that holds one folder per VM; new and imported VMs go there. Changing it does not move existing VMs: **Move to Workspace** moves the selected VM's disk, install media, NVRAM, identity and boot files into a new folder (on the same disk) and leaves anything else in the old folder alone. **Appearance** switches between Dark, Light and System right away.
+**File › Preferences** holds the app-wide settings. The **Workspace** is the folder that holds one folder per VM; new and imported VMs go there. Changing it does not move existing VMs: **Machine › Move…** (or **Move…** in Settings › General) moves the selected VM's disk, install media, NVRAM, identity and boot files into a new folder (on the same disk) and leaves anything else in the old folder alone. **Theme** switches between Dark, Light and System right away.
 
 An existing OSX-KVM folder can reuse `mac_hdd_ng.img` and `BaseSystem.img`. The app uses its own OpenCore and new SMBIOS identity, not the old boot files. Back up an existing VM first; iCloud/Messages may see a different Mac and require sign-in again.
 
@@ -123,12 +124,12 @@ An existing OSX-KVM folder can reuse `mac_hdd_ng.img` and `BaseSystem.img`. The 
 
 ### The VM screen
 
-The window works like VirtualBox: a toolbar with **Start**, **Shut down**, **Force stop**, **Open in window** and **Full screen**, the VM on the left, and tabs on the right. With the default **Display: In the app**, starting the VM switches to the **Screen** tab, which shows macOS inside the app (over VNC on a private socket, no TCP port).
+With the default **Display: In the app**, starting the VM switches to the **Screen** tab, which shows macOS inside the app (over VNC on a private socket, no TCP port).
 
 - **Click the screen** to send the keyboard to macOS; it keeps the keyboard while it has focus. Keys travel as physical (US layout) keys, so keep macOS on the **ABC** or **U.S.** input source for an English keyboard.
 - Only macOS's own pointer shows over the screen: the host pointer is hidden there.
-- **Full screen** fills the monitor. **Ctrl+Alt+F** is the host key: it is never sent to macOS, it leaves full screen, and pressed again it closes the separate window and brings the screen back to the tab. **Open in window** opens the screen in its own resizable window.
-- Choose **QEMU window** in Settings to get QEMU's own window instead.
+- **Full screen** fills the monitor. **Ctrl+Alt+F** is the host key: it is never sent to macOS, it leaves full screen, and pressed again it closes the separate window and brings the screen back to the tab. **Window** opens the screen in its own resizable window.
+- Choose **QEMU window** in Settings › Display to get QEMU's own window instead.
 
 **Shut down** sends the ACPI power button, and the state stays Running until QEMU exits. Many macOS versions treat that button as Sleep, which does nothing in a VM, so shut macOS down from the **Apple menu › Shut Down** inside the VM; the app notices when it powers off. **Force stop** is like pulling the power cord and can lose data. The app blocks closing its window while the VM is running or paused.
 
@@ -138,6 +139,6 @@ The window works like VirtualBox: a toolbar with **Start**, **Shut down**, **For
 - **Log:** shows the last 1000 lines of app/QEMU output in this session. Use it with [troubleshooting](troubleshooting.md).
 - Enable **Remote Login** inside macOS before connecting with `ssh -p 2222 user@127.0.0.1` (use your configured port/account).
 - The emulated display has no Metal acceleration. Use a static wallpaper and Reduce motion/transparency; see [display limitations](troubleshooting.md#display-and-graphics).
-- **Export** writes the selected VM as a `.tar` with its settings, disk, NVRAM, identity and install media (stopped VMs only), or its settings alone as `.json`. **Import** adds a VM from either; a `.tar` is unpacked into a new folder inside the Workspace. A GPU address is never imported.
-- **Delete** removes the VM from the list; deleting its files is a separate, confirmed choice and only touches the files the app created.
+- **File › Export VM…** writes the selected VM as a `.tar` with its settings, disk, NVRAM, identity and install media (stopped VMs only), or its settings alone as `.json`. **Import** adds a VM from either; a `.tar` is unpacked into a new folder inside the Workspace. A GPU address is never imported.
+- **Remove** removes the VM from the list; deleting its files is a separate, confirmed choice and only touches the files the app created.
 - The theme can also be forced with `MKG_THEME=dark|light|system`; see [settings and overrides](architecture.md#settings-and-overrides).

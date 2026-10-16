@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <path d="M1 1H15V12H1ZM6 12H10V14H13V15H3V14H6Z" fill="#376d98"/>
+  <path d="M2 2H14V10H2Z" fill="#bce8f6"/>
+  <path d="M12 10H14V11H12Z" fill="#e8b74e"/>
+</svg>

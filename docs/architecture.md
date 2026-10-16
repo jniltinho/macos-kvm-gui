@@ -11,7 +11,7 @@ The app owns one QEMU child process per instance; it is not a libvirt frontend a
 | Location | Responsibility |
 | --- | --- |
 | `main.go`, `cmd/` | `main.go` calls `cmd.Execute`; `cmd/` holds one Cobra command per file. Without a command the GUI opens. |
-| `internal/gui/` | Fyne window (`layout.go`: toolbar, VM list, Details), tabs and dialogs (`gui.go`), the New VM wizard (`wizard.go`), VM management dialogs (`vms.go`), the VNC screen (`screen.go`) and the theme (`theme.go`: dark, light or system, square corners). Long operations run off the UI thread; callbacks use `fyne.Do`. |
+| `internal/gui/` | VirtualBox-style window: menus, toolbar, VM list and Details (`layout.go`), toolbar buttons, compact key/value sections and sliders (`vbox.go`), the Settings and Preferences dialogs (`settings.go`), the New VM wizard (`wizard.go`), VM management dialogs (`vms.go`), the remaining tabs (`gui.go`), the VNC screen (`screen.go`) and the theme (`theme.go`: dark, light or system, square corners). Icons are original SVGs in `internal/assets/icons`. Long operations run off the UI thread; callbacks use `fyne.Do`. |
 | `internal/core/config.go`, `settings.go` | Validated VM configuration, version-derived hardware profiles and runtime environment settings. |
 | `internal/core/vms.go`, `bundle.go`, `running.go` | The VM list and preferences in SQLite, the Workspace, move, export/import bundles and detecting a running QEMU (also one started outside the app) through `/proc`. |
 | `internal/core/host.go`, `gpu.go` | Host checks, sysfs PCI/DRM/IOMMU discovery, GPU guards and constant privileged scripts. |
@@ -98,7 +98,7 @@ Downloads use exclusive `.part` temporary files and fixed final names in staging
 | --- | --- |
 | `macos-kvm-gui.db` | One row per VM: name, folder, version, `ram_mib`, cores, vCPUs, `ssh_port`, display, optional GPU PCI address; plus the Workspace and theme preferences. Save validates first. `--config <file.json>` uses a standalone JSON file instead. |
 | `MKG_ASSETS_DIR` | Runtime boot tree instead of embedded assets. Environment wins over the user-config `.env`; empty uses built-ins. |
-| `MKG_THEME` | `dark`, `light` or `system`; it wins over the theme chosen in Settings. Environment wins over the user-config `.env`. |
+| `MKG_THEME` | `dark`, `light` or `system`; it wins over the theme chosen in File › Preferences. Environment wins over the user-config `.env`. |
 | Repository `.env` and `assets.env` | Asset-fetch scripts only: **environment > repository `.env` > `assets.env`**. Not the runtime settings file. |
 
 The runtime `.env` accepts plain `KEY=value` lines, trims surrounding whitespace/quotes and skips comment lines; it does not execute shell code or expand `$HOME`/`~`. Use a literal absolute directory in it. For example:

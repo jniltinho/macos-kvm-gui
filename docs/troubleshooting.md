@@ -15,7 +15,7 @@ Start with **Host › Check again** and the **Log** tab (last 1000 session lines
 | `VT-x/AMD-V missing` | Enable hardware virtualization in BIOS/UEFI; nested environments must expose it too. |
 | `Ventura or later requires SSE4.1 and AVX2` | Select a version through Monterey or use compatible hardware. Older versions remain experimental. |
 | `mac_hdd_ng.img does not exist: create the disk in the Install tab` | Check the saved workspace path and create its disk. Do not replace a disk containing an existing installation. |
-| `VM folder <path> does not exist: create it in the Install tab` | Check the VM's folder in Settings and use Create VM folder in Install. |
+| `VM folder <path> does not exist: create it in the Install tab` | Check the VM's folder in Settings › General and use Create VM folder in Install. |
 
 The Host tab's QEMU-version hint is `QEMU 8.2.2 or later is required`; missing tools show `not found in PATH`. Install/upgrade `qemu-system-x86` and `qemu-utils`, then recheck.
 

@@ -11,8 +11,9 @@
 - [x] 2.3 First-run VM created inside the Workspace
 
 ## 3. GUI
-- [x] 3.1 New VM wizard (name and version, hardware, storage, summary)
-- [x] 3.2 Edit, Delete with optional purge, Move to Workspace
+- [x] 3.1 New VM wizard (name and version, hardware, hard disk) in VirtualBox's expert style
+- [x] 3.2 Settings window, Remove with optional purge, Move
+- [x] 3.5 VirtualBox-style manager: menus, toolbar, list, Details sections with Preview, Settings categories, expert-style wizard
 - [x] 3.3 Export/Import of `.tar` bundles and `.json` settings with progress
 - [x] 3.4 Theme selector applied at once, toolbar recolored on change
 

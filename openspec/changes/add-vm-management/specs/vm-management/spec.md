@@ -32,11 +32,11 @@ The system SHALL move only the files the app created for a stopped VM (disk, ins
 - **THEN** the move is refused
 
 ### Requirement: New VM wizard
-The system SHALL create a VM through steps for name and macOS version, hardware (prefilled with the host recommendation), storage (folder, disk size, download now) and a summary, SHALL validate each step before the next, and on Create SHALL make the folder and disk and download the recovery when asked.
+The system SHALL create a VM through one wizard with folding sections, like VirtualBox's expert mode: name, folder and macOS version; hardware (memory and CPU sliders prefilled with the host recommendation, display); and hard disk (size slider, download now). On Finish it SHALL validate every section, open the first section with a problem, and otherwise make the folder and disk and download the recovery when asked.
 
 #### Scenario: Duplicate name
-- **WHEN** the name is already used by another VM
-- **THEN** the wizard stays on the first step and says so
+- **WHEN** the name is already used by another VM and the user clicks Finish
+- **THEN** the wizard opens the name section, says so and creates nothing
 
 ### Requirement: Export and import
 The system SHALL export a stopped VM (refusing one that any QEMU is running) as a `.tar` with its settings, disk, NVRAM, identity and install media, or its settings as `.json`. Importing a `.tar` SHALL accept only the known file names, SHALL require a new or empty folder, SHALL drop the GPU address and SHALL leave nothing behind on error. Importing a `.json` SHALL add the settings as they are, using the folder they name.
@@ -56,5 +56,5 @@ The system SHALL detect a QEMU process using a VM's disk, including one started 
 The system SHALL offer Dark, Light and System themes, SHALL apply the choice at once to every window including the toolbar, and SHALL let `MKG_THEME` override it.
 
 #### Scenario: Switch to Light
-- **WHEN** the user picks Light in Settings
+- **WHEN** the user picks Light in File › Preferences
 - **THEN** the window, toolbar band and separators turn light without a restart

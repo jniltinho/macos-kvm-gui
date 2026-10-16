@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"image"
+	"os"
 	osuser "os/user"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,6 +17,7 @@ import (
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/lang"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -38,7 +39,7 @@ const manualSteps = `1. In the OpenCore menu, choose **macOS Base System**.
 
 const videoTips = `The VM has no graphics acceleration: macOS has no driver for the emulated display or for NVIDIA GPUs, so the CPU draws the screen. To make it smoother:
 
-1. Use **Recommended for this host** in the Settings tab (more vCPUs and RAM).
+1. Use **Recommended for this host** in Settings › System (more vCPUs and RAM).
 2. In macOS, under *System Settings › Accessibility › Display*, turn on **Reduce motion** and **Reduce transparency**.
 3. Under *Desktop & Dock*, minimize with **Scale** and turn off **Animate opening applications**.
 4. Use a static wallpaper (the default Sonoma wallpaper is animated and stays blank without Metal) and keep 1920x1080.
@@ -79,38 +80,37 @@ type ui struct {
 	status                     *widget.Label // status bar
 	tabs                       *container.AppTabs
 	vmItem                     *widget.List
-	details                    map[string]*widget.Label
+	details                    map[string]*canvas.Text
 	screen                     *screen
 	screenHolder               *fyne.Container
 	screenWin                  fyne.Window
-	btnDetach                  *widget.Button
-	btnFull                    *widget.Button
-	btnNew, btnEdit, btnDelete *widget.Button
-	settings                   *settingsForm
+	btnDetach, btnFull         *toolButton
+	btnNew, btnEdit, btnDelete *toolButton
 	vms                        []core.VMEntry
 	cur                        core.VMEntry // the selected VM
 	runningID                  string       // the VM QEMU is running, if any
 	singleFile                 bool         // --config: one VM file, no list management
-	detailIcon                 *canvas.Image
-	detailName                 *widget.Label
-	detailState                *widget.Label
-	detailSummary              *widget.Label
 	preview                    *canvas.Image
 	previewImg                 *image.RGBA
 	previewBg                  *canvas.Rectangle
-	previewIcon                *canvas.Image
+	previewName                *canvas.Text
 	previewIdle                *fyne.Container
-	btnExport, btnImport       *widget.Button
+	btnExport, btnImport       *toolButton
+	menuFor                    map[*fyne.MenuItem]*toolButton // menu items that mirror a toolbar button
 	lastPreview                time.Time
 
 	btnPrepare, btnDownload, btnDisk, btnRemove *widget.Button
-	btnStart, btnPowerdown, btnKill             *widget.Button
+	btnStart, btnPowerdown, btnKill             *toolButton
 	btnReserve, btnRelease                      *widget.Button
 }
 
 // Run opens the main window and blocks until it closes.
 func Run(appVersion, configPath string) {
 	version = appVersion
+	// The whole interface is in English, including Fyne's own dialogs (file pickers, buttons),
+	// which otherwise follow the desktop's language. LANGUAGE only selects translations.
+	os.Setenv("LANGUAGE", "en")
+	lang.AddTranslationsForLocale([]byte("{}"), "en") // re-reads the language set above
 	a := app.NewWithID("io.github.jniltinho.macos-kvm-gui")
 	a.Settings().SetTheme(appTheme{Theme: theme.DefaultTheme(), mode: themeMode()})
 	a.SetIcon(logo)
@@ -135,20 +135,23 @@ func Run(appVersion, configPath string) {
 		container.NewTabItemWithIcon("Details", theme.InfoIcon(), u.detailsTab()),
 		container.NewTabItemWithIcon("Screen", theme.ComputerIcon(), u.screenTab()),
 		container.NewTabItemWithIcon("Install", theme.DownloadIcon(), u.installTab()),
-		container.NewTabItemWithIcon("Settings", theme.SettingsIcon(), u.configTab()),
 		container.NewTabItemWithIcon("Host", theme.HomeIcon(), u.hostTab()),
 		container.NewTabItemWithIcon("GPU", theme.ColorPaletteIcon(), u.gpuTab()),
 		container.NewTabItemWithIcon("Log", theme.ListIcon(), u.logTab()),
 	)
 	split := container.NewHSplit(u.vmList(), u.tabs)
-	split.Offset = 0.14
+	split.Offset = listWidth()
+	u.win.SetMainMenu(u.mainMenu())
 	u.win.SetContent(container.NewBorder(top, u.statusBar(), nil, nil, split))
+	a.Settings().AddListener(func(fyne.Settings) { recolorThemed() })
 	u.win.Resize(fyne.NewSize(1280, 820))
 	u.win.SetCloseIntercept(func() {
 		if u.vm.State() != core.Stopped {
 			dialog.ShowInformation("VM running", "Shut down the VM before closing the app.", u.win)
 			return
 		}
+		// The list keeps the width the user dragged it to, like VirtualBox.
+		core.SetPreference("list-width", strconv.FormatFloat(split.Offset, 'f', 3, 64))
 		u.win.Close()
 	})
 	u.refresh()
@@ -158,9 +161,24 @@ func Run(appVersion, configPath string) {
 	u.win.ShowAndRun()
 }
 
+// listWidth is the VM list's share of the window: the saved one, or a quarter.
+func listWidth() float64 {
+	if v, err := strconv.ParseFloat(core.Preference("list-width"), 64); err == nil && v >= 0.05 && v <= 0.8 {
+		return v
+	}
+	return 0.25
+}
+
 // section is a titled card; every tab is built from these.
 func section(title, subtitle string, content ...fyne.CanvasObject) fyne.CanvasObject {
 	return widget.NewCard(title, subtitle, container.NewVBox(content...))
+}
+
+// markdown is wrapped rich text: unwrapped text would force the whole right pane wide.
+func markdown(md string) *widget.RichText {
+	r := widget.NewRichTextFromMarkdown(md)
+	r.Wrapping = fyne.TextWrapWord
+	return r
 }
 
 func wrapped(text string) *widget.Label {
@@ -310,142 +328,13 @@ func versionLabel(v core.Version) string {
 	return v.Name
 }
 
-// settingsForm holds the Settings tab's fields so they can be reloaded for another VM.
-type settingsForm struct {
-	name, ws, ram, cores, vcpus, port *widget.Entry
-	version, display                  *widget.Select
-	short                             map[string]string
-}
-
 const (
 	displayAppLabel    = "In the app (VNC on a private socket)"
 	displayWindowLabel = "QEMU window"
 )
 
-func (u *ui) configTab() fyne.CanvasObject {
-	f := &settingsForm{short: map[string]string{}}
-	u.settings = f
-	f.name, f.ws, f.ram, f.cores, f.vcpus, f.port = widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry(), widget.NewEntry()
-	var labels []string
-	for _, v := range core.Versions {
-		l := versionLabel(v)
-		labels = append(labels, l)
-		f.short[l] = v.Short
-	}
-	f.version = widget.NewSelect(labels, nil)
-	f.display = widget.NewSelect([]string{displayAppLabel, displayWindowLabel}, nil)
-	u.loadSettings()
-
-	form := widget.NewForm(
-		widget.NewFormItem("Name", f.name),
-		widget.NewFormItem("Folder", f.ws),
-		widget.NewFormItem("macOS version", f.version),
-		widget.NewFormItem("RAM (MiB)", f.ram),
-		widget.NewFormItem("Cores", f.cores),
-		widget.NewFormItem("vCPUs (total)", f.vcpus),
-		widget.NewFormItem("SSH port (127.0.0.1)", f.port),
-		widget.NewFormItem("Display", f.display),
-	)
-	form.SubmitText = "Save"
-	form.OnSubmit = func() {
-		if u.vm.State() != core.Stopped {
-			dialog.ShowInformation("Settings", "Shut down the VM before changing the settings.", u.win)
-			return
-		}
-		c := u.cfg // keeps fields edited elsewhere, such as the GPU
-		c.Name, c.Workspace = strings.TrimSpace(f.name.Text), strings.TrimSpace(f.ws.Text)
-		c.Version, c.Display = f.short[f.version.Selected], map[string]string{displayAppLabel: core.DisplayApp, displayWindowLabel: core.DisplayWindow}[f.display.Selected]
-		var bad string
-		for _, n := range []struct {
-			name string
-			e    *widget.Entry
-			dst  *int
-		}{{"RAM", f.ram, &c.RAMMiB}, {"Cores", f.cores, &c.Cores}, {"vCPUs", f.vcpus, &c.VCPUs}, {"SSH port", f.port, &c.SSHPort}} {
-			v, err := strconv.Atoi(strings.TrimSpace(n.e.Text))
-			if err != nil && bad == "" {
-				bad = n.name + ": enter a whole number"
-			}
-			*n.dst = v
-		}
-		if bad == "" && c.Name == "" {
-			bad = "Name: give the VM a name"
-		}
-		if bad != "" {
-			dialog.ShowError(errors.New(bad), u.win)
-			return
-		}
-		if u.saveConfig(c) {
-			u.reloadVMs(u.cur.ID)
-			dialog.ShowInformation("Settings", "Settings saved.", u.win)
-		}
-	}
-	move := widget.NewButtonWithIcon("Move to Workspace", theme.FolderOpenIcon(), u.moveVMDialog)
-	recommend := widget.NewButtonWithIcon("Recommended for this host", theme.ComputerIcon(), func() {
-		r := core.Recommended(u.cfg, runtime.NumCPU(), u.host.MemTotalMiB())
-		f.ram.SetText(strconv.Itoa(r.RAMMiB))
-		f.cores.SetText(strconv.Itoa(r.Cores))
-		f.vcpus.SetText(strconv.Itoa(r.VCPUs))
-	})
-	note := wrapped("Without a supported GPU, macOS draws the screen on the CPU: more vCPUs make video smoother. " +
-		"Recommended only fills in the fields; click Save to apply. " +
-		"The CPU model and network card follow the macOS version. Only Sonoma has been validated end to end.")
-	note.TextStyle = fyne.TextStyle{Italic: true}
-	modes := map[string]string{"Dark": "dark", "Light": "light", "System": "system"}
-	appearance := widget.NewSelect([]string{"Dark", "Light", "System"}, func(label string) {
-		m := modes[label]
-		core.SetPreference("theme", m)
-		fyne.CurrentApp().Settings().SetTheme(appTheme{Theme: theme.DefaultTheme(), mode: m})
-	})
-	for label, m := range modes {
-		if m == themeMode() {
-			appearance.SetSelected(label)
-		}
-	}
-	themeNote := wrapped("Applies right away to every window. System follows the desktop's light or dark setting. MKG_THEME in the environment or .env overrides it.")
-	themeNote.TextStyle = fyne.TextStyle{Italic: true}
-	root := widget.NewEntry()
-	root.SetText(core.WorkspaceRoot())
-	rootForm := widget.NewForm(widget.NewFormItem("Workspace", root))
-	rootForm.SubmitText = "Save"
-	rootForm.OnSubmit = func() {
-		if err := core.SetWorkspaceRoot(root.Text); err != nil {
-			dialog.ShowError(err, u.win)
-			return
-		}
-		dialog.ShowInformation("Workspace", "Saved. New and imported VMs get a folder inside "+core.WorkspaceRoot()+".", u.win)
-	}
-	rootNote := wrapped("New and imported VMs get their own folder inside the Workspace (<Workspace>/<name>). VMs that already exist stay in their folder.")
-	rootNote.TextStyle = fyne.TextStyle{Italic: true}
-	return container.NewVScroll(container.NewVBox(
-		section("Virtual machine", "Each VM has its own settings and folder", form, container.NewHBox(move)),
-		section("Resources", "", container.NewHBox(recommend), note),
-		section("Workspace", "The folder that holds one folder per VM", rootForm, rootNote),
-		section("Appearance", "", widget.NewForm(widget.NewFormItem("Theme", appearance)), themeNote),
-	))
-}
-
-// loadSettings fills the Settings tab from the selected VM.
-func (u *ui) loadSettings() {
-	f := u.settings
-	if f == nil {
-		return
-	}
-	f.name.SetText(u.cfg.Name)
-	f.ws.SetText(u.cfg.Workspace)
-	for _, v := range core.Versions {
-		if v.Short == u.cfg.Version {
-			f.version.SetSelected(versionLabel(v))
-		}
-	}
-	f.ram.SetText(strconv.Itoa(u.cfg.RAMMiB))
-	f.cores.SetText(strconv.Itoa(u.cfg.Cores))
-	f.vcpus.SetText(strconv.Itoa(u.cfg.VCPUs))
-	f.port.SetText(strconv.Itoa(u.cfg.SSHPort))
-	f.display.SetSelected(map[bool]string{true: displayAppLabel, false: displayWindowLabel}[u.cfg.InApp()])
-}
-
 func (u *ui) installTab() fyne.CanvasObject {
-	u.installInfo = widget.NewLabel("")
+	u.installInfo = wrapped("")
 	u.installInfo.Wrapping = fyne.TextWrapWord
 	u.stage = widget.NewLabel("")
 	u.bar = widget.NewProgressBar()
@@ -527,7 +416,7 @@ func (u *ui) installTab() fyne.CanvasObject {
 		section("1 · VM folder", "Creates the VM's folder and extracts the built-in OpenCore and OVMF", container.NewHBox(u.btnPrepare)),
 		section("2 · macOS recovery", "Downloaded from Apple, signature and hashes verified", container.NewHBox(u.btnDownload), u.stage, u.bar, u.barInf),
 		section("3 · Disk", "Thin qcow2: it only takes the space macOS uses", disk),
-		section("4 · Install inside the VM", "", widget.NewRichTextFromMarkdown(manualSteps)),
+		section("4 · Install inside the VM", "", markdown(manualSteps)),
 		section("5 · Clean up", "After macOS boots from the disk", container.NewHBox(u.btnRemove)),
 	))
 }
@@ -555,7 +444,7 @@ const noGPU = "None (emulated display)"
 
 func (u *ui) gpuTab() fyne.CanvasObject {
 	u.gpuList = container.NewVBox()
-	u.gpuStatus = widget.NewLabel("")
+	u.gpuStatus = wrapped("")
 	u.gpuStatus.Wrapping = fyne.TextWrapWord
 	u.gpuSelect = widget.NewSelect(nil, func(choice string) {
 		addr := ""
@@ -589,7 +478,7 @@ func (u *ui) gpuTab() fyne.CanvasObject {
 		section("Display adapters", "Only macOS-supported AMD GPUs can be passed to the VM", u.gpuList),
 		section("Passthrough", "", container.NewBorder(nil, nil, widget.NewLabel("GPU for the VM:"), nil, u.gpuSelect),
 			container.NewHBox(u.btnReserve, u.btnRelease), u.gpuStatus),
-		section("About GPU passthrough", "", widget.NewRichTextFromMarkdown(gpuNotes)),
+		section("About GPU passthrough", "", markdown(gpuNotes)),
 	))
 }
 
@@ -702,7 +591,7 @@ func (u *ui) refresh() {
 	}
 	u.installInfo.SetText(strings.Join(lines, "\n"))
 
-	enable := func(b *widget.Button, on bool) {
+	enable := func(b fyne.Disableable, on bool) {
 		if on {
 			b.Enable()
 		} else {
@@ -725,7 +614,7 @@ func (u *ui) refresh() {
 		u.gpuSelect.Enable()
 	}
 
-	u.header.SetText("● " + state.String())
+	u.header.SetText("● " + stateText(state))
 	u.header.Importance = stateImportance(state)
 	u.header.Refresh()
 	enable(u.btnDetach, u.cfg.InApp())
@@ -736,6 +625,7 @@ func (u *ui) refresh() {
 	enable(u.btnImport, !running && !u.singleFile)
 	enable(u.btnFull, u.cfg.InApp() && running)
 	u.vmItem.Refresh()
+	u.refreshMenu()
 	u.refreshDetails()
 	u.refreshStatus(state)
 }

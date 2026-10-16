@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <defs>
+    <linearGradient id="import-tray" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#d8edf9"/>
+      <stop offset=".48" stop-color="#aac8df"/>
+      <stop offset="1" stop-color="#759bb9"/>
+    </linearGradient>
+    <linearGradient id="import-arrow" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#d4ff9e"/>
+      <stop offset=".4" stop-color="#83dc49"/>
+      <stop offset=".48" stop-color="#5bc52d"/>
+      <stop offset="1" stop-color="#258b23"/>
+    </linearGradient>
+  </defs>
+  <path d="M3 18H9V22H23V18H29V29H3Z" fill="url(#import-tray)" stroke="#486b8c"/>
+  <path d="M4 26H28V28H4Z" fill="#577e9d"/>
+  <path d="M4 19H8V23H11V24H4ZM24 19H28V20H24Z" fill="#e5f5ff"/>
+
+  <path d="M12 3H20V14H26L16 24 6 14H12Z" fill="url(#import-arrow)" stroke="#326b21"/>
+  <path d="M13 4H19V14H16V18L9 15H13Z" fill="#ffffff" fill-opacity="0.38"/>
+</svg>

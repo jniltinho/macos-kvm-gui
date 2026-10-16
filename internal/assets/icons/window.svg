@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <defs>
+    <linearGradient id="window-frame" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#9addff"/>
+      <stop offset=".28" stop-color="#4dabe6"/>
+      <stop offset=".32" stop-color="#3587c2"/>
+      <stop offset="1" stop-color="#286799"/>
+    </linearGradient>
+    <linearGradient id="window-glass" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#f2fbff"/>
+      <stop offset="1" stop-color="#b8d8ec"/>
+    </linearGradient>
+    <linearGradient id="window-screen" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#9be8f7"/>
+      <stop offset="1" stop-color="#499fc8"/>
+    </linearGradient>
+  </defs>
+  <path d="M2 4H30V27H2Z" fill="url(#window-frame)" stroke="#285b88"/>
+  <path d="M4 11H28V25H4Z" fill="url(#window-glass)"/>
+  <path d="M3 5H29V6H3ZM5 7H13V8H5ZM22 7H24V9H22ZM26 7H28V9H26Z" fill="#d9f5ff"/>
+  <path d="M9 14H23V22H9Z" fill="#295f8d"/>
+  <path d="M10 15H22V20H10Z" fill="url(#window-screen)"/>
+  <path d="M14 22H18V24H20V25H12V24H14Z" fill="#295f8d"/>
+  <path d="M10 15H22L10 19Z" fill="#e2fcff" fill-opacity="0.5"/>
+</svg>

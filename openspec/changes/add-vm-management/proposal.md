@@ -8,8 +8,8 @@ The app managed one VM through one `config.json`, and its "workspace" was that V
 
 - The VM list and app preferences move to SQLite (`~/.config/macos-kvm-gui/macos-kvm-gui.db`, pure-Go `modernc.org/sqlite`). An older `config.json` is imported once and renamed to `.migrated`.
 - The **Workspace** becomes the app-wide parent folder (default `~/macOS-VMs`). Each VM has its own folder, by default `<Workspace>/<name>`. **Move** relocates a VM's own files into a new folder.
-- A four-step **New VM wizard**: name and macOS version, hardware recommended for the host, storage (folder, disk size, download now), summary. Create makes the folder and disk and can download the recovery.
-- Edit, Delete (files are a separate, confirmed choice), **Export/Import** as a `.tar` bundle (settings, disk, NVRAM, identity, install media) or settings-only `.json`.
+- A **New VM wizard** in VirtualBox's expert style: folding sections for name and macOS version, hardware (sliders, recommended for the host) and hard disk (size, download now). Finish makes the folder and disk and can download the recovery.
+- A VirtualBox-style manager (File/Machine/Help menus, toolbar, list, Details sections with Preview, a Settings window with categories), Remove (files are a separate, confirmed choice), **Export/Import** as a `.tar` bundle (settings, disk, NVRAM, identity, install media) or settings-only `.json`.
 - Running detection through `/proc`, including QEMU started outside the app; Start refuses a disk already in use. One VM runs at a time.
 - Theme selector (Dark, Light, System), applied at once and saved; `MKG_THEME` overrides it.
 - CLI: `vm list|status|create|select|move|export|import|delete`, `workspace show|set`, global `--vm`.

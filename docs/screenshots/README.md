@@ -1,18 +1,18 @@
 # Screenshots
 
-Screens of macOS KVM with the default dark theme. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
+Screens of macOS KVM with the light theme. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
 
 ## Details
 
 ![Details tab](details.png)
 
-The VirtualBox-style window: the toolbar (New, Edit, Delete, Export, Import | Start, Shut down, Force stop | Open in window, Full screen), the VM list on the left and the Details tab, with the VM's icon, a preview of its screen and its General, System, Display, Storage, Network and GPU settings.
+The manager, modelled on VirtualBox's: the File / Machine / Help menus, the toolbar (New, Import | Settings, Remove | Start, Shut down, Force stop | Window, Full screen), the VM list with each VM's state and the Details tab: General, System, Display, Storage, Audio, Network, USB and GPU passthrough sections, with the Preview of the screen beside General and System. The light theme uses VirtualBox's colors.
 
 ## New VM wizard
 
 ![New VM wizard](new-vm.png)
 
-Four steps: name and macOS version, hardware (recommended for this host), storage (the folder inside the Workspace, the disk size and whether to download the recovery now) and a summary. Create makes the folder and the disk and downloads the recovery.
+Like VirtualBox's wizard in expert mode: three folding sections for the name, folder and macOS version; the hardware (memory and CPU sliders, recommended for this host); and the hard disk (size and whether to download the recovery now). Finish makes the folder and the disk and downloads the recovery.
 
 ## Install
 
@@ -22,9 +22,9 @@ The guided install. **1 · VM folder** creates the folder and extracts the built
 
 ## Settings
 
-![Settings tab](settings.png)
+![Settings window](settings.png)
 
-The selected VM's name, folder, macOS version, RAM, cores, vCPUs, SSH port and display, with **Move to Workspace**. Below are **Recommended for this host**, the Workspace (the folder that holds one folder per VM) and the theme.
+The VM's Settings window: General, System (Motherboard, Processor and Acceleration tabs), Display, Storage, Audio, Network and USB. Nothing is saved until OK. The Workspace and the theme are in File › Preferences.
 
 ## Host
 
@@ -46,7 +46,7 @@ The QEMU command line and output, together with the app's own messages (last 100
 
 ## Updating these screenshots
 
-Build with `make build`, run `./dist/macos-kvm-gui`, resize the window to 1280x820 and capture each tab. On X11, for example:
+Build with `make build`, run `./dist/macos-kvm-gui`, resize the window to 1280x820 and capture each tab (`MKG_THEME=light`). On X11, for example:
 
 ```sh
 WID=$(xdotool search --name '^macOS KVM' | head -1)

@@ -59,7 +59,7 @@ Captions for each screen are in [screenshots/README.md](screenshots/README.md).
 
 ### Settings
 
-![Settings tab](screenshots/settings.png)
+![Settings window](screenshots/settings.png)
 
 ### Host
 
