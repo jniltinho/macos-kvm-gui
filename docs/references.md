@@ -33,7 +33,7 @@ These links distinguish bundled components from background references and unsupp
 ## Reims vGPU
 
 - [steelbrain/reims-vgpu](https://github.com/steelbrain/reims-vgpu) — The paravirtual GPU library, its QEMU fork with `apple-gfx-pci`, and the measured x86-64 command line [Reims vGPU](reims-vgpu.md) follows; built at a pinned commit, not bundled in the app.
-- [reims-util](https://github.com/steelbrain/reims-vgpu/tree/main/crates/reims-util) — Upstream's tool for its own OpenCore images, and `reims-ctl`, its VM runner; neither is used or installed by this app.
+- [reims-util](https://github.com/steelbrain/reims-util) — Upstream's tool for its own OpenCore images, and `reims-ctl`, its VM runner; neither is used or installed by this app.
 - [Apple ParavirtualizedGraphics](https://developer.apple.com/documentation/paravirtualizedgraphics) — Apple's framework for paravirtual GPUs, whose guest driver macOS ships and Reims vGPU implements the host side of.
 - [Vulkan](https://www.vulkan.org/) — The host graphics API Reims vGPU renders through.
 

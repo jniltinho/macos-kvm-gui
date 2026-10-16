@@ -25,6 +25,7 @@ var settingsShowCmd = &cobra.Command{
 		fmt.Fprintln(out, "file:", core.SettingsFile())
 		fmt.Fprintln(out, "theme:", core.Setting("MKG_THEME"))
 		fmt.Fprintln(out, "assets_dir:", core.Setting("MKG_ASSETS_DIR"))
+		fmt.Fprintln(out, "reims_qemu:", core.Setting("MKG_REIMS_QEMU"))
 		for _, e := range ks.Entries {
 			fmt.Fprintf(out, "kext: %s", e.URL)
 			if len(e.Kexts) > 0 {
