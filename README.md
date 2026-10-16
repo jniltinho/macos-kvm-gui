@@ -46,6 +46,8 @@ Flow: **Host** (all green) → **Settings** (workspace, version, RAM, CPUs, SSH 
 
 No OSX-KVM clone, `git` or `python3` is needed: the recovery is downloaded directly from Apple's server by a Go port of acidanthera's `macrecovery`, and its chunklist is verified before use.
 
+The interface uses a dark theme. Set `MKG_THEME=light` in the environment or in `~/.config/macos-kvm-gui/.env` for the light one.
+
 The guest's SSH is forwarded to `127.0.0.1:<port>` only (default 2222): `ssh -p 2222 user@127.0.0.1`, after turning on Remote Login in macOS.
 
 ## Video performance
@@ -153,7 +155,7 @@ make test-integration   # boots a real QEMU with the embedded OpenCore in a temp
 | `<workspace>/macos-kvm-gui/efi/` | OpenCore tree and generated `config.plist` (rewritten at every start) |
 | `<workspace>/macos-kvm-gui/OVMF_VARS_4M.fd` | the VM's UEFI NVRAM (created on first start, never overwritten) |
 | `<workspace>/macos-kvm-gui/smbios.json` | the VM's SMBIOS identity (serial, MLB, UUID, ROM) |
-| `~/.config/macos-kvm-gui/.env` | optional local settings, such as `MKG_ASSETS_DIR` |
+| `~/.config/macos-kvm-gui/.env` | optional local settings: `MKG_ASSETS_DIR`, `MKG_THEME=light` |
 | `<workspace>/.macos-kvm-gui-media` | version of the `BaseSystem.img` downloaded by the app |
 | `$XDG_RUNTIME_DIR/macos-kvm-gui-*.lock` | workspace lock (one operation or VM at a time, across app instances) |
 | `/etc/modprobe.d/macos-kvm-gui.conf` | persistent `ignore_msrs` (created by the fix in the Host tab) |

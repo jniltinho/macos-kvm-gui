@@ -81,7 +81,7 @@ type ui struct {
 
 func main() {
 	a := app.NewWithID("io.github.jniltinho.macos-kvm-gui")
-	a.Settings().SetTheme(appTheme{theme.DefaultTheme()})
+	a.Settings().SetTheme(appTheme{Theme: theme.DefaultTheme(), light: core.Setting("MKG_THEME") == "light"})
 	a.SetIcon(logo)
 	u := &ui{win: a.NewWindow("macOS KVM"), host: core.SystemHost(), vm: &core.VM{}}
 	u.cfgPath, _ = core.ConfigPath()
