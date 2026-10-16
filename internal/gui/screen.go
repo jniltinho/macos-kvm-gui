@@ -1,0 +1,277 @@
+package gui
+
+import (
+	"image"
+	"image/color"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/driver/desktop"
+	"fyne.io/fyne/v2/widget"
+
+	"github.com/jniltinho/macos-kvm-gui/internal/core"
+)
+
+// screen shows the VM's display (over VNC) and sends keyboard and mouse to it while focused.
+type screen struct {
+	widget.BaseWidget
+	img  *canvas.Image
+	hint *widget.Label
+
+	mu       sync.Mutex
+	vnc      *core.VNC
+	buf      *image.RGBA // one image updated in place: Fyne keeps a single texture for it
+	buttons  uint8
+	lastX    int // last pointer position sent, in frame coordinates
+	lastY    int
+	lastSent uint8 // buttons sent with the last position
+	pressed  map[string]core.KeyCode
+	dirty    atomic.Bool
+	stop     chan struct{}
+	// onHostKey runs when the host key (Ctrl+Alt+F) is pressed; it is never sent to the guest.
+	onHostKey func()
+	// onFrame receives each drawn frame (on the UI goroutine), for the Details preview.
+	onFrame func(*image.RGBA)
+}
+
+const screenIdle = "The VM screen appears here while it runs. Click it to type."
+
+func newScreen() *screen {
+	s := &screen{img: canvas.NewImageFromImage(image.NewRGBA(image.Rect(0, 0, 1, 1))), hint: widget.NewLabel(screenIdle), pressed: map[string]core.KeyCode{}}
+	s.img.FillMode = canvas.ImageFillContain
+	s.img.ScaleMode = canvas.ImageScaleFastest
+	s.hint.Alignment = fyne.TextAlignCenter
+	s.ExtendBaseWidget(s)
+	return s
+}
+
+func (s *screen) CreateRenderer() fyne.WidgetRenderer {
+	bg := canvas.NewRectangle(color.Black)
+	return widget.NewSimpleRenderer(container.NewStack(bg, s.img, container.NewCenter(s.hint)))
+}
+
+func (s *screen) MinSize() fyne.Size { return fyne.NewSize(480, 270) }
+
+// attach starts showing v; frames are redrawn at most 60 times per second.
+func (s *screen) attach(v *core.VNC) {
+	s.mu.Lock()
+	s.vnc, s.stop = v, make(chan struct{})
+	stop := s.stop
+	s.mu.Unlock()
+	v.OnUpdate = func() { s.dirty.Store(true) }
+	s.hint.Hide()
+	go func() {
+		t := time.NewTicker(time.Second / 60)
+		defer t.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-t.C:
+				if !s.dirty.Swap(false) {
+					continue
+				}
+				fyne.Do(func() {
+					s.mu.Lock()
+					if s.vnc == v {
+						// Runs on Fyne's main goroutine, which also paints, so the copy never races the renderer.
+						s.buf = v.Frame(s.buf)
+						s.img.Image = s.buf
+						if s.onFrame != nil {
+							s.onFrame(s.buf)
+						}
+					}
+					s.mu.Unlock()
+					s.img.Refresh()
+				})
+			}
+		}
+	}()
+}
+
+// detach stops showing the VM, releasing anything still pressed.
+func (s *screen) detach() {
+	s.releaseAll()
+	s.mu.Lock()
+	if s.stop != nil {
+		close(s.stop)
+	}
+	s.vnc, s.stop = nil, nil
+	s.mu.Unlock()
+	s.img.Image = image.NewRGBA(image.Rect(0, 0, 1, 1))
+	s.img.Refresh()
+	s.hint.Show()
+}
+
+func (s *screen) conn() *core.VNC {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.vnc
+}
+
+// Keyboard: physical keys go to the guest as key presses and releases.
+
+func (s *screen) FocusGained()                 {}
+func (s *screen) FocusLost()                   { s.releaseAll() }
+func (s *screen) TypedRune(rune)               {}
+func (s *screen) TypedKey(*fyne.KeyEvent)      {}
+func (s *screen) AcceptsTab() bool             { return true } // Tab goes to the guest, not to Fyne's focus chain
+func (s *screen) KeyDown(ev *fyne.KeyEvent)    { s.key(ev.Name, true) }
+func (s *screen) KeyUp(ev *fyne.KeyEvent)      { s.key(ev.Name, false) }
+func (s *screen) Scrolled(e *fyne.ScrollEvent) { s.wheel(e.Scrolled.DY) }
+
+func (s *screen) key(name fyne.KeyName, down bool) {
+	v := s.conn()
+	k, ok := core.KeyFor(string(name))
+	if v == nil || !ok {
+		return
+	}
+	if down && name == "F" && s.isHeld("LeftControl", "RightControl") && s.isHeld("LeftAlt", "RightAlt") {
+		s.releaseAll() // the guest saw Ctrl and Alt go down; let them go up
+		if s.onHostKey != nil {
+			s.onHostKey()
+		}
+		return
+	}
+	s.mu.Lock()
+	_, held := s.pressed[string(name)]
+	if down == held { // ignore auto-repeat downs and stray ups: macOS repeats keys itself
+		s.mu.Unlock()
+		return
+	}
+	if down {
+		s.pressed[string(name)] = k
+	} else {
+		delete(s.pressed, string(name))
+	}
+	s.mu.Unlock()
+	v.Key(down, k)
+}
+
+func (s *screen) isHeld(names ...string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range names {
+		if _, ok := s.pressed[n]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *screen) releaseAll() {
+	s.mu.Lock()
+	v, keys := s.vnc, s.pressed
+	s.pressed = map[string]core.KeyCode{}
+	s.mu.Unlock()
+	if v == nil {
+		return
+	}
+	for _, k := range keys {
+		v.Key(false, k)
+	}
+}
+
+// Mouse: positions are mapped through the same contain-fit scaling the image uses.
+
+func (s *screen) pointer(pos fyne.Position) {
+	v := s.conn()
+	if v == nil {
+		return
+	}
+	fw, fh := v.Size()
+	size := s.Size()
+	if x, y, ok := core.ToFrame(fw, fh, size.Width, size.Height, pos.X, pos.Y); ok {
+		s.mu.Lock()
+		b := s.buttons
+		same := x == s.lastX && y == s.lastY && b == s.lastSent
+		s.lastX, s.lastY, s.lastSent = x, y, b
+		s.mu.Unlock()
+		if !same { // high-rate motion events often repeat a position after scaling
+			v.Pointer(b, x, y)
+		}
+	}
+}
+
+func vncButton(b desktop.MouseButton) uint8 {
+	switch b {
+	case desktop.MouseButtonPrimary:
+		return core.ButtonLeft
+	case desktop.MouseButtonSecondary:
+		return core.ButtonRight
+	case desktop.MouseButtonTertiary:
+		return core.ButtonMiddle
+	}
+	return 0
+}
+
+func (s *screen) MouseDown(e *desktop.MouseEvent) {
+	if c := fyne.CurrentApp().Driver().CanvasForObject(s); c != nil {
+		c.Focus(s) // clicking the screen sends the keyboard to the VM
+	}
+	s.mu.Lock()
+	s.buttons |= vncButton(e.Button)
+	s.mu.Unlock()
+	s.pointer(e.Position)
+}
+
+func (s *screen) MouseUp(e *desktop.MouseEvent) {
+	s.mu.Lock()
+	s.buttons &^= vncButton(e.Button)
+	s.mu.Unlock()
+	s.pointer(e.Position)
+}
+
+func (s *screen) MouseIn(e *desktop.MouseEvent)    { s.pointer(e.Position) }
+func (s *screen) MouseMoved(e *desktop.MouseEvent) { s.pointer(e.Position) }
+
+// MouseOut releases held buttons, so a drag that leaves the screen does not stay stuck.
+func (s *screen) MouseOut() {
+	s.mu.Lock()
+	held, v := s.buttons, s.vnc
+	s.buttons = 0
+	s.mu.Unlock()
+	if held != 0 && v != nil {
+		v.Pointer(0, s.lastX, s.lastY)
+	}
+}
+
+func (s *screen) wheel(dy float32) {
+	v := s.conn()
+	if v == nil || dy == 0 {
+		return
+	}
+	bit := uint8(core.ButtonWheelDown)
+	if dy > 0 {
+		bit = core.ButtonWheelUp
+	}
+	s.mu.Lock()
+	b := s.buttons
+	s.mu.Unlock()
+	fw, fh := v.Size()
+	v.Pointer(b|bit, fw/2, fh/2)
+	v.Pointer(b, fw/2, fh/2)
+}
+
+// Cursor hides the host pointer over the screen while a VM is shown: macOS draws its own
+// pointer into the framebuffer, so showing both would display two pointers.
+func (s *screen) Cursor() desktop.Cursor {
+	if s.conn() != nil {
+		return desktop.HiddenCursor
+	}
+	return desktop.DefaultCursor
+}
+
+var (
+	_ desktop.Cursorable = (*screen)(nil)
+	_ fyne.Focusable     = (*screen)(nil)
+	_ fyne.Tabbable      = (*screen)(nil)
+	_ desktop.Keyable    = (*screen)(nil)
+	_ desktop.Mouseable  = (*screen)(nil)
+	_ desktop.Hoverable  = (*screen)(nil)
+	_ fyne.Scrollable    = (*screen)(nil)
+)

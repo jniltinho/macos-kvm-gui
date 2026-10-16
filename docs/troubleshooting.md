@@ -15,7 +15,7 @@ Start with **Host › Check again** and the **Log** tab (last 1000 session lines
 | `VT-x/AMD-V missing` | Enable hardware virtualization in BIOS/UEFI; nested environments must expose it too. |
 | `Ventura or later requires SSE4.1 and AVX2` | Select a version through Monterey or use compatible hardware. Older versions remain experimental. |
 | `mac_hdd_ng.img does not exist: create the disk in the Install tab` | Check the saved workspace path and create its disk. Do not replace a disk containing an existing installation. |
-| `workspace <path> does not exist: prepare it in the Install tab` | Save the intended path and use Create workspace. |
+| `VM folder <path> does not exist: create it in the Install tab` | Check the VM's folder in Settings and use Create VM folder in Install. |
 
 The Host tab's QEMU-version hint is `QEMU 8.2.2 or later is required`; missing tools show `not found in PATH`. Install/upgrade `qemu-system-x86` and `qemu-utils`, then recheck.
 
@@ -106,6 +106,15 @@ Read the last `qemu-img` line for unsupported compression versus disk-space/perm
 - `I/O error on disk <device> (<operation>): out of space on the host` — QEMU paused the guest. Free host space and preserve data; there is no resume button in this app. Avoid Force stop unless necessary.
 - `QMP control unavailable: use Force stop` or `warning: QMP connection closed; graceful shutdown is unavailable` — wait briefly if just started, or shut down inside macOS. Force stop is destructive; the app never escalates automatically.
 - `could not prepare the boot files: MKG_ASSETS_DIR=<directory> is missing <file>` — fix the complete override tree or unset the override/use built-ins. The setting may come from the user-config `.env`.
+
+## Screen, keyboard and pointer
+
+- **Shut down does nothing.** The request reaches macOS (the Log tab shows "ACPI power button sent to macOS"), but macOS treats the power button as Sleep (`pmset -g` shows `Sleep On Power Button 1`) and a VM cannot sleep. Use **Apple menu › Shut Down** inside macOS, `sudo shutdown -h now` over SSH, or **Force stop** if macOS is frozen.
+- **Two pointers.** Fixed: the host pointer is hidden over the screen, and only macOS's pointer, drawn into the framebuffer, remains. If you still see two, use the latest build.
+- **Pointer lag.** Without GPU acceleration macOS draws its pointer on the CPU, and QEMU's VNC server lowers its update rate when the screen is idle, so the pointer can trail the hand slightly. The app redraws at up to 60 fps. Give the VM more vCPUs (Settings › Recommended), or use **Display: QEMU window** for comparison.
+- **Wrong characters.** Keys are sent by physical position with a US layout. Keep macOS on the **ABC** or **U.S.** input source. Keys that only exist on other layouts (for example the extra key next to the left Shift on ISO/ABNT keyboards) may not reach macOS.
+- **Stuck in full screen.** Press **Ctrl+Alt+F**.
+- **Apple ID window after switching from OSX-KVM.** The app's SMBIOS (iMac20,1 with a new serial) makes macOS see a new Mac and ask you to sign in again. Close the window or sign in.
 
 ## Display and graphics
 

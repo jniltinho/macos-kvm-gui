@@ -49,7 +49,18 @@ cd macos-kvm-gui-vX.Y.Z-linux-amd64
 
 ## First run through the tabs
 
-The tabs appear as **VM, Install, Settings, Host, GPU, Log**. For setup, use the order below.
+The window works like VirtualBox: a toolbar, the VM list on the left and the tabs **Details, Screen, Install, Settings, Host, GPU, Log** on the right. For a first install, use the order below.
+
+### New VM
+
+Click **New**. The wizard has four steps:
+
+1. **Name and operating system:** a name and the macOS version. Only Sonoma has been validated end to end.
+2. **Hardware:** RAM, cores and vCPUs, filled in with what is recommended for this host, and the display (in the app or a QEMU window).
+3. **Storage:** the VM's folder, by default `<Workspace>/<name>` (the Workspace is `~/macOS-VMs` unless you change it in Settings), the disk size (thin qcow2, at least 40 GiB) and whether to download the macOS recovery now.
+4. **Summary:** **Create** makes the folder, extracts the boot files, creates the disk and, when asked, downloads and verifies the recovery. Progress shows in the Install tab.
+
+The first time the app opens it adds a VM named "macOS Sonoma" with the defaults, so you can also go straight to Install. Only one VM runs at a time.
 
 ### Host
 
@@ -65,11 +76,11 @@ If KVM loads from an initramfs, also rebuild that initramfs after the persistent
 
 ### Settings
 
-Choose a workspace (absolute path, or a path starting with `~/`) and save. Defaults:
+The selected VM's settings; click **Save** after changing them. Paths may start with `~/`. Defaults:
 
 | Setting | Default |
 | --- | --- |
-| Workspace | `~/OSX-KVM` |
+| Folder | `<Workspace>/<name>`, for example `~/macOS-VMs/macos-sonoma` |
 | macOS version | Sonoma |
 | RAM | 8192 MiB |
 | Cores / total vCPUs | 4 / 8 |
@@ -77,13 +88,15 @@ Choose a workspace (absolute path, or a path starting with `~/`) and save. Defau
 
 vCPUs must be a positive multiple of cores; the SSH port must be 1024–65535. **Recommended for this host** fills CPU/RAM fields but does not save them: click **Save**. Settings cannot be saved while the VM runs.
 
-An existing OSX-KVM workspace can reuse `mac_hdd_ng.img` and `BaseSystem.img`. The app uses its own OpenCore and new SMBIOS identity, not the old boot files. Back up an existing VM first; iCloud/Messages may see a different Mac and require sign-in again.
+**Workspace** (lower in the tab) is the folder that holds one folder per VM; new and imported VMs go there. Changing it does not move existing VMs: **Move to Workspace** moves the selected VM's disk, install media, NVRAM, identity and boot files into a new folder (on the same disk) and leaves anything else in the old folder alone. **Appearance** switches between Dark, Light and System right away.
+
+An existing OSX-KVM folder can reuse `mac_hdd_ng.img` and `BaseSystem.img`. The app uses its own OpenCore and new SMBIOS identity, not the old boot files. Back up an existing VM first; iCloud/Messages may see a different Mac and require sign-in again.
 
 ### Install: steps 1–5
 
 [![Installation journey](diagrams/install-flow.png)](diagrams/install-flow.svg)
 
-1. **Workspace — Create workspace.** Creates the folder and extracts the built-in boot files. An existing directory already counts as ready; missing boot files are prepared on Start. Status shows asset versions and their source.
+1. **VM folder — Create VM folder.** Creates the folder and extracts the built-in boot files. An existing directory already counts as ready; missing boot files are prepared on Start. Status shows asset versions and their source.
 2. **macOS recovery — Download macOS recovery.** Downloads the chunklist and DMG from Apple, verifies the Apple signature and every chunk's SHA-256, then converts to `BaseSystem.img`. Progress covers download, verification and conversion. Temporary DMG/chunklist files are removed. A failed download, verification or conversion preserves any previous install image.
 3. **Disk — Create disk.** Choose the virtual size in GiB. This creates a thin qcow2 file named `mac_hdd_ng.img`, never overwriting an existing disk. The size is not reserved on the host; monitor free space.
 4. **Install inside the VM.** Open **VM**, click **Start**, then follow the manual guest steps below.
@@ -98,7 +111,16 @@ An existing OSX-KVM workspace can reuse `mac_hdd_ng.img` and `BaseSystem.img`. T
 5. Complete macOS Setup Assistant and confirm that the installed system reaches its desktop. Shut down macOS, wait for **Stopped**, then use Install step 5.
 6. Start again without media: OpenCore hides the picker and scans APFS/HFS+ volumes to boot the installed system. Hold **Esc** at boot if you need the picker. NVRAM and the workspace's SMBIOS identity persist across starts.
 
-**Shut down (ACPI)** sends a request; the state remains Running until QEMU exits. Prefer shutdown inside macOS if needed. **Force stop** is like pulling the power cord and can lose data. The app blocks closing its window while the VM is running or paused.
+### The VM screen
+
+The window works like VirtualBox: a toolbar with **Start**, **Shut down**, **Force stop**, **Open in window** and **Full screen**, the VM on the left, and tabs on the right. With the default **Display: In the app**, starting the VM switches to the **Screen** tab, which shows macOS inside the app (over VNC on a private socket, no TCP port).
+
+- **Click the screen** to send the keyboard to macOS; it keeps the keyboard while it has focus. Keys travel as physical (US layout) keys, so keep macOS on the **ABC** or **U.S.** input source for an English keyboard.
+- Only macOS's own pointer shows over the screen: the host pointer is hidden there.
+- **Full screen** fills the monitor. **Ctrl+Alt+F** is the host key: it is never sent to macOS, it leaves full screen, and pressed again it closes the separate window and brings the screen back to the tab. **Open in window** opens the screen in its own resizable window.
+- Choose **QEMU window** in Settings to get QEMU's own window instead.
+
+**Shut down** sends the ACPI power button, and the state stays Running until QEMU exits. Many macOS versions treat that button as Sleep, which does nothing in a VM, so shut macOS down from the **Apple menu › Shut Down** inside the VM; the app notices when it powers off. **Force stop** is like pulling the power cord and can lose data. The app blocks closing its window while the VM is running or paused.
 
 ### Optional tabs and next steps
 
@@ -106,4 +128,6 @@ An existing OSX-KVM workspace can reuse `mac_hdd_ng.img` and `BaseSystem.img`. T
 - **Log:** shows the last 1000 lines of app/QEMU output in this session. Use it with [troubleshooting](troubleshooting.md).
 - Enable **Remote Login** inside macOS before connecting with `ssh -p 2222 user@127.0.0.1` (use your configured port/account).
 - The emulated display has no Metal acceleration. Use a static wallpaper and Reduce motion/transparency; see [display limitations](troubleshooting.md#display-and-graphics).
-- For a light interface, set `MKG_THEME=light` before launching; [settings and overrides](architecture.md#settings-and-overrides) explains the `.env` alternative.
+- **Export** writes the selected VM as a `.tar` with its settings, disk, NVRAM, identity and install media (stopped VMs only), or its settings alone as `.json`. **Import** adds a VM from either; a `.tar` is unpacked into a new folder inside the Workspace. A GPU address is never imported.
+- **Delete** removes the VM from the list; deleting its files is a separate, confirmed choice and only touches the files the app created.
+- The theme can also be forced with `MKG_THEME=dark|light|system`; see [settings and overrides](architecture.md#settings-and-overrides).

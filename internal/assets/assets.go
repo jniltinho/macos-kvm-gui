@@ -14,3 +14,8 @@ var FS embed.FS
 //
 //go:embed logo/logo.svg
 var Logo []byte
+
+// VersionIcons has one original icon per macOS version, named <short name>.svg.
+//
+//go:embed logo/versions/*.svg
+var VersionIcons embed.FS

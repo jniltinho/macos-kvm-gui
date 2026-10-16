@@ -64,7 +64,20 @@ func BuildArgs(c Config, w Workspace, qmpSocket string, withMedia bool, gpuFuncs
 			args = append(args, "-device", "vfio-pci,host="+f)
 		}
 	}
+	if c.InApp() {
+		// No QEMU window: the screen goes to the app over VNC on a Unix socket in the same
+		// private 0700 directory as QMP, never on a TCP port.
+		// -k en-us: plain keysyms map to a US (English) layout; with QEMU extended key events
+		// the physical scancode goes through and the guest's layout applies. lock-key-sync=off
+		// keeps QEMU from injecting Caps Lock presses inferred from the keysym's case.
+		args = append(args, "-display", "none", "-vnc", "unix:"+qemuPath(VNCSocket(qmpSocket))+",lock-key-sync=off", "-k", "en-us")
+	}
 	return append(args, "-qmp", "unix:"+qemuPath(qmpSocket)+",server=on,wait=off")
+}
+
+// VNCSocket is the VNC socket next to a VM run's QMP socket.
+func VNCSocket(qmpSocket string) string {
+	return filepath.Join(filepath.Dir(qmpSocket), "vnc.sock")
 }
 
 // memlockLimit is the soft RLIMIT_MEMLOCK in bytes (VFIO pins all guest RAM).
@@ -119,6 +132,7 @@ type VM struct {
 	mu      sync.Mutex
 	proc    *os.Process
 	qmp     *QMP
+	vncSock string // set while running with the in-app display
 	state   VMState
 	ioError string
 	killed  bool
@@ -156,10 +170,17 @@ func (v *VM) Start(c Config) error {
 	dir, _ := c.WorkspaceDir()
 	w := NewWorkspace(dir)
 	if !w.Exists() {
-		return fmt.Errorf("workspace %s does not exist: prepare it in the Install tab", dir)
+		return fmt.Errorf("VM folder %s does not exist: create it in the Install tab", dir)
 	}
 	if !w.HasDisk() {
 		return fmt.Errorf("%s does not exist: create the disk in the Install tab", DiskFile)
+	}
+	if r, ok := FindRunning(c); ok {
+		who := "this app"
+		if !r.ByApp {
+			who = "another program (for example OSX-KVM's OpenCore-Boot.sh)"
+		}
+		return fmt.Errorf("this VM's disk is already in use by QEMU (pid %d), started by %s: shut that VM down first", r.PID, who)
 	}
 	var gpuFuncs []string
 	if c.GPU != "" {
@@ -203,7 +224,10 @@ func (v *VM) Start(c Config) error {
 			return
 		}
 		v.mu.Lock()
-		v.proc, v.ioError = cmd.Process, ""
+		v.proc, v.ioError, v.vncSock = cmd.Process, "", ""
+		if c.InApp() {
+			v.vncSock = VNCSocket(sock)
+		}
 		v.mu.Unlock()
 		v.setState(Running, "") // before any Stopped from this same goroutine
 		started <- nil
@@ -229,7 +253,7 @@ func (v *VM) Start(c Config) error {
 		<-logDone
 		v.mu.Lock()
 		q, killed := v.qmp, v.killed
-		v.proc, v.qmp, v.killed = nil, nil, false
+		v.proc, v.qmp, v.killed, v.vncSock = nil, nil, false, ""
 		v.mu.Unlock()
 		if q != nil {
 			q.Close()
@@ -300,6 +324,14 @@ func (v *VM) onEvent(e QMPEvent) {
 }
 
 // Powerdown asks the guest to shut down; the state only changes when QEMU exits.
+// VNCSocket returns the VNC socket of the running VM, or "" when it is stopped or uses
+// QEMU's own window.
+func (v *VM) VNCSocket() string {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.vncSock
+}
+
 func (v *VM) Powerdown() error {
 	v.mu.Lock()
 	q := v.qmp

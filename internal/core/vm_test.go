@@ -50,6 +50,9 @@ func TestBuildArgs(t *testing.T) {
 		if got := argAfter(args, "-netdev", "user"); got != "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22" {
 			t.Errorf("%s: SSH must bind only to 127.0.0.1: %q", tc.name, got)
 		}
+		if got := argAfter(args, "-vnc", "unix:"); !strings.HasSuffix(got, "vnc.sock,lock-key-sync=off") || argAfter(args, "-display", "") != "none" {
+			t.Errorf("%s: default display must be VNC on the private socket: %q", tc.name, got)
+		}
 		if got := argAfter(args, "-smp", ""); got != "8,sockets=1,cores=4,threads=2" {
 			t.Errorf("%s: smp %q", tc.name, got)
 		}

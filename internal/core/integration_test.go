@@ -50,6 +50,41 @@ func TestRealQEMULifecycle(t *testing.T) {
 	if err := v.Start(c); err == nil {
 		t.Fatal("second start must be refused")
 	}
+	// The in-app display: QEMU must serve the boot screen over the private VNC socket.
+	if v.VNCSocket() == "" {
+		t.Fatal("the default display must export VNC")
+	}
+	vnc, verr := DialVNC(v.VNCSocket())
+	if verr != nil {
+		t.Fatalf("VNC: %v", verr)
+	}
+	frames := make(chan struct{}, 64)
+	vnc.OnUpdate = func() {
+		select {
+		case frames <- struct{}{}:
+		default:
+		}
+	}
+	go vnc.Run()
+	lit := false
+	for deadline := time.After(20 * time.Second); !lit; {
+		select {
+		case <-frames:
+			f := vnc.Frame(nil)
+			for i := 0; i < len(f.Pix); i += 4 {
+				if f.Pix[i]|f.Pix[i+1]|f.Pix[i+2] != 0 {
+					lit = true // OVMF or OpenCore drew something
+					break
+				}
+			}
+		case <-deadline:
+			t.Fatal("no non-black frame over VNC within 20 s")
+		}
+	}
+	fw, fh := vnc.Size()
+	t.Logf("VNC frame %dx%d", fw, fh)
+	vnc.Close()
+
 	// QMP connects in the background; QEMU must accept the powerdown
 	var err error
 	for range 50 {

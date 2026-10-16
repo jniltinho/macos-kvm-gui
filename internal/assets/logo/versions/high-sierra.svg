@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="hs-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#547DA5"/><stop offset="0.5" stop-color="#253F68"/><stop offset="1.0" stop-color="#101E3C"/>
+    </linearGradient>
+    <radialGradient id="hs-dawn" cx=".32" cy=".24" r=".65">
+      <stop stop-color="#BDE5F3" stop-opacity=".22"/><stop offset="1" stop-color="#BDE5F3" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hs-rock" x1="80" y1="100" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#B0DCEB"/><stop offset="1.0" stop-color="#4279A1"/>
+    </linearGradient>
+    <linearGradient id="hs-shadow" x1="252" y1="100" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#5388B0"/><stop offset="1.0" stop-color="#23446E"/>
+    </linearGradient>
+    <linearGradient id="hs-snow" x1="190" y1="100" x2="318" y2="224" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#FFFFFF"/><stop offset="1.0" stop-color="#C2E2F0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#hs-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#hs-dawn)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#hs-rock)" d="M252 100L432 404H80Z"/>
+  <path fill="url(#hs-shadow)" d="M252 100L432 404H250L272 224Z"/>
+  <path fill="url(#hs-snow)" d="M252 100L318 212L274 192L248 224L222 198L187 215Z"/>
+</svg>

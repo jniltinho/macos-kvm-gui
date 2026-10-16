@@ -10,9 +10,10 @@ The app owns one QEMU child process per instance; it is not a libvirt frontend a
 
 | Location | Responsibility |
 | --- | --- |
-| `main.go` | Fyne tabs, forms, action/state wiring, dialogs and the last 1000 log lines. Long media operations run off the UI thread; callbacks use `fyne.Do`. |
-| `theme.go` | Fyne theme override: dark by default, blue accent, square corners, optional light theme. |
-| `internal/core/config.go`, `settings.go` | Validated JSON configuration, version-derived hardware profiles and runtime environment settings. |
+| `main.go`, `cmd/` | `main.go` calls `cmd.Execute`; `cmd/` holds one Cobra command per file. Without a command the GUI opens. |
+| `internal/gui/` | Fyne window (`layout.go`: toolbar, VM list, Details), tabs and dialogs (`gui.go`), the New VM wizard (`wizard.go`), VM management dialogs (`vms.go`), the VNC screen (`screen.go`) and the theme (`theme.go`: dark, light or system, square corners). Long operations run off the UI thread; callbacks use `fyne.Do`. |
+| `internal/core/config.go`, `settings.go` | Validated VM configuration, version-derived hardware profiles and runtime environment settings. |
+| `internal/core/vms.go`, `bundle.go`, `running.go` | The VM list and preferences in SQLite, the Workspace, move, export/import bundles and detecting a running QEMU (also one started outside the app) through `/proc`. |
 | `internal/core/host.go`, `gpu.go` | Host checks, sysfs PCI/DRM/IOMMU discovery, GPU guards and constant privileged scripts. |
 | `internal/core/workspace.go` | Workspace lock, staging, disk creation and media removal. |
 | `internal/core/recovery.go`, `chunklist.go` | Apple recovery protocol and signed chunklist/image verification. |
@@ -22,6 +23,12 @@ The app owns one QEMU child process per instance; it is not a libvirt frontend a
 | `scripts/` | Fetch boot assets, fetch the test validator, package release artifacts. |
 
 `internal/core` is **one Go package**, independent of Fyne, not a separate package per source file. Host filesystem roots and command execution are injectable for tests.
+
+
+## Command line and display (added later)
+
+- `main.go` only calls `cmd.Execute()`. `cmd/` holds one Cobra command per file (`check`, `setup`, `config`, `workspace`, `download`, `disk`, `media`, `vm`, `gpu`, `version`, `gui`); without a command the binary opens the GUI from `internal/gui`. Both front ends use the same `internal/core`, so the CLI and the app follow the same rules (locks, validation, verification).
+- With **Display: In the app**, QEMU runs with `-display none -vnc unix:<private dir>/vnc.sock,lock-key-sync=off -k en-us`, next to the QMP socket in the same 0700 runtime directory. `internal/core/vnc.go` is a minimal RFB 3.8 client (None security, 32-bit RGB, Raw, CopyRect, DesktopSize and QEMU extended key events, so keys travel as scancodes). `internal/gui/screen.go` draws the frames at up to 60 fps, hides the host pointer, maps keys and the mouse through the same fit-to-window math as the image, and reserves Ctrl+Alt+F as the host key for full screen.
 
 ## From Start to macOS
 
@@ -39,8 +46,10 @@ Profiles use Penryn through Monterey and Skylake-Client from Ventura onward. The
 
 ## Workspace and host files
 
+Each VM has its own folder, by default `<Workspace>/<name>` with the Workspace at `~/macOS-VMs`:
+
 ```text
-<workspace>/
+<Workspace>/<name>/
   mac_hdd_ng.img                    # qcow2 guest disk
   BaseSystem.img                   # optional raw recovery media
   .macos-kvm-gui-media              # downloaded media's version
@@ -53,7 +62,7 @@ Profiles use Penryn through Monterey and Skylake-Client from Ventura onward. The
     smbios.json                    # persistent serial, MLB, UUID and ROM
 ```
 
-The normal user config directory is `~/.config/macos-kvm-gui/` (`os.UserConfigDir`, respecting `XDG_CONFIG_HOME`). It contains `config.json` and the optional runtime `.env`.
+The normal user config directory is `~/.config/macos-kvm-gui/` (`os.UserConfigDir`, respecting `XDG_CONFIG_HOME`). It contains `macos-kvm-gui.db` and the optional runtime `.env`. The database (SQLite through the pure-Go `modernc.org/sqlite`, WAL, `PRAGMA user_version` for migrations) has a `vms` table (one row per VM) and a `settings` table (selected VM, Workspace, theme). On first use it imports an older `config.json` and renames it to `config.json.migrated`. Saving a VM also writes a read-only snapshot to `<folder>/macos-kvm-gui/vm.json`.
 
 Workspace `flock` files live outside the workspace in `$XDG_RUNTIME_DIR`, falling back to `os.TempDir()` when unset. Names contain the first eight bytes of SHA-256 of the cleaned workspace path. The same lock covers preparation, media work, disk creation/removal and a running VM across app instances. The kernel releases it on process death; an existing lock file alone does not mean it is held. External QEMU processes do not participate, so QEMU's own disk lock is still important.
 
@@ -87,9 +96,9 @@ Downloads use exclusive `.part` temporary files and fixed final names in staging
 
 | Source | Meaning and precedence |
 | --- | --- |
-| `config.json` | Defaults overlaid by saved JSON: workspace, version, `ram_mib`, cores, vCPUs, `ssh_port`, optional GPU PCI address. Save validates and uses temporary-file/rename. No general environment overlay for these fields. |
+| `macos-kvm-gui.db` | One row per VM: name, folder, version, `ram_mib`, cores, vCPUs, `ssh_port`, display, optional GPU PCI address; plus the Workspace and theme preferences. Save validates first. `--config <file.json>` uses a standalone JSON file instead. |
 | `MKG_ASSETS_DIR` | Runtime boot tree instead of embedded assets. Environment wins over the user-config `.env`; empty uses built-ins. |
-| `MKG_THEME` | Exactly `light` selects light mode; otherwise dark. Environment wins over the user-config `.env`. |
+| `MKG_THEME` | `dark`, `light` or `system`; it wins over the theme chosen in Settings. Environment wins over the user-config `.env`. |
 | Repository `.env` and `assets.env` | Asset-fetch scripts only: **environment > repository `.env` > `assets.env`**. Not the runtime settings file. |
 
 The runtime `.env` accepts plain `KEY=value` lines, trims surrounding whitespace/quotes and skips comment lines; it does not execute shell code or expand `$HOME`/`~`. Use a literal absolute directory in it. For example:

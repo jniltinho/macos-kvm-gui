@@ -2,23 +2,29 @@
 
 Screens of macOS KVM with the default dark theme. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
 
-## VM
+## Details
 
-![VM tab with a running VM](vm.png)
+![Details tab](details.png)
 
-The VM tab while a VM is running: the state shows in large text and in the header chip, ACPI shutdown and force stop are enabled, and the CPU, RAM, display and SSH settings are summarized. Below it are the tips for keeping video smooth without GPU acceleration.
+The VirtualBox-style window: the toolbar (New, Edit, Delete, Export, Import | Start, Shut down, Force stop | Open in window, Full screen), the VM list on the left and the Details tab, with the VM's icon, a preview of its screen and its General, System, Display, Storage, Network and GPU settings.
+
+## New VM wizard
+
+![New VM wizard](new-vm.png)
+
+Four steps: name and macOS version, hardware (recommended for this host), storage (the folder inside the Workspace, the disk size and whether to download the recovery now) and a summary. Create makes the folder and the disk and downloads the recovery.
 
 ## Install
 
 ![Install tab](install.png)
 
-The guided install. **1 · Workspace** extracts the built-in OpenCore and OVMF. **2 · macOS recovery** downloads from Apple and verifies the signature. **3 · Disk** creates the thin qcow2. **4 · Install inside the VM** lists the steps to follow in macOS. **5 · Clean up** removes the install media. The status card shows the boot file versions and their source.
+The guided install. **1 · VM folder** creates the folder and extracts the built-in OpenCore and OVMF. **2 · macOS recovery** downloads from Apple and verifies the signature. **3 · Disk** creates the thin qcow2. **4 · Install inside the VM** lists the steps to follow in macOS. **5 · Clean up** removes the install media. The status card shows the boot file versions and their source.
 
 ## Settings
 
 ![Settings tab](settings.png)
 
-The workspace, macOS version, RAM, cores, vCPUs and SSH port. **Recommended for this host** fills in CPU and RAM from the host's hardware.
+The selected VM's name, folder, macOS version, RAM, cores, vCPUs, SSH port and display, with **Move to Workspace**. Below are **Recommended for this host**, the Workspace (the folder that holds one folder per VM) and the theme.
 
 ## Host
 
@@ -48,4 +54,4 @@ xdotool windowsize --sync "$WID" 1280 820
 import -window "$WID" docs/screenshots/<tab>.png
 ```
 
-Keep personal paths and data out of the captures: use a short workspace path such as `~/OSX-KVM`, and a throwaway workspace for the running-VM shot.
+Keep personal paths and data out of the captures: run a separate instance with `XDG_CONFIG_HOME` pointing to an empty folder and a short Workspace such as `~/VMs` (`macos-kvm-gui workspace set ~/VMs`), so the captures show no personal VM.

@@ -47,13 +47,15 @@ func versionIndex(short string) int {
 
 // Config is what the user adjusts and the app persists.
 type Config struct {
+	Name      string `json:"name,omitempty"` // shown in the VM list
 	Workspace string `json:"workspace"`
 	Version   string `json:"version"`
 	RAMMiB    int    `json:"ram_mib"`
 	Cores     int    `json:"cores"`
 	VCPUs     int    `json:"vcpus"`
 	SSHPort   int    `json:"ssh_port"`
-	GPU       string `json:"gpu,omitempty"` // PCI address of a passed-through GPU; "" = emulated display
+	GPU       string `json:"gpu,omitempty"`     // PCI address of a passed-through GPU; "" = emulated display
+	Display   string `json:"display,omitempty"` // "app" (default): screen inside the app over VNC; "window": QEMU's own window
 }
 
 func Defaults() Config {
@@ -68,6 +70,15 @@ func Recommended(c Config, hostThreads, hostMemMiB int) Config {
 	c.RAMMiB = min(max(hostMemMiB/4/1024*1024, 4096), 16384)
 	return c
 }
+
+// Display modes.
+const (
+	DisplayApp    = "app"
+	DisplayWindow = "window"
+)
+
+// InApp reports whether the VM's screen is shown inside the app (the default).
+func (c Config) InApp() bool { return c.Display != DisplayWindow }
 
 // FieldError names the invalid field for the UI to highlight.
 type FieldError struct {
@@ -108,6 +119,9 @@ func (c Config) Validate() error {
 	}
 	if c.VCPUs < 1 || c.VCPUs%c.Cores != 0 {
 		return &FieldError{"vcpus", "must be a multiple of the number of cores"}
+	}
+	if c.Display != "" && c.Display != DisplayApp && c.Display != DisplayWindow {
+		return &FieldError{"display", "expected app or window"}
 	}
 	if c.GPU != "" && !pciAddrRe.MatchString(c.GPU) {
 		return &FieldError{"gpu", "expected a PCI address such as 0000:03:00.0"}

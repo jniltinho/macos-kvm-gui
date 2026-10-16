@@ -95,7 +95,7 @@ func TestOpenCoreConfig(t *testing.T) {
 	if !strings.Contains(gpu, "keepsyms=1 agdpmod=pikera") || strings.Contains(installed, "agdpmod") {
 		t.Error("agdpmod=pikera only with a passed-through GPU")
 	}
-	if smbiosProduct("high-sierra") != "iMac18,3" || smbiosProduct("mojave") != "iMac19,1" || smbiosProduct("tahoe") != "iMac20,1" {
+	if SMBIOSModel("high-sierra") != "iMac18,3" || SMBIOSModel("mojave") != "iMac19,1" || SMBIOSModel("tahoe") != "iMac20,1" {
 		t.Error("SMBIOS per version")
 	}
 	// OpenCore's own validator, when scripts/fetch-assets.sh left it in testdata.

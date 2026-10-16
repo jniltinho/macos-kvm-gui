@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/vm.png" width="860" alt="macOS KVM running a VM">
+  <img src="docs/screenshots/details.png" width="860" alt="macOS KVM with a VM selected">
 </p>
 
 > **For home lab use.** macOS is Apple's software, and its license only allows it on Apple-branded hardware. Make sure your use complies with Apple's macOS license terms. This project is not affiliated with Apple.
@@ -28,6 +28,10 @@ Running macOS under KVM usually means cloning repositories, running Python downl
 
 - **One binary, no setup.** OpenCore 1.0.8, Lilu, VirtualSMC, WhateverGreen and OVMF are embedded, built from their official BSD-licensed releases. You don't need `git`, `python3` or an OSX-KVM clone.
 - **Safe downloads.** The recovery comes straight from Apple, and the app checks Apple's signature and the SHA-256 of every chunk before using it.
+- **macOS inside the app.** The VM's screen shows in a VirtualBox-style window with keyboard and mouse, in its own window or full screen (Ctrl+Alt+F is the host key), over a private VNC socket with no network port.
+- **Several VMs, VirtualBox style.** A New VM wizard (name and version, hardware, storage), a VM list with status, and each VM in its own folder inside the Workspace (`~/macOS-VMs/<name>`). VMs can be moved, exported as a `.tar` with everything they need, and imported on another host. The list lives in a small SQLite database.
+- **Light, dark or system theme**, chosen in Settings and applied right away.
+- **Scriptable.** The same binary is a command line tool (`check`, `setup`, `download`, `disk create`, `vm start`...), so installs can be automated. See [docs/cli.md](docs/cli.md).
 - **Boots like a Mac.** It generates OpenCore's configuration for you at 1920x1080 and, once macOS is installed, boots without a menu. Each VM gets its own Mac identity.
 - **Explains what's wrong.** The Host tab checks KVM, QEMU, `ignore_msrs` (one-click fix) and conflicting VirtualBox/VMware VMs. QEMU errors become plain messages.
 - **Careful with your data.** It never overwrites a disk, the NVRAM or existing media. A lock keeps two operations or two app instances from touching the same workspace, and SSH is only reachable from `127.0.0.1`.
@@ -45,9 +49,8 @@ Running macOS under KVM usually means cloning repositories, running Python downl
 
 2. Open **macOS KVM** and follow the tabs:
    - **Host:** all checks green.
-   - **Settings:** pick the macOS version, then click **Recommended for this host**.
-   - **Install:** Create workspace → Download macOS recovery → Create disk.
-   - **VM:** Start.
+   - **New:** the wizard asks for a name and macOS version, suggests CPU and RAM for this host, creates the VM's folder and disk, and downloads the recovery from Apple.
+   - **Start**, and macOS shows in the **Screen** tab.
 
 3. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**. When macOS boots from the disk, remove the install media from the Install tab.
 
@@ -55,9 +58,11 @@ The full walkthrough is in [docs/getting-started.md](docs/getting-started.md).
 
 ## Screenshots
 
-| Install | Host checks |
+| New VM wizard | Install |
 |---|---|
-| [![Install](docs/screenshots/install.png)](docs/screenshots/install.png) | [![Host](docs/screenshots/host.png)](docs/screenshots/host.png) |
+| [![New VM](docs/screenshots/new-vm.png)](docs/screenshots/new-vm.png) | [![Install](docs/screenshots/install.png)](docs/screenshots/install.png) |
+| **Host checks** | |
+| [![Host](docs/screenshots/host.png)](docs/screenshots/host.png) | |
 | **Settings** | **GPU passthrough** |
 | [![Settings](docs/screenshots/settings.png)](docs/screenshots/settings.png) | [![GPU](docs/screenshots/gpu.png)](docs/screenshots/gpu.png) |
 
@@ -92,6 +97,7 @@ There is no graphics acceleration without a passed-through AMD GPU, because macO
 - [Architecture](docs/architecture.md)
 - [GPU passthrough](docs/gpu-passthrough.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Command line](docs/cli.md): automate installs from a terminal
 - [Development](docs/development.md): build, tests, boot assets, releases
 - [References](docs/references.md): the projects this builds on
 

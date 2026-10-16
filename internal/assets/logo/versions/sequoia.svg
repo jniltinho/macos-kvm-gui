@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="sq-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#A6BEAA"/><stop offset="0.5" stop-color="#5D8874"/><stop offset="1.0" stop-color="#234E43"/>
+    </linearGradient>
+    <radialGradient id="sq-mist" cx=".32" cy=".27" r=".6">
+      <stop stop-color="#E3F0D9" stop-opacity=".25"/><stop offset="1" stop-color="#E3F0D9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sq-bark" x1="218" y1="282" x2="294" y2="412" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#DC9B6F"/><stop offset="1.0" stop-color="#934E3E"/>
+    </linearGradient>
+    <linearGradient id="sq-crown" x1="162" y1="88" x2="350" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#287B5D"/><stop offset="1.0" stop-color="#0B4339"/>
+    </linearGradient>
+    <linearGradient id="sq-edge" x1="210" y1="88" x2="256" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#8EC49B" stop-opacity=".65"/><stop offset="1" stop-color="#8EC49B" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#sq-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#sq-mist)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#sq-bark)" d="M238 282H274V382L294 412H218L238 382Z"/>
+  <path fill="url(#sq-crown)" d="M256 88L302 188H286L330 280H314L350 336H162L198 280H182L226 188H210Z"/>
+  <path fill="url(#sq-edge)" d="M256 88V336H162L198 280H182L226 188H210Z"/>
+</svg>

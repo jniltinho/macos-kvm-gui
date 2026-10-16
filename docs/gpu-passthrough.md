@@ -44,7 +44,7 @@ The GPU tab reads sysfs; `lspci` is optional for friendly names. A card must mee
 
 ## Reserve, reboot, start, release
 
-Stop the VM, select an eligible card in **GPU**, then click **Reserve for VFIO** and confirm. The selection is saved in `config.json`; reservation changes the host globally and persists even if you later select None.
+Stop the VM, select an eligible card in **GPU**, then click **Reserve for VFIO** and confirm. The selection is saved with the VM; reservation changes the host globally and persists even if you later select None.
 
 One `pkexec` operation writes:
 

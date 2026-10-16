@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1090" viewBox="0 0 1400 1090" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
   <title id="title">Installation journey</title>
-  <desc id="desc">Create workspace, obtain an Apple recovery session and image info, download chunklist and DMG, verify the signature and hashes, convert and publish the image, create a disk, start, install manually inside macOS, then stop and remove media.</desc>
+  <desc id="desc">Create the VM folder, obtain an Apple recovery session and image info, download chunklist and DMG, verify the signature and hashes, convert and publish the image, create a disk, start, install manually inside macOS, then stop and remove media.</desc>
   <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker></defs>
   <rect width="1400" height="1090" fill="#071B33"/>
   <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">Installation journey</text>
@@ -37,7 +37,7 @@
     <rect x="760" y="870" width="600" height="150"/>
   </g>
   <g fill="#FFFFFF" font-size="25" font-weight="bold">
-    <text x="60" y="174">1 · Workspace</text>
+    <text x="60" y="174">1 · VM folder</text>
     <text x="430" y="174">2 · Recovery</text>
     <text x="780" y="174">Image info</text>
     <text x="1130" y="174">Chunklist</text>

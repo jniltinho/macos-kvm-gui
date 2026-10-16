@@ -124,9 +124,9 @@ func AssetVersions() string {
 	return strings.ReplaceAll(strings.TrimSpace(string(v)), "\n", ", ") + " (" + src + ")"
 }
 
-// smbiosProduct picks a Mac model that supports the macOS version. iMac models also keep
+// SMBIOSModel is the Mac model the VM presents for a macOS version: one that supports the macOS version. iMac models also keep
 // AppleMCEReporter (which panics on AMD hosts) from loading.
-func smbiosProduct(version string) string {
+func SMBIOSModel(version string) string {
 	switch version {
 	case "high-sierra":
 		return "iMac18,3"
@@ -165,7 +165,7 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		"@@TIMEOUT@@", timeout,
 		"@@SCANPOLICY@@", scan,
 		"@@BOOTARGS@@", bootArgs,
-		"@@PRODUCT@@", smbiosProduct(c.Version),
+		"@@PRODUCT@@", SMBIOSModel(c.Version),
 		"@@SERIAL@@", id.Serial,
 		"@@MLB@@", id.MLB,
 		"@@UUID@@", id.UUID,
