@@ -227,6 +227,7 @@ func unpackReims(r io.Reader, dst string) error {
 		return err
 	}
 	links := map[string]bool{}
+	var total int64 // declared sizes: sparse entries expand past what the stream holds
 	for n := 0; ; n++ {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -261,6 +262,9 @@ func unpackReims(r io.Reader, dst string) error {
 		case tar.TypeDir:
 			err = os.MkdirAll(target, 0o755)
 		case tar.TypeReg:
+			if total += h.Size; h.Size < 0 || total > maxReimsExpanded {
+				return fmt.Errorf("the archive expands to more than %d MiB", maxReimsExpanded>>20)
+			}
 			err = writeFileFrom(target, tr, h.FileInfo().Mode().Perm())
 		case tar.TypeSymlink:
 			// Without ".." or a leading "/", a link (and any chain of them) only reaches

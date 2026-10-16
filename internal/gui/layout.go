@@ -458,6 +458,7 @@ func (u *ui) showPreview(f *image.RGBA) {
 func (u *ui) previewOnly(v *core.VNC, gen int) error {
 	var dirty atomic.Bool
 	v.OnUpdate = func() { dirty.Store(true) }
+	v.Pace = func() time.Duration { return previewInterval(v.Size()) } // QEMU's readback too, not just the drawing
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
@@ -583,14 +584,22 @@ func (u *ui) start() { u.startWith(false) }
 
 // startWith starts the VM; verbose shows macOS's boot log on screen for this start only.
 func (u *ui) startWith(verbose bool) {
+	// A download runs while the user can still select, import or remove VMs: its follow-up
+	// starts only the VM it was for.
+	id := u.cur.ID
+	resume := func() {
+		if u.cur.ID != id {
+			u.appendLog("[VM] the download finished; the selected VM changed, so press Start again")
+			return
+		}
+		u.startWith(verbose)
+	}
 	if u.cfg.RootPatch && !core.RootPatchKextsReady() { // an imported VM, a moved Workspace
-		u.run("Download OCLP's kexts for root-patch mode", func() error { return core.DownloadRootPatchKexts(context.Background()) },
-			func() { u.startWith(verbose) })
+		u.run("Download OCLP's kexts for root-patch mode", func() error { return core.DownloadRootPatchKexts(context.Background()) }, resume)
 		return
 	}
 	if u.cfg.ReimsKext() && !core.ReimsKextReady() {
-		u.run("Download ReimsVgpu.kext for Reims vGPU on Tahoe", func() error { return core.DownloadReimsKext(context.Background()) },
-			func() { u.startWith(verbose) })
+		u.run("Download ReimsVgpu.kext for Reims vGPU on Tahoe", func() error { return core.DownloadReimsKext(context.Background()) }, resume)
 		return
 	}
 	ks, err := core.LoadExtraKexts()
@@ -599,7 +608,6 @@ func (u *ui) startWith(verbose bool) {
 		return
 	}
 	if !ks.Ready() {
-		id := u.cur.ID
 		u.run("Download the kexts listed in "+core.SettingsFile(), func() error { return core.DownloadExtraKexts(context.Background(), ks) },
 			func() {
 				if u.cur.ID != id { // another VM was selected meanwhile

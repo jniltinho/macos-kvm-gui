@@ -41,6 +41,9 @@ type VNC struct {
 	pixels   atomic.Int64 // pixel rectangles received since the last resize (Snapshot waits for them)
 	resized  bool         // set by DesktopSize: the next request must be a full one; read loop only
 	OnUpdate func()       // called after each framebuffer update; may be nil
+	// Pace, when set before Run, is the least time between update requests: each one makes
+	// QEMU read the guest's frame, which costs Reims vGPU a GPU readback.
+	Pace func() time.Duration
 }
 
 // DialVNC waits for QEMU to create the socket and completes the RFB handshake.
@@ -206,6 +209,7 @@ func (v *VNC) Frame(dst *image.RGBA) *image.RGBA {
 
 // Run reads server messages until the connection closes.
 func (v *VNC) Run() error {
+	var last time.Time
 	for {
 		t, err := v.r.ReadByte()
 		if err != nil {
@@ -222,6 +226,12 @@ func (v *VNC) Run() error {
 			// After a resize the new frame is blank, so ask for all of it.
 			full := v.resized
 			v.resized = false
+			if v.Pace != nil {
+				if d := v.Pace() - time.Since(last); d > 0 {
+					time.Sleep(d)
+				}
+				last = time.Now()
+			}
 			if err := v.requestUpdate(!full); err != nil {
 				return err
 			}
