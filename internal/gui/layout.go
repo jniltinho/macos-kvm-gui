@@ -409,7 +409,7 @@ func (u *ui) refreshDetails() {
 	set("Storage/SATA Port 2", disc)
 	set("Storage/Boot Disk", "OpenCore (built in, read-only)")
 	set("Storage/Controller", "SATA (ICH9 AHCI)")
-	set("Audio/Controller", "Intel HD Audio")
+	set("Audio/Controller", map[bool]string{true: "Intel HD Audio, USB Audio", false: "Intel HD Audio"}[u.cfg.Reims()])
 	set("USB/Controller", "xHCI (USB 3.0)")
 
 	if u.previewName.Text != u.vmName() {

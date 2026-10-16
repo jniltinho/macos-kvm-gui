@@ -16,7 +16,7 @@
 
 ## 3. Interfaces
 
-- [ ] 3.1 Settings › Display: Graphics choice, the macOS-26 note, `METAL_ERROR_MODE` commands, disabled GPU choice while Reims is selected (and the reverse); Details pane. Check by hand.
+- [x] 3.1 Settings › Display: Graphics choice, the macOS-26 note, `METAL_ERROR_MODE` commands, disabled GPU choice while Reims is selected (and the reverse); Details pane. Check by hand.
 - [ ] 3.2 GUI VNC split: preview-only connection for Reims VMs (started by the app and by CLI/MCP), no Screen attachment, Screen tab text; check by hand with a VM started from the app and one from `vm start`.
 - [ ] 3.3 Host tab: Reims checks, installed build and commit, **Install Reims vGPU** (package) and **Build from source** (Docker) buttons with progress in the log.
 - [ ] 3.4 CLI `config set graphics=…`, `config show`, `reims install`, `reims build [--release]`, `reims status`; command tests for an invalid value, the exclusivity error and an unsupported release.
