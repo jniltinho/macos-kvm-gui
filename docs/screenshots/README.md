@@ -71,3 +71,17 @@ import -window "$WID" docs/screenshots/<tab>.png      # MKG_THEME=dark for the -
 ```
 
 Keep personal paths and data out of the captures: run a separate instance with `XDG_CONFIG_HOME` pointing to an empty folder and a short Workspace such as `~/VMs` (`macos-kvm-gui workspace set ~/VMs`), so the captures show no personal VM.
+
+## Reims vGPU
+
+![Settings › Display with Reims vGPU](reims-settings.png)
+
+Settings › Display with **Reims vGPU (experimental)** as the graphics controller: the resolution, the notes on what was validated, and the one-time `METAL_ERROR_MODE` commands with Copy buttons. Modals have rounded corners and a stronger shadow.
+
+![Host tab, Reims vGPU section](reims-host.png)
+
+The Host tab's Reims vGPU section: whether this host is ready, the build in use (from `<Workspace>/.reims`), **Install Reims vGPU** (the prebuilt package for Ubuntu 24.04 or 26.04) and **Build from source (Docker)**, then the Reims checks.
+
+![Details of a running Reims VM](reims-details.png)
+
+A Sequoia VM running on Reims vGPU: Details shows the graphics controller and the Preview follows the guest, which draws in its own Reims vGPU window on the host's GPU (RTX 4070 here).

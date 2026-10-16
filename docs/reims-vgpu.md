@@ -4,6 +4,9 @@
 
 **Experimental.** [Reims vGPU](https://github.com/steelbrain/reims-vgpu) is a paravirtual GPU for macOS guests: macOS uses the paravirtualized graphics driver it already ships, and the host renders its Metal work through the host's own Vulkan driver. It needs no spare GPU, no VFIO and no host reboot, and it works with the GPU that drives your desktop, NVIDIA, AMD or Intel, including cards macOS has no driver for. Upstream is beta and has measured x86-64 guests on macOS 26 only; on this app's reference host, Sequoia 15.8.1 runs on it (see [validated results](#validated-results)).
 
+
+![Settings › Display with Reims vGPU](screenshots/reims-settings.png)
+
 ## Why
 
 | | VMware SVGA (default) | Reims vGPU | [GPU passthrough](gpu-passthrough.md) |
