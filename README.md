@@ -37,6 +37,7 @@
 - **Several VMs.** One folder per VM in the Workspace, move, export/import, and macOS on screen inside the app.
 - **Guided install.** A step-by-step Install tab, and Host checks with one-click setup.
 - **Offline install.** Download Apple's full installer once (Big Sur and later) and every VM of that version installs from a local disc, with no network; **Type it in the VM** does the typing, and **Unattended** goes all the way to Setup Assistant.
+- **Metal without a spare GPU** *(experimental)*. [Reims vGPU](docs/reims-vgpu.md), a paravirtual GPU, renders macOS's Metal through the host's own Vulkan driver (NVIDIA, AMD or Intel); one click in the Host tab installs it.
 - **Networking.** Up to four adapters per VM, NAT or bridged, with the adapter type and MAC address of your choice.
 - **Scriptable.** The same binary is a [command line tool](docs/cli.md) and an [MCP server](docs/mcp.md) that lets AI agents see, type in and install VMs.
 
@@ -59,7 +60,7 @@ Full walkthrough: [getting started](docs/getting-started.md).
 
 ## Documentation
 
-[Overview](docs/overview.md) · [Getting started](docs/getting-started.md) · [Command line](docs/cli.md) · [MCP server](docs/mcp.md) · [Architecture](docs/architecture.md) · [GPU passthrough](docs/gpu-passthrough.md) · [Troubleshooting](docs/troubleshooting.md) · [Development](docs/development.md) · [Screenshots](docs/screenshots/README.md) · [References](docs/references.md)
+[Overview](docs/overview.md) · [Getting started](docs/getting-started.md) · [Command line](docs/cli.md) · [MCP server](docs/mcp.md) · [Architecture](docs/architecture.md) · [GPU passthrough](docs/gpu-passthrough.md) · [Reims vGPU](docs/reims-vgpu.md) · [Troubleshooting](docs/troubleshooting.md) · [Development](docs/development.md) · [Screenshots](docs/screenshots/README.md) · [References](docs/references.md)
 
 ## Build
 
@@ -70,4 +71,4 @@ make test
 
 ## License
 
-BSD-3-Clause ([LICENSE](LICENSE)). The embedded boot files keep their own licenses ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). Built on the work of [OSX-KVM](https://github.com/kholia/OSX-KVM), [acidanthera](https://github.com/acidanthera), [TianoCore](https://github.com/tianocore/edk2), [Dortania](https://dortania.github.io/) and [Fyne](https://fyne.io); see [references](docs/references.md).
+BSD-3-Clause ([LICENSE](LICENSE)). The embedded boot files keep their own licenses, and Reims vGPU's separately published QEMU packages theirs ([THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)). Built on the work of [OSX-KVM](https://github.com/kholia/OSX-KVM), [acidanthera](https://github.com/acidanthera), [TianoCore](https://github.com/tianocore/edk2), [Dortania](https://dortania.github.io/) and [Fyne](https://fyne.io); see [references](docs/references.md).

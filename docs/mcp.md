@@ -31,7 +31,7 @@ Then ask, for example: "Install Sequoia on my VM offline and tell me when it rea
 | `install_offline` | What **Type it in the VM** does: opens the recovery's Terminal and types the install line. `unattended: true` erases the VM's empty disk and accepts Apple's macOS license for you, so it also needs `erase_disk: true` and `accept_license: true`. |
 | `host_check` | The Host tab's checks. |
 
-Screen and input need **Display: In the app** (the default); a VM in QEMU's own window has no screen socket.
+Screen and input need **Display: In the app** (the default); a VM in QEMU's own window has no screen socket. A VM on [Reims vGPU](reims-vgpu.md) always has the socket: its screen is Reims vGPU's own window, and `screen_capture` and input work as for any VM (capture is slower). `vm_start` runs its host checks first and returns their error, such as a low `vm.max_map_count`.
 
 ## Safety
 

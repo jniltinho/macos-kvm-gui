@@ -22,6 +22,7 @@ Running macOS under KVM usually means cloning repositories, running Python downl
 - **Explains what's wrong.** The Host tab checks KVM, QEMU, `ignore_msrs` (one-click fix) and conflicting VirtualBox/VMware VMs. QEMU errors become plain messages.
 - **Careful with your data.** It never overwrites a disk, the NVRAM or existing media. A lock keeps two operations or two app instances from touching the same VM folder, it refuses to start a disk another QEMU already uses, and the SSH forward is only reachable from `127.0.0.1`.
 - **Packages for Ubuntu, Debian and Fedora.** Each release has a `.deb`, an `.rpm` (Fedora 39+) and a `.tar.gz`, with SHA-256 files.
+- **Reims vGPU** *(experimental)*. A per-VM **Graphics** choice runs the VM on [Reims vGPU](reims-vgpu.md), a paravirtual GPU that gives macOS Metal through the host's Vulkan driver, on the GPU that drives your desktop. The app installs its QEMU from a prebuilt package or builds it in Docker, checks the host for it, and opens its accelerated window while the Preview keeps working. Sequoia 15.8.1 ran on it with Metal on an RTX 4070.
 - **GPU passthrough** *(experimental)*. It can hand a macOS-supported AMD GPU to the VM for real Metal acceleration, and it refuses setups that would leave your host without a display. NVIDIA Kepler cards work natively up to Big Sur and, with **root-patch mode** and OpenCore Legacy Patcher inside macOS, on Monterey to Sequoia.
 
 ## How it works
@@ -39,7 +40,7 @@ At every start the app extracts the embedded OpenCore tree into the VM's folder,
 | Big Sur 11 | 🧪 Experimental: 11.7.11 installed from the offline installer, unattended through the MCP server, to Setup Assistant |
 | High Sierra 10.13 → Catalina 10.15, Monterey 12, Ventura 13, Tahoe 26 | 🧪 Experimental: downloadable and configured, not validated |
 
-Every version needs a core count of 1, 2, 4, 8 or 16 (2, 4, 8, 16 or 32 vCPUs with 2 threads per core); see the [table of valid processor counts](troubleshooting.md#valid-processor-counts). There is no graphics acceleration without a passed-through AMD GPU, because macOS has no driver for QEMU's emulated displays. The app shows how to keep the desktop smooth anyway; see [video performance](troubleshooting.md).
+Every version needs a core count of 1, 2, 4, 8 or 16 (2, 4, 8, 16 or 32 vCPUs with 2 threads per core); see the [table of valid processor counts](troubleshooting.md#valid-processor-counts). macOS has no driver for QEMU's emulated displays, so there is no graphics acceleration without [Reims vGPU](reims-vgpu.md) (experimental) or a passed-through GPU. The app shows how to keep the desktop smooth anyway; see [video performance](troubleshooting.md).
 
 ## Compared with
 

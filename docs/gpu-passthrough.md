@@ -6,6 +6,8 @@
 
 Passthrough gives macOS a physical AMD GPU, or an NVIDIA Kepler GPU (see [NVIDIA Kepler and root-patch mode](#nvidia-kepler-and-root-patch-mode)), for acceleration/Metal. This is different from improving QEMU's unaccelerated framebuffer. It is optional; for initial installation use **None (emulated display)**.
 
+No spare, macOS-supported card? [Reims vGPU](reims-vgpu.md) (experimental) gives macOS Metal through the GPU that drives your desktop, without VFIO or a reboot. A VM uses one or the other: saving a VM with both a GPU and `graphics=reims-vgpu` fails.
+
 [![GPU passthrough](diagrams/gpu-passthrough.png)](diagrams/gpu-passthrough.svg)
 
 ## Compatibility: what this app accepts

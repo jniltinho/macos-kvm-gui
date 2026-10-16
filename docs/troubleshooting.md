@@ -221,8 +221,46 @@ The helper is `/usr/lib/qemu/qemu-bridge-helper` on Ubuntu/Debian and `/usr/libe
 
 These are limitations, not translated core error messages:
 
-- **No Metal / slow desktop:** macOS uses the boot framebuffer of the emulated `vmware-svga` device, without graphics acceleration. Switching to QXL/virtio-gpu or increasing VRAM does not supply a macOS Metal driver. QEMU's `apple-gfx` is for macOS hosts, not this Linux/KVM path.
+- **No Metal / slow desktop:** macOS uses the boot framebuffer of the emulated `vmware-svga` device, without graphics acceleration. Switching to QXL/virtio-gpu or increasing VRAM does not supply a macOS Metal driver. Upstream QEMU's `apple-gfx` is for macOS hosts; on Linux, [Reims vGPU](reims-vgpu.md) (experimental) gives macOS Metal through the host's Vulkan driver.
 - **Blank Sonoma wallpaper:** choose a static picture (for example `/System/Library/Desktop Pictures/Sonoma.heic`) instead of the animated default. Enable **Reduce motion** and **Reduce transparency**, and disable Dock animation.
-- **wgpu/Metal-based applications fail:** a graphics API/backend that requires Metal cannot use the unaccelerated framebuffer. Use a software/non-Metal backend only if that application offers one; more vCPUs or VRAM does not add Metal. Physical supported AMD passthrough is the app's acceleration route, but is untested.
+- **wgpu/Metal-based applications fail:** a graphics API/backend that requires Metal cannot use the unaccelerated framebuffer. Use a software/non-Metal backend only if that application offers one; more vCPUs or VRAM does not add Metal. [Reims vGPU](reims-vgpu.md) (experimental) and physical supported AMD passthrough (untested) are the app's acceleration routes.
 - **1280×800 instead of 1920×1080:** this app generates OpenCore `Resolution=1920x1080@32`; the older OSX-KVM OpenCore image described in the repository leaves it empty and can boot at 1280×800. Start through this app and check that built-in (or matching override) assets are used. There is no resolution selector. Do not delete persistent NVRAM merely to change resolution; extracted EFI edits are replaced on Start.
 - **OpenCore keeps showing recovery:** keep choosing macOS Installer/installed disk during installation. Once the installed system boots, stop the VM and remove media. Media presence, not an installation-complete detector, controls picker visibility.
+
+## Reims vGPU
+
+[Reims vGPU](reims-vgpu.md) is experimental. Its host checks run before a Reims VM starts and in the Host tab (as warnings while no VM uses it); a failed one stops the start with `Reims vGPU: <check>: <detail> (<fix>)`.
+
+| Message | Action |
+| --- | --- |
+| ``Reims vGPU is not installed (looked for <Workspace>/.reims/qemu/current/bin/qemu-system-x86_64): install it in the Host tab or with `macos-kvm-gui reims install` `` | Click **Install Reims vGPU** in the Host tab or run `macos-kvm-gui reims install` (or build it). The app also looks for upstream's install in `~/.local/share/reims-ctl/qemu/current`. |
+| `reims_qemu in <settings.yaml>: <stat error>` | The path in `reims_qemu` (or `MKG_REIMS_QEMU`) does not exist. Fix or remove it. |
+| `<qemu> does not list the apple-gfx-pci device` (hint: `install or build Reims vGPU again`) | That QEMU is not a Reims vGPU build, for example the system QEMU set in `reims_qemu`. Install or build again, or point `reims_qemu` at the Reims build. |
+| `no Vulkan ICD manifest in /usr/share/vulkan/icd.d or /etc/vulkan/icd.d` | Install the GPU's Vulkan driver: `sudo apt install mesa-vulkan-drivers` (AMD, Intel), or the NVIDIA driver. |
+| `vm.max_map_count: <n>, below the <need> a VM with <RAM> MiB of RAM needs` | Click **Set up host**, which sets 2097152 (enough for 30 GiB) in `/etc/sysctl.d/90-macos-kvm-gui.conf`, or run the `sudo sysctl -w vm.max_map_count=…` and `sudo tee /etc/sysctl.d/90-macos-kvm-gui.conf` commands the message gives. The need is 64 per MiB of RAM plus 65536. |
+| `could not read /proc/sys/vm/max_map_count` | Shown as a warning; the VM starts. |
+| `/dev/udmabuf (AMD GPUs): does not exist: Vulkan on the AMD GPU may fail` (warning) | `sudo modprobe udmabuf`. The VM still starts: QEMU may render on another GPU. |
+| `/dev/udmabuf (AMD GPUs): cannot open it read-write: Vulkan on the AMD GPU may fail` (warning) | Join the device's group with the command shown (`sudo usermod -aG kvm $USER` on Ubuntu, or **Set up host**), then log out and back in. |
+| `Reims vGPU could not use /dev/udmabuf (needed to render on an AMD GPU): sudo usermod -aG <group> $USER, then log out and back in, or load it with sudo modprobe udmabuf.` | QEMU exited because the library could not use `/dev/udmabuf`. Same fix. |
+| `graphics: Reims vGPU and GPU passthrough cannot be used together: choose one of them (clear the GPU, or set graphics to vmware-svga)` | A VM uses one or the other. Clear the GPU (`config set gpu=`) or go back to `graphics=vmware-svga`. |
+| `graphics: expected vmware-svga or reims-vgpu` | `config set graphics=` takes only those values. |
+
+**Installing and building**
+
+| Message | Action |
+| --- | --- |
+| `Reims vGPU supports Ubuntu 24.04 and 26.04 hosts, and this one is <name>: there is no package for it (…)` | Packages and builds exist for those releases only. On another distribution, build Reims vGPU yourself and set `reims_qemu` in `settings.yaml`. |
+| `Reims vGPU builds for Ubuntu 24.04 and 26.04, not "<release>"` | `reims build --release` takes `24.04` or `26.04`. |
+| `<url>: the download's SHA-256 is <got>, the app expects <want>` | The package does not match the app's manifest: nothing was unpacked and `current` is unchanged. Retry; if it persists, use **Build from source** and report it. |
+| `unexpected path …`, `the link … points outside the archive`, `the archive expands to more than …` | The package was refused before activation. Same as a hash mismatch. |
+| `the build needs Docker: install it (sudo apt install docker.io) and add yourself to the docker group (…)` | Install Docker and join the `docker` group, log in again, then retry. Docker is needed only to build. |
+| `Docker is not usable (<reason>): start it (sudo systemctl start docker) and add yourself to the docker group (…)` | Start the Docker service, or join the group and log in again. |
+| `<dir> stays staged, not activated: this host lacks libraries its QEMU needs: <lib> (<package>)…; install them with: sudo apt install <packages>` | Install the packages named and run the install or build again. `current` was not changed. |
+| `<dir> stays staged, not activated: <qemu> does not list apple-gfx-pci…` or `it has no share/qemu/ReimsVgpu.rom` | The build is not usable; build again. |
+| `<dir> is for Ubuntu <release>, not this host: it stays staged, not activated` | Expected after `reims build --release` for another release. |
+
+**In the guest**
+
+- **The desktop never appears:** `METAL_ERROR_MODE` is not set. Boot the recovery and set it from Terminal, see [first boot in macOS](reims-vgpu.md#first-boot-in-macos), or switch the VM back to `vmware-svga`, set it on the desktop, and switch again.
+- **WindowServer crashes at a larger resolution:** displays wider than 2048 pixels need upstream's `ReimsVgpu.kext`, which the app does not ship; the app fixes 1920x1080.
+- **The Screen tab stays empty:** expected. The screen is Reims vGPU's own window; the Preview and the MCP server's `screen_capture` still work.

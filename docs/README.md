@@ -10,6 +10,7 @@ macos-kvm-gui is a Go + Fyne desktop app for installing and running macOS on Lin
 - [Getting started](getting-started.md): requirements, release installation (`.deb`, `.rpm`, `.tar.gz`), the New VM wizard, the tabs and installing macOS.
 - [Architecture](architecture.md): packages, VM lifecycle, workspace, recovery and asset overrides.
 - [GPU passthrough](gpu-passthrough.md): compatibility, reservation, safeguards and recovery.
+- [Reims vGPU](reims-vgpu.md): Metal in macOS through the host's own GPU, without passthrough (experimental): install, host and guest setup, limits.
 - [Troubleshooting](troubleshooting.md): exact app messages, fixes, network adapters and bridged networking, and display limitations.
 - [Command line](cli.md): every step from a terminal, and an automated install script.
 - [Development](development.md): builds, tests, boot assets, OpenSpec, CI and releases.

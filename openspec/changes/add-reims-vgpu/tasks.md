@@ -23,6 +23,6 @@
 
 ## 4. Docs and validation
 
-- [ ] 4.1 `docs/reims-vgpu.md` (install, build from source, host setup, guest setup, limits), `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/troubleshooting.md`, `docs/cli.md`, `docs/references.md`.
+- [x] 4.1 `docs/reims-vgpu.md` (install, build from source, host setup, guest setup, limits), `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/troubleshooting.md`, `docs/cli.md`, `docs/references.md`.
 - [ ] 4.2 `go vet ./... && go test ./...`; `openspec validate add-reims-vgpu --strict`; Codex review of the change.
 - [x] 4.3 On this host: the Nilton VM (Sequoia) with `reims-vgpu` boots on the RTX 4070 with `METAL_ERROR_MODE` set; `system_profiler SPDisplaysDataType` over SSH shows the paravirtual GPU with Metal; switching back to `vmware-svga` boots as before.

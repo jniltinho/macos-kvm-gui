@@ -17,7 +17,7 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 |---|---|
 | `check` | Runs the Host tab's checks. Exits with an error when any check fails. |
 | `mcp` | Runs the [MCP server](mcp.md) for AI agents on standard input and output. |
-| `setup` | Installs missing QEMU packages, loads the KVM module, adds you to the `kvm` group and enables `ignore_msrs`. It asks for your password once, through `pkexec`. |
+| `setup` | Installs missing QEMU packages, loads the KVM module, adds you to the `kvm` group, enables `ignore_msrs` and raises `vm.max_map_count` to 2097152 for Reims vGPU. It asks for your password once, through `pkexec`. |
 | `config show` | Prints the settings as JSON. |
 | `config set key=value...` | Changes settings. The keys are `workspace`, `version`, `ram`, `cores`, `vcpus`, `ssh-port`, `display` (`app` or `window`), `gpu`, `graphics` (`vmware-svga`, the default, or `reims-vgpu`, experimental: [Reims vGPU](reims-vgpu.md); not together with `gpu`), and for network adapter N (1–4) `nicN.enabled` (`true`/`false`), `nicN.mode` (`nat` or `bridged`), `nicN.bridge`, `nicN.model` (`virtio-net-pci`, `vmxnet3`, `e1000-82545em`) and `nicN.mac` (an address, or `random`), and `root-patch` (`true`/`false`, Monterey to Sequoia: [NVIDIA Kepler](gpu-passthrough.md#nvidia-kepler-and-root-patch-mode); turning it on downloads OCLP's kexts, turning it off needs `--root-patch-reverted`). Values go through the same validation as the app. |
 | `config recommend` | Sets CPU and RAM to the values recommended for this host. |
@@ -37,13 +37,16 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 | `vm start [--display app\|window] [-v] [--verbose-boot]` | Downloads the [extra kexts](architecture.md#extra-kexts) listed in `settings.yaml` that are not cached yet, then starts the VM in the foreground and returns when QEMU exits. `--verbose-boot` shows macOS's boot log on screen for this start (see [stuck at the Apple logo](troubleshooting.md#stuck-at-the-apple-logo)). See below. |
 | `gpu list` | Lists the display adapters, whether each can be passed to the VM, and why not. |
 | `gpu reserve <pci-address>` / `gpu release` | Reserves an eligible GPU for `vfio-pci`, or releases it. Both need a host reboot. Experimental. |
+| `reims install` | Downloads the prebuilt [Reims vGPU](reims-vgpu.md) QEMU for this Ubuntu release (24.04 or 26.04), checks its SHA-256 and activates it in `<Workspace>/.reims/qemu/current`. |
+| `reims build [--release 24.04\|26.04]` | Builds Reims vGPU's QEMU from source in Docker (about 10 minutes the first time) and activates it; a build for another release than the host's stays staged. |
+| `reims status` | Prints the QEMU a `reims-vgpu` VM runs, its build, upstream's commit and whether it lists `apple-gfx-pci`. |
 | `settings show` | Prints the path of `settings.yaml` and the settings in effect: theme, boot files override, extra kexts and whether they are downloaded. |
 | `settings reset --yes` | Overwrites `settings.yaml` with the built-in default, which sets nothing. |
 | `version` | Shows the app version and the built-in boot file versions. |
 
 ### `vm start`
 
-The command waits while the VM runs. The first **Ctrl+C** asks macOS to shut down (ACPI), and a second one forces the stop. With `display=app` there is no window: the command prints the private VNC socket, which any VNC viewer can open (for example `vncviewer /run/user/1000/macos-kvm-gui-*/vnc.sock`). With `--display window`, QEMU opens its own window. `-v` prints the QEMU command line and output.
+The command waits while the VM runs. The first **Ctrl+C** asks macOS to shut down (ACPI), and a second one forces the stop. With `display=app` there is no window: the command prints the private VNC socket, which any VNC viewer can open (for example `vncviewer /run/user/1000/macos-kvm-gui-*/vnc.sock`). With `--display window`, QEMU opens its own window. A VM with `graphics=reims-vgpu` always opens Reims vGPU's window and still prints the VNC socket. `-v` prints the QEMU command line and output.
 
 ## Automating an install
 
