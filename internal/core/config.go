@@ -59,6 +59,15 @@ func Defaults() Config {
 	return Config{Workspace: "~/OSX-KVM", Version: validated, RAMMiB: 8192, Cores: 4, VCPUs: 8, SSHPort: 2222}
 }
 
+// Recommended ajusta CPU e RAM ao host. Sem GPU suportada o macOS desenha a tela
+// na CPU, então mais vCPUs deixam o vídeo visivelmente mais fluido.
+func Recommended(c Config, hostThreads, hostMemMiB int) Config {
+	vcpus := min(max(hostThreads/2/2*2, 2), 16)
+	c.VCPUs, c.Cores = vcpus, max(vcpus/2, 1)
+	c.RAMMiB = min(max(hostMemMiB/4/1024*1024, 4096), 16384)
+	return c
+}
+
 // FieldError aponta o campo inválido para a UI destacar.
 type FieldError struct {
 	Field string

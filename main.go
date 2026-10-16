@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,17 @@ const manualSteps = `**Passos manuais dentro da VM (primeira instalação)**
 2. Abra o **Disk Utility**, ative *View › Show All Devices*, selecione o disco **QEMU HARDDISK** e use **Erase** (APFS, GUID).
 3. Feche o Disk Utility e escolha **Reinstall macOS**. A VM reinicia algumas vezes: no OpenCore escolha **macOS Installer** e, depois, o disco instalado.
 4. Quando o macOS já iniciar pelo disco, remova a mídia de instalação aqui para liberar espaço.`
+
+const videoTips = `**Desempenho de vídeo**
+
+A VM não tem aceleração gráfica: o macOS não tem driver para o vídeo virtual nem para GPUs NVIDIA, então a tela é desenhada pela CPU. Para ficar mais fluido:
+
+1. Use **Recomendado para este host** na aba Configuração (mais vCPUs e RAM).
+2. No macOS, em *System Settings › Accessibility › Display*, ative **Reduce motion** e **Reduce transparency**.
+3. Em *Desktop & Dock*, escolha minimizar com **Scale** e desligue **Animate opening applications**.
+4. Prefira um papel de parede estático e mantenha 1920x1080.
+
+Aceleração de verdade só com uma GPU AMD suportada pelo macOS (por exemplo RX 580 ou RX 6600) em passthrough VFIO.`
 
 type ui struct {
 	win     fyne.Window
@@ -246,9 +258,17 @@ func (u *ui) configTab() fyne.CanvasObject {
 		u.refresh()
 		dialog.ShowInformation("Configuração", "Configuração salva.", u.win)
 	}
-	note := widget.NewLabel("CPU e placa de rede são escolhidas pela versão do macOS. Só o Sonoma foi validado de ponta a ponta.")
+	recommend := widget.NewButtonWithIcon("Recomendado para este host", theme.ComputerIcon(), func() {
+		r := core.Recommended(u.cfg, runtime.NumCPU(), u.host.MemTotalMiB())
+		ram.SetText(strconv.Itoa(r.RAMMiB))
+		cores.SetText(strconv.Itoa(r.Cores))
+		vcpus.SetText(strconv.Itoa(r.VCPUs))
+	})
+	note := widget.NewLabel("Sem GPU suportada o macOS desenha a tela na CPU: mais vCPUs deixam o vídeo mais fluido. " +
+		"O botão acima só preenche os campos; clique em Salvar para aplicar. " +
+		"CPU e placa de rede são escolhidas pela versão do macOS. Só o Sonoma foi validado de ponta a ponta.")
 	note.Wrapping = fyne.TextWrapWord
-	return container.NewVBox(form, note)
+	return container.NewVBox(form, container.NewHBox(recommend), note)
 }
 
 func (u *ui) installTab() fyne.CanvasObject {
@@ -394,7 +414,12 @@ func (u *ui) vmTab() fyne.CanvasObject {
 	})
 	u.btnPowerdown.Importance = widget.WarningImportance
 	u.btnKill.Importance = widget.DangerImportance
-	return container.NewVBox(u.vmState, container.NewHBox(u.btnStart, u.btnPowerdown, u.btnKill))
+	return container.NewVScroll(container.NewVBox(
+		u.vmState,
+		container.NewHBox(u.btnStart, u.btnPowerdown, u.btnKill),
+		widget.NewSeparator(),
+		widget.NewRichTextFromMarkdown(videoTips),
+	))
 }
 
 func (u *ui) logTab() fyne.CanvasObject {

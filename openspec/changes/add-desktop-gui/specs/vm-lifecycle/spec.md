@@ -94,3 +94,21 @@ O sistema SHALL exibir o estado da VM (parada, em execução ou pausada por erro
 #### Scenario: Fechar o app com a VM rodando
 - **WHEN** o usuário fecha a janela com a VM em execução
 - **THEN** o app não fecha e pede para desligar a VM antes
+
+### Requirement: Recursos recomendados para o host
+O sistema SHALL oferecer uma ação que preenche núcleos, vCPUs e RAM com valores recomendados para o host: vCPUs iguais à metade das threads do host (par, entre 2 e 16), núcleos iguais à metade das vCPUs (mínimo 1) e RAM igual a um quarto da memória total, arredondada para baixo em múltiplos de 1024 MiB, entre 4096 e 16384 MiB. Sem GPU suportada, o vídeo é renderizado pela CPU.
+
+#### Scenario: Host de referência
+- **WHEN** o host tem 24 threads e 186 GiB de RAM
+- **THEN** os campos passam a 12 vCPUs, 6 núcleos e 16384 MiB, sem salvar até o usuário confirmar
+
+#### Scenario: Host pequeno
+- **WHEN** o host tem 4 threads e 8 GiB de RAM
+- **THEN** os campos passam a 2 vCPUs, 1 núcleo e 4096 MiB
+
+### Requirement: Orientação de desempenho de vídeo
+O sistema SHALL informar que a VM não tem aceleração gráfica (o macOS não tem driver para o vídeo virtual nem para GPUs NVIDIA) e SHALL listar os ajustes no macOS que reduzem o custo de renderização.
+
+#### Scenario: Aba da VM
+- **WHEN** o usuário abre a aba da VM
+- **THEN** vê os ajustes "Reduce motion", "Reduce transparency" e animações do Dock, e a observação de que só uma GPU AMD suportada em passthrough traz aceleração

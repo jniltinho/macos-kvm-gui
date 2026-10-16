@@ -32,6 +32,9 @@
 
 ## 6. Interface desktop
 
+- [x] 6.4 Implementar o cálculo de recursos recomendados (threads e MemTotal do host) e o botão na Configuração; verificar com teste de tabela (host de referência e host pequeno)
+- [x] 6.5 Mostrar na aba VM a orientação de desempenho de vídeo; verificar com screenshot
+
 - [ ] 6.1 Implementar a janela Fyne com abas Host, Instalação, VM e Log, operações em goroutines e atualização via `fyne.Do`; verificar abrindo o app e executando cada ação no host de referência
 - [ ] 6.2 Mostrar os passos manuais da instalação, confirmar a parada forçada e a remoção de mídia, e interceptar o fechamento com a VM rodando; verificar manualmente
 - [x] 6.3 Escrever o README (dependências de build/runtime, build, uso, limitações como initramfs e versões experimentais); verificar que os comandos documentados funcionam

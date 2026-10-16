@@ -75,6 +75,18 @@ func (h Host) Checks(version string) []Check {
 	return append(out, h.checkQEMUVersion(), h.checkCompat(flags, version), h.checkMSRs(), h.checkConflict())
 }
 
+// MemTotalMiB lê o MemTotal de /proc/meminfo (0 se não der para ler).
+func (h Host) MemTotalMiB() int {
+	data, _ := os.ReadFile(filepath.Join(h.ProcRoot, "meminfo"))
+	for _, line := range strings.Split(string(data), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "MemTotal:" {
+			kb, _ := strconv.Atoi(f[1])
+			return kb / 1024
+		}
+	}
+	return 0
+}
+
 func (h Host) cpuFlags() map[string]bool {
 	data, err := os.ReadFile(filepath.Join(h.ProcRoot, "cpuinfo"))
 	if err != nil {

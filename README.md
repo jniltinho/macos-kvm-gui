@@ -9,7 +9,8 @@ O app:
 - baixa a recovery do macOS, **verifica a assinatura da Apple e o SHA-256 de cada chunk**, converte para imagem raw e apaga o DMG;
 - cria o disco qcow2 thin;
 - inicia a VM, desliga por ACPI (QMP) ou força a parada, mantendo a NVRAM UEFI entre execuções;
-- remove a mídia de instalação depois da instalação, para liberar espaço.
+- remove a mídia de instalação depois da instalação, para liberar espaço;
+- sugere CPU e RAM para o host e mostra os ajustes de desempenho de vídeo.
 
 Particionar o disco e rodar o instalador **dentro** do macOS continuam manuais; a aba Instalação mostra os passos.
 
@@ -58,6 +59,10 @@ make test-integration   # sobe um QEMU real num workspace temporário (exige KVM
 | `<workspace>/.macos-kvm-gui-media` | versão da `BaseSystem.img` baixada pelo app |
 | `$XDG_RUNTIME_DIR/macos-kvm-gui-*.lock` | lock do workspace (uma operação ou VM por vez, inclusive entre instâncias) |
 | `/etc/modprobe.d/macos-kvm-gui.conf` | `ignore_msrs` persistente (criado pela correção na aba Host) |
+
+## Desempenho de vídeo
+
+A VM não tem aceleração gráfica: o macOS não tem driver para o vídeo virtual nem para GPUs NVIDIA, então a tela é desenhada pela CPU. O botão **Recomendado para este host** (aba Configuração) usa metade das threads do host (até 16 vCPUs) e um quarto da RAM (até 16 GiB). No macOS, ative *Reduce motion* e *Reduce transparency* (Accessibility › Display) e desligue as animações do Dock. Aceleração de verdade só com uma GPU AMD suportada pelo macOS em passthrough VFIO.
 
 ## Limitações
 

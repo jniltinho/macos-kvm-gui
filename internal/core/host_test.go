@@ -96,6 +96,14 @@ func TestChecksProblems(t *testing.T) {
 	}
 }
 
+func TestMemTotal(t *testing.T) {
+	h := fakeHost(t, "svm", "Y")
+	write(t, filepath.Join(h.ProcRoot, "meminfo"), "MemFree:  100 kB\nMemTotal:       195037184 kB\n")
+	if got := h.MemTotalMiB(); got != 190466 {
+		t.Fatalf("MemTotalMiB = %d", got)
+	}
+}
+
 func TestCompatOldVersionAndUnknownProcs(t *testing.T) {
 	h := fakeHost(t, "vmx", "Y")
 	if c := h.checkCompat(h.cpuFlags(), "monterey"); c.Status != OK {

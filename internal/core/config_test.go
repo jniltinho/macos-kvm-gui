@@ -45,6 +45,24 @@ func TestConfigValidate(t *testing.T) {
 	}
 }
 
+func TestRecommended(t *testing.T) {
+	cases := []struct{ threads, memMiB, vcpus, cores, ram int }{
+		{24, 186 * 1024, 12, 6, 16384}, // host de referência
+		{4, 8 * 1024, 2, 1, 4096},
+		{64, 512 * 1024, 16, 8, 16384},
+		{6, 24 * 1024, 2, 1, 6144}, // 6/2=3 vira par: 2
+	}
+	for _, tc := range cases {
+		c := Recommended(Defaults(), tc.threads, tc.memMiB)
+		if c.VCPUs != tc.vcpus || c.Cores != tc.cores || c.RAMMiB != tc.ram {
+			t.Errorf("%d threads/%d MiB: got %d vCPUs, %d núcleos, %d MiB", tc.threads, tc.memMiB, c.VCPUs, c.Cores, c.RAMMiB)
+		}
+		if err := c.Validate(); err != nil {
+			t.Errorf("recomendação inválida: %v", err)
+		}
+	}
+}
+
 func TestWorkspaceTilde(t *testing.T) {
 	t.Setenv("HOME", "/home/x")
 	d, err := Defaults().WorkspaceDir()
