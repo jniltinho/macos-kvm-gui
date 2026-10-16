@@ -23,6 +23,9 @@ import (
 
 var logo = fyne.NewStaticResource("logo.svg", assets.Logo)
 
+// version is set at build time: go build -ldflags "-X main.version=v0.1.1".
+var version = "dev"
+
 const homeLab = "For home lab use. macOS is Apple's software: its license only allows it on Apple-branded hardware, so make sure your use complies with it."
 
 const manualSteps = `1. In the OpenCore menu, choose **macOS Base System**.
@@ -83,7 +86,7 @@ func main() {
 	a := app.NewWithID("io.github.jniltinho.macos-kvm-gui")
 	a.Settings().SetTheme(appTheme{Theme: theme.DefaultTheme(), light: core.Setting("MKG_THEME") == "light"})
 	a.SetIcon(logo)
-	u := &ui{win: a.NewWindow("macOS KVM"), host: core.SystemHost(), vm: &core.VM{}}
+	u := &ui{win: a.NewWindow("macOS KVM " + version), host: core.SystemHost(), vm: &core.VM{}}
 	u.cfgPath, _ = core.ConfigPath()
 	cfg, err := core.LoadConfig(u.cfgPath)
 	u.cfg = cfg

@@ -35,12 +35,20 @@ sudo apt install gcc pkg-config libgl1-mesa-dev xorg-dev libwayland-dev libxkbco
 
 Go 1.27 or newer (see `go.mod`).
 
+## Install
+
+Download the latest [release](https://github.com/jniltinho/macos-kvm-gui/releases): the `.deb` adds a "macOS KVM" menu entry (`sudo apt install ./macos-kvm-gui_X.Y.Z_amd64.deb`), and the `.tar.gz` is a standalone binary. Both need Linux x86_64 with glibc 2.38+ (Ubuntu 24.04+, Debian 13+).
+
 ## Build and use
 
 ```sh
-make build   # produces ./macos-kvm-gui
+make build        # produces ./macos-kvm-gui
 make run
+make test         # gofmt check, go vet, race tests
+make package      # dist/: .tar.gz, .deb and SHA-256 files, versioned with git describe
 ```
+
+CI (`.github/workflows/ci.yml`) runs the tests and validates the OpenSpec changes on every push and pull request. Pushing a `v*` tag runs `.github/workflows/release.yml`, which publishes the release with the `.tar.gz`, the `.deb` and their checksums. The `create-release` skill in `.claude/skills` walks through tagging and writing the notes.
 
 Flow: **Host** (all green) → **Settings** (workspace, version, RAM, CPUs, SSH port) → **Install** (Create workspace → Download recovery → Create disk) → **VM** (Start).
 
