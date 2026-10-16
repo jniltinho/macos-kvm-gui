@@ -184,7 +184,7 @@ func TestReimsChecks(t *testing.T) {
 	// Low map count: blocking, with the sysctl command and a file to keep it.
 	write(t, filepath.Join(h.ProcRoot, "sys/vm/max_map_count"), "65530\n")
 	qemu, warns, err := h.ReimsReady(Config{RAMMiB: 16384})
-	if err == nil || qemu != "" || !strings.Contains(err.Error(), "sudo sysctl -w vm.max_map_count=1114112") || !strings.Contains(err.Error(), "/etc/sysctl.d/") {
+	if err == nil || qemu != "" || !strings.Contains(err.Error(), "sudo sysctl -w vm.max_map_count=2097152") || !strings.Contains(err.Error(), "/etc/sysctl.d/") {
 		t.Fatalf("low map count: %v %v", err, warns)
 	}
 	write(t, filepath.Join(h.ProcRoot, "sys/vm/max_map_count"), "1114112\n")

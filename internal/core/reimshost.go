@@ -138,7 +138,7 @@ func (h Host) checkMapCount(ramMiB int) Check {
 	case n < need:
 		c.Status = Fail
 		c.Detail = fmt.Sprintf("%d, below the %d a VM with %d MiB of RAM needs", n, need, ramMiB)
-		c.Hint = fmt.Sprintf("sudo sysctl -w vm.max_map_count=%d, and to keep it: echo vm.max_map_count=%d | sudo tee /etc/sysctl.d/90-macos-kvm-gui.conf", need, need)
+		c.Hint = fmt.Sprintf("press Set up host, or: sudo sysctl -w vm.max_map_count=%d, and to keep it: echo vm.max_map_count=%d | sudo tee /etc/sysctl.d/90-macos-kvm-gui.conf", max(need, 2097152), max(need, 2097152))
 	default:
 		c.Status, c.Detail = OK, fmt.Sprintf("%d (%d needed for %d MiB)", n, need, ramMiB)
 	}
