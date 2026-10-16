@@ -57,7 +57,7 @@ var light = map[fyne.ThemeColorName]color.Color{
 	theme.ColorNamePressed:             color.NRGBA{R: 0x3D, G: 0xAE, B: 0xE9, A: 0x66},
 	theme.ColorNameScrollBar:           color.NRGBA{R: 0x23, G: 0x26, B: 0x29, A: 0x66},
 	theme.ColorNameScrollBarBackground: color.NRGBA{R: 0x23, G: 0x26, B: 0x29, A: 0x14},
-	theme.ColorNameShadow:              color.NRGBA{A: 0x33},
+	theme.ColorNameShadow:              color.NRGBA{A: 0x59}, // dialogs and menus stand out from the window
 	theme.ColorNameSuccess:             rgb(0x27AE60),
 	theme.ColorNameWarning:             rgb(0xF67400),
 	theme.ColorNameError:               rgb(0xDA4453),
@@ -93,8 +93,12 @@ func (t appTheme) Size(n fyne.ThemeSizeName) float32 {
 	switch n {
 	case theme.SizeNameInputRadius, theme.SizeNameSelectionRadius, theme.SizeNameScrollBarRadius,
 		theme.SizeNameButtonRadius, theme.SizeNameInnerWindowRadius, theme.SizeNameWindowButtonRadius,
-		theme.SizeNameDialogRadius, theme.SizeNamePopupRadius, theme.SizeNameCardRadius:
-		return 0 // square corners everywhere, dialogs, alerts, menus and cards included
+		theme.SizeNameCardRadius:
+		return 0 // square corners for controls and cards
+	case theme.SizeNameDialogRadius:
+		return 8 // dialogs float above the window: rounded, with the stronger shadow below
+	case theme.SizeNamePopupRadius:
+		return 4
 	case theme.SizeNamePadding:
 		return 4
 	case theme.SizeNameInnerPadding:
