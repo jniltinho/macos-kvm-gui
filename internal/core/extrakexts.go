@@ -147,25 +147,11 @@ func DownloadExtraKexts(ctx context.Context, ks ExtraKexts) error {
 	if err := os.MkdirAll(base, 0o755); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(filepath.Join(base, ".lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	unlock, err := lockFile(ctx, filepath.Join(base, ".lock"))
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	for { // a cancelled start stops waiting for another one's download
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(200 * time.Millisecond):
-		}
-	}
+	defer unlock()
 	// Leftovers of a start that died while it held the lock.
 	if ents, err := os.ReadDir(base); err == nil {
 		for _, e := range ents {
@@ -183,6 +169,31 @@ func DownloadExtraKexts(ctx context.Context, ks ExtraKexts) error {
 		}
 	}
 	return ctx.Err()
+}
+
+// lockFile takes a host-wide exclusive flock on path, waiting for another holder until ctx
+// ends, so a cancelled caller stops waiting.
+func lockFile(ctx context.Context, path string) (unlock func(), err error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return nil, err
+	}
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return func() { f.Close() }, nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) {
+			f.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, ctx.Err()
+		case <-time.After(200 * time.Millisecond):
+		}
+	}
 }
 
 func (e ExtraKext) download(ctx context.Context, base string) error {

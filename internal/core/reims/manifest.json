@@ -1,0 +1,14 @@
+{
+  "tag": "reims-c099dd5",
+  "commit": "c099dd5a4d61107a5527efc64cf1d1ab2f3a9b85",
+  "packages": {
+    "24.04": {
+      "file": "reims-qemu-c099dd5-ubuntu24.04-x86_64.tar.gz",
+      "sha256": "07f708b09292aa613f99e659ca505985662b6a7cf823fe7a8e1771a84ceec692"
+    },
+    "26.04": {
+      "file": "reims-qemu-c099dd5-ubuntu26.04-x86_64.tar.gz",
+      "sha256": "9464592313dfdc01024617bdc0d45d132d40fd4eab024205a5d85114ab0f73bb"
+    }
+  }
+}
