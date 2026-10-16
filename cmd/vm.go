@@ -15,6 +15,7 @@ import (
 var (
 	vmDisplay string
 	vmVerbose bool
+	vmBootLog bool
 )
 
 var vmCmd = &cobra.Command{Use: "vm", Short: "Run the macOS VM"}
@@ -33,6 +34,7 @@ With display=app there is no window: the screen is on the printed private VNC so
 		if vmDisplay != "" {
 			c.Display = vmDisplay
 		}
+		c.VerboseBoot = vmBootLog
 		out := cmd.OutOrStdout()
 		stopped := make(chan string, 1)
 		vm := &core.VM{
@@ -84,6 +86,7 @@ With display=app there is no window: the screen is on the printed private VNC so
 func init() {
 	vmStartCmd.Flags().StringVar(&vmDisplay, "display", "", "app (VNC socket, no window) or window (QEMU window); default from config")
 	vmStartCmd.Flags().BoolVarP(&vmVerbose, "verbose", "v", false, "print the QEMU command line and output")
+	vmStartCmd.Flags().BoolVar(&vmBootLog, "verbose-boot", false, "show macOS's boot log on screen instead of the logo, for this start only (boot-args -v debug=0x100)")
 	vmCmd.AddCommand(vmStartCmd)
 	rootCmd.AddCommand(vmCmd)
 }

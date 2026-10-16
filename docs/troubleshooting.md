@@ -107,6 +107,41 @@ Read the last `qemu-img` line for unsupported compression versus disk-space/perm
 - `QMP control unavailable: use Force stop` or `warning: QMP connection closed; graceful shutdown is unavailable` — wait briefly if just started, or shut down inside macOS. Force stop is destructive; the app never escalates automatically.
 - `could not prepare the boot files: MKG_ASSETS_DIR=<directory> is missing <file>` — fix the complete override tree or unset the override/use built-ins. The setting may come from the user-config `.env`.
 
+## Stuck at the Apple logo
+
+If the Apple logo stays without a progress bar, use **Start with verbose boot** in Install step 4, or **Machine › Start with verbose boot (debug)** (CLI: `vm start --verbose-boot`). That start, and only that one, adds `-v debug=0x100` to the boot arguments: macOS prints its boot log on the screen instead of the logo, and stops on a panic with its details.
+
+- **The log ends at `EB|LOG:EXITBS:START`** and the VM uses one CPU at 100% without reading the disk: the kernel never started. The usual cause is a core count that is not a power of two, such as 6 cores × 2 threads. Use one of the combinations below; the app refuses other core counts.
+- **A panic message** names the kernel extension or the reason; search it together with the macOS version.
+- **The log keeps scrolling:** macOS is still starting. The first boot of a recovery or an installer can take several minutes without GPU acceleration.
+
+### Recovery language
+
+The recovery and the installer start in **English with the U.S. keyboard**: OpenCore sets the `prev-lang:kbd` NVRAM variable to `en-US:0` at every boot. (Releases up to 0.7.0 kept the value from OpenCore's sample configuration, `ru-RU:252`, so the recovery opened in Russian.) To use another language for the installer, pick it in the recovery's menu; the installed macOS uses the language chosen in Setup Assistant.
+
+### Valid processor counts
+
+In Settings › System › Processor, **Processors** is the total number of vCPUs and **Threads per core** is 1 or 2, so the cores are processors ÷ threads. The cores must be 1, 2, 4, 8 or 16:
+
+| Cores | 1 thread per core | 2 threads per core |
+| --- | --- | --- |
+| 1 | 1 vCPU | 2 vCPUs |
+| 2 | 2 vCPUs | 4 vCPUs |
+| 4 | 4 vCPUs | 8 vCPUs |
+| 8 | 8 vCPUs | 16 vCPUs |
+| 16 | 16 vCPUs | 32 vCPUs |
+
+Any other total cannot be split into such cores: with 2 threads per core, 6, 10, 12, 14, 20 and 24 vCPUs give 3, 5, 6, 7, 10 and 12 cores, and macOS hangs at the Apple logo. 12 vCPUs, for example, must become 8 or 16.
+
+| Tried on the reference host (Ryzen 9 9900X, 24 threads, QEMU 8.2.2) | Result |
+| --- | --- |
+| 2 cores × 2 threads = 4 vCPUs, 8 GB (Sequoia recovery) | Boots to macOS Recovery |
+| 4 cores × 2 threads = 8 vCPUs, 16 GB (Sequoia recovery) | Boots: the kernel starts and launchd runs |
+| 8 cores × 2 threads = 16 vCPUs, 16 GB (Sonoma, installed) | Boots and runs (the validated VM) |
+| 6 cores × 2 threads = 12 vCPUs, 16 GB (Sequoia recovery) | Hangs at the Apple logo after `EXITBS:START` |
+
+Other combinations in the table follow the same rule but were not booted one by one. Do not give the VM more vCPUs than the host has threads, and leave some for the host: **Recommended for this host** proposes about half of them as a power-of-two core count (24 host threads give 4 cores × 2 = 8 vCPUs; 32 or more give 8 × 2 = 16). Without a GPU the CPU draws the screen, so more vCPUs make it smoother, up to what the host can spare.
+
 ## Network adapters
 
 Each VM has up to four adapters (Settings › Network, Adapter 1–4), attached to **NAT** or to a **Bridged Adapter**, with a type and a MAC address.

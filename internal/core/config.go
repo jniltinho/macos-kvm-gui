@@ -61,6 +61,9 @@ type Config struct {
 	// adapters existed, means one NAT adapter with the legacy MAC: see Adapters. An empty list
 	// means no adapter at all, so it must survive JSON: no omitempty.
 	Networks []NIC `json:"networks"`
+	// VerboseBoot is a one-off start option, never saved: macOS prints its boot log on screen
+	// (-v) and stops on a panic with its details (debug=0x100) instead of showing the logo.
+	VerboseBoot bool `json:"-"`
 }
 
 func Defaults() Config {
@@ -70,8 +73,14 @@ func Defaults() Config {
 // Recommended fits CPU and RAM to the host. Without a supported GPU macOS draws the
 // screen on the CPU, so more vCPUs make the display visibly smoother.
 func Recommended(c Config, hostThreads, hostMemMiB int) Config {
-	vcpus := min(max(hostThreads/2/2*2, 2), 16)
-	c.VCPUs, c.Cores = vcpus, max(vcpus/2, 1)
+	// About half the host's threads, as cores × 2 threads, with a power-of-two core count
+	// (see Validate): 24 host threads give 4 cores × 2 = 8 vCPUs.
+	want := min(max(hostThreads/2, 2), 16)
+	cores := 1
+	for cores*2*2 <= want {
+		cores *= 2
+	}
+	c.VCPUs, c.Cores = cores*2, cores
 	c.RAMMiB = min(max(hostMemMiB/4/1024*1024, MinRAMMiB), 16384)
 	return c
 }
@@ -127,6 +136,11 @@ func (c Config) Validate() error {
 	}
 	if c.VCPUs < 1 || c.VCPUs%c.Cores != 0 {
 		return &FieldError{"vcpus", "must be a multiple of the number of cores"}
+	}
+	// macOS stops at the Apple logo, right after the boot loader hands over (EXITBS:START),
+	// when the core count is not a power of two: 6 cores × 2 threads never boots.
+	if c.Cores&(c.Cores-1) != 0 {
+		return &FieldError{"cores", fmt.Sprintf("%d cores: use 1, 2, 4, 8 or 16 (macOS hangs at the Apple logo with other core counts)", c.Cores)}
 	}
 	if c.Display != "" && c.Display != DisplayApp && c.Display != DisplayWindow {
 		return &FieldError{"display", "expected app or window"}

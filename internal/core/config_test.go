@@ -48,7 +48,7 @@ func TestConfigValidate(t *testing.T) {
 
 func TestRecommended(t *testing.T) {
 	cases := []struct{ threads, memMiB, vcpus, cores, ram int }{
-		{24, 186 * 1024, 12, 6, 16384}, // reference host
+		{24, 186 * 1024, 8, 4, 16384}, // reference host: 6 cores would hang macOS at the logo
 		{4, 8 * 1024, 2, 1, 4096},
 		{64, 512 * 1024, 16, 8, 16384},
 		{6, 24 * 1024, 2, 1, 6144}, // 6/2=3 rounds down to even: 2
@@ -87,6 +87,22 @@ func TestProfileFor(t *testing.T) {
 		}
 		if p.Experimental != (v.Short != "sonoma") {
 			t.Errorf("%s: experimental %v", v.Short, p.Experimental)
+		}
+	}
+}
+
+func TestCoresPowerOfTwo(t *testing.T) {
+	c := Defaults()
+	for _, cores := range []int{1, 2, 4, 8, 16} {
+		c.Cores, c.VCPUs = cores, cores*2
+		if err := c.Validate(); err != nil {
+			t.Errorf("%d cores: %v", cores, err)
+		}
+	}
+	for _, cores := range []int{3, 6, 12} {
+		c.Cores, c.VCPUs = cores, cores*2
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "Apple logo") {
+			t.Errorf("%d cores must be refused: %v", cores, err)
 		}
 	}
 }

@@ -32,7 +32,7 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 | `vm export <name> [file] [--full]` | Writes the settings as JSON, or with `--full` a `.tar` with the disk, NVRAM, identity and install media. |
 | `vm import <file> [--folder dir]` | Adds a VM from a `.json` or a `.tar`; a `.tar` is unpacked into a new folder. |
 | `vm delete <name> --yes [--purge]` | Removes the VM from the list; `--purge` also deletes the files the app created in its folder. |
-| `vm start [--display app\|window] [-v]` | Starts the VM in the foreground and returns when QEMU exits. See below. |
+| `vm start [--display app\|window] [-v] [--verbose-boot]` | Starts the VM in the foreground and returns when QEMU exits. `--verbose-boot` shows macOS's boot log on screen for this start (see [stuck at the Apple logo](troubleshooting.md#stuck-at-the-apple-logo)). See below. |
 | `gpu list` | Lists the display adapters, whether each can be passed to the VM, and why not. |
 | `gpu reserve <pci-address>` / `gpu release` | Reserves an eligible GPU for `vfio-pci`, or releases it. Both need a host reboot. Experimental. |
 | `version` | Shows the app version and the built-in boot file versions. |

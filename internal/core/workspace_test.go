@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
 	"errors"
 	"os"
 	"os/exec"
@@ -91,6 +92,11 @@ func TestOpenCoreConfig(t *testing.T) {
 	}
 	if !strings.Contains(installed, "<key>MinDate</key>\n\t\t\t<integer>-1</integer>") || !strings.Contains(installed, "<key>MinVersion</key>\n\t\t\t<integer>-1</integer>") {
 		t.Error("APFS drivers of every macOS version must be allowed (High Sierra to Catalina need it)")
+	}
+	c.GPU = ""
+	c.VerboseBoot = true
+	if v, _ := OpenCoreConfig(c, id, false); !strings.Contains(v, "keepsyms=1 -v debug=0x100") || strings.Contains(installed, "-v") {
+		t.Error("verbose boot adds -v debug=0x100, only when asked")
 	}
 	if !strings.Contains(gpu, "keepsyms=1 agdpmod=pikera") || strings.Contains(installed, "agdpmod") {
 		t.Error("agdpmod=pikera only with a passed-through GPU")
@@ -199,5 +205,40 @@ func TestDiskAndMediaRemoval(t *testing.T) {
 	write(t, w.Path(MediaFile), "m")
 	if _, err := w.RemoveMedia(); !errors.Is(err, ErrBusy) {
 		t.Fatalf("removal must be refused while the workspace is in use: %v", err)
+	}
+}
+
+func TestOpenCoreVolumeHidden(t *testing.T) {
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	c := Defaults()
+	c.Workspace = t.TempDir()
+	w := NewWorkspace(c.Workspace)
+	if err := w.PrepareBoot(c, true); err != nil {
+		t.Fatal(err)
+	}
+	// Without it OpenCore lists its own disk as "QEMU VVFAT", ahead of macOS Base System.
+	for _, p := range []string{EFIDir + "/.contentVisibility", EFIDir + "/EFI/BOOT/.contentVisibility"} {
+		if b, err := os.ReadFile(w.Path(p)); err != nil || string(b) != "Disabled" {
+			t.Errorf("%s: %q %v", p, b, err)
+		}
+	}
+}
+
+func TestRecoveryLanguageIsEnglish(t *testing.T) {
+	id, _ := newIdentity()
+	cfg, err := OpenCoreConfig(Defaults(), id, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// prev-lang:kbd picks the recovery's language; OpenCore's sample had ru-RU:252 (Russian).
+	i := strings.Index(cfg, "<key>prev-lang:kbd</key>")
+	if i < 0 {
+		t.Fatal("prev-lang:kbd missing")
+	}
+	data := cfg[i:]
+	data = data[strings.Index(data, "<data>")+len("<data>") : strings.Index(data, "</data>")]
+	b, err := base64.StdEncoding.DecodeString(strings.TrimSpace(data))
+	if err != nil || string(b) != "en-US:0" {
+		t.Fatalf("prev-lang:kbd = %q %v, want en-US:0", b, err)
 	}
 }

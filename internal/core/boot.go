@@ -157,6 +157,9 @@ func OpenCoreConfig(c Config, id identity, withMedia bool) (string, error) {
 		picker, timeout, scan = "<true/>", "5", "0"
 	}
 	bootArgs := "keepsyms=1"
+	if c.VerboseBoot {
+		bootArgs += " -v debug=0x100"
+	}
 	if c.GPU != "" {
 		bootArgs += " agdpmod=pikera" // Navi cards show a black screen on iMac board IDs without it
 	}
@@ -223,7 +226,19 @@ func (w Workspace) PrepareBoot(c Config, withMedia bool) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(w.Path(EFIDir+"/EFI/OC/config.plist"), []byte(cfg), 0o644)
+	if err := os.WriteFile(w.Path(EFIDir+"/EFI/OC/config.plist"), []byte(cfg), 0o644); err != nil {
+		return err
+	}
+	// OpenCore's own disk would show in its picker as "QEMU VVFAT", ahead of macOS Base System.
+	// .contentVisibility "Disabled" hides that volume's entries only, so the recovery or the
+	// installed system is the first, default entry. (A stricter ScanPolicy would hide it too,
+	// but the file system lock stops the Sonoma recovery at the prohibited sign.)
+	for _, p := range []string{EFIDir + "/.contentVisibility", EFIDir + "/EFI/BOOT/.contentVisibility"} {
+		if err := os.WriteFile(w.Path(p), []byte("Disabled"), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func copyAsset(fsys fs.FS, src, dst string) error {

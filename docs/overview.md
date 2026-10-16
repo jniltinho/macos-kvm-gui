@@ -32,9 +32,10 @@ At every start the app extracts the embedded OpenCore tree into the VM's folder,
 | macOS | Status |
 |---|---|
 | Sonoma 14 | ✅ Validated end to end (14.8.9 on Ubuntu 24.04, QEMU 8.2.2) |
-| High Sierra 10.13 → Sequoia 15, Tahoe 26 | 🧪 Experimental: downloadable and configured, not validated |
+| Sequoia 15 | 🧪 Experimental: the recovery boots to macOS Recovery (4 cores × 2 threads, 16 GB); an install has not been validated |
+| High Sierra 10.13 → Ventura 13, Tahoe 26 | 🧪 Experimental: downloadable and configured, not validated |
 
-There is no graphics acceleration without a passed-through AMD GPU, because macOS has no driver for QEMU's emulated displays. The app shows how to keep the desktop smooth anyway; see [video performance](troubleshooting.md).
+Every version needs a core count of 1, 2, 4, 8 or 16 (2, 4, 8, 16 or 32 vCPUs with 2 threads per core); see the [table of valid processor counts](troubleshooting.md#valid-processor-counts). There is no graphics acceleration without a passed-through AMD GPU, because macOS has no driver for QEMU's emulated displays. The app shows how to keep the desktop smooth anyway; see [video performance](troubleshooting.md).
 
 ## Compared with
 

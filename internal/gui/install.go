@@ -232,6 +232,15 @@ func (u *ui) installTab() fyne.CanvasObject {
 	})
 	startVM := widget.NewButtonWithIcon("Start the VM", theme.MediaPlayIcon(), func() { u.btnStart.trigger() })
 	u.btnStartInstall = startVM
+	// The same start with macOS's boot log on screen, for an install stuck at the Apple logo.
+	u.btnVerboseInstall = widget.NewButtonWithIcon("Start with verbose boot", theme.ListIcon(), func() {
+		if !u.btnStart.Disabled() {
+			u.startWith(true)
+		}
+	})
+	debugNote := caption("Stuck at the Apple logo? Start with verbose boot shows macOS's boot log instead of the logo, for that start only. " +
+		"A log that ends at EXITBS:START usually means a core count other than 1, 2, 4, 8 or 16 (Settings › System › Processor).")
+	debugNote.Wrapping = fyne.TextWrapWord
 
 	right := func(b fyne.CanvasObject) fyne.CanvasObject { return container.NewHBox(layout.NewSpacer(), b) }
 	sizeBox := container.NewGridWrap(fyne.NewSize(90, u.diskSize.MinSize().Height), u.diskSize)
@@ -249,7 +258,8 @@ func (u *ui) installTab() fyne.CanvasObject {
 		add(2, "macOS recovery", "Downloaded from Apple; the signature and every chunk's SHA-256 are verified.",
 			u.stage, u.bar, u.barInf, right(u.btnDownload)),
 		add(3, "Virtual hard disk", "A qcow2 disk that only takes the space macOS uses.", diskRow),
-		add(4, "Install macOS", "Start the VM, erase the disk in Disk Utility and run Reinstall macOS.", guide, right(startVM)),
+		add(4, "Install macOS", "Start the VM, erase the disk in Disk Utility and run Reinstall macOS.", guide, debugNote,
+			right(container.NewHBox(u.btnVerboseInstall, startVM))),
 		add(5, "Clean up", "Once macOS boots from its disk, remove the install media to free space.", right(u.btnRemove)),
 	}
 
@@ -340,6 +350,7 @@ func (u *ui) refreshInstall(w core.Workspace, wsErr error, ready, free bool) {
 	enable(u.btnDisk, free && ready && !hasDisk)
 	enable(u.btnRemove, free && hasMedia)
 	enable(u.btnStartInstall, free && ready && hasDisk && hasMedia)
+	enable(u.btnVerboseInstall, free && ready && hasDisk)
 	u.diskSize.Hidden = hasDisk
 }
 

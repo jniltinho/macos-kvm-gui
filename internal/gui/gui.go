@@ -31,7 +31,7 @@ var version = "dev"
 
 const homeLab = "For home lab use. macOS is Apple's software: its license only allows it on Apple-branded hardware, so make sure your use complies with it."
 
-const manualSteps = `1. In the OpenCore menu, choose **macOS Base System**.
+const manualSteps = `1. In the OpenCore menu, **macOS Base System** is selected and starts by itself after five seconds (press Enter to start it now).
 2. Open **Disk Utility**, enable *View › Show All Devices*, select the **QEMU HARDDISK** disk and use **Erase** (APFS, GUID).
 3. Close Disk Utility and choose **Reinstall macOS**. The VM restarts a few times: in OpenCore pick **macOS Installer**, then the installed disk.
 4. Once macOS boots from the disk, remove the install media here to free space.`
@@ -69,6 +69,7 @@ type ui struct {
 	installBar                 *progressLine
 	installFiles               *widget.Label
 	btnStartInstall            *widget.Button
+	btnVerboseInstall          *widget.Button
 	stage                      *widget.Label
 	bar                        *widget.ProgressBar
 	barInf                     *widget.ProgressBarInfinite

@@ -113,11 +113,23 @@ func (u *ui) mainMenu() *fyne.MainMenu {
 			u.moveItem(),
 			item("Remove…", u.btnDelete),
 			fyne.NewMenuItemSeparator(),
-			item("Start", u.btnStart), item("Shut down", u.btnPowerdown), item("Force stop", u.btnKill),
+			item("Start", u.btnStart), u.verboseItem(), item("Shut down", u.btnPowerdown), item("Force stop", u.btnKill),
 			fyne.NewMenuItemSeparator(),
 			item("Show in a window", u.btnDetach), item("Full screen", u.btnFull)),
 		fyne.NewMenu("Help", docs, site, issues, fyne.NewMenuItemSeparator(), about),
 	)
+}
+
+// verboseItem starts the VM once with macOS's boot log on screen, for a VM that stops at the
+// Apple logo; it follows the Start button's state.
+func (u *ui) verboseItem() *fyne.MenuItem {
+	m := fyne.NewMenuItem("Start with verbose boot (debug)", func() {
+		if !u.btnStart.Disabled() {
+			u.startWith(true)
+		}
+	})
+	u.menuFor[m] = u.btnStart
+	return m
 }
 
 // moveItem follows the Settings button's state, since moving needs a stopped VM too.
@@ -426,9 +438,17 @@ func (u *ui) refreshStatus(s core.VMState) {
 }
 
 // start launches the VM and, with the in-app display, connects the screen.
-func (u *ui) start() {
+func (u *ui) start() { u.startWith(false) }
+
+// startWith starts the VM; verbose shows macOS's boot log on screen for this start only.
+func (u *ui) startWith(verbose bool) {
 	u.runningID = u.cur.ID
-	if err := u.vm.Start(u.cfg); err != nil {
+	c := u.cfg
+	c.VerboseBoot = verbose
+	if verbose {
+		u.appendLog("[VM] verbose boot: macOS prints its boot log on screen (boot-args -v debug=0x100)")
+	}
+	if err := u.vm.Start(c); err != nil {
 		dialog.ShowError(err, u.win)
 		u.refresh()
 		return
