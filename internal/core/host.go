@@ -54,8 +54,8 @@ func SystemHost() Host {
 		Output:   func(n string, a ...string) ([]byte, error) { return exec.Command(n, a...).CombinedOutput() },
 		Run: func(n string, a ...string) error {
 			out, err := exec.Command(n, a...).CombinedOutput()
-			if lines := strings.Split(strings.TrimSpace(string(out)), "\n"); err != nil && lines[0] != "" {
-				return fmt.Errorf("%w: %s", err, lines[len(lines)-1]) // keeps *exec.ExitError reachable via errors.As
+			if msg := strings.Join(strings.Fields(string(out)), " "); err != nil && msg != "" {
+				return fmt.Errorf("%w: %s", err, msg) // keeps *exec.ExitError reachable via errors.As
 			}
 			return err
 		},
@@ -230,8 +230,19 @@ func (h Host) checkConflict() Check {
 	return c
 }
 
-// ErrCancelled means the user closed the password prompt.
-var ErrCancelled = errors.New("fix cancelled")
+// ErrCancelled means the user closed or refused the password prompt.
+var ErrCancelled = errors.New("cancelled at the password prompt")
+
+// pkexecCancelled tells a dismissed or refused password prompt apart from real errors:
+// pkexec exits 126 when the dialog is dismissed, and the KDE agent makes it exit 127 with
+// "Not authorized"; any other 127 (for example a missing program) stays an error.
+func pkexecCancelled(err error) bool {
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return false
+	}
+	return ee.ExitCode() == 126 || ee.ExitCode() == 127 && strings.Contains(err.Error(), "Not authorized")
+}
 
 const modprobeFile = "modprobe.d/macos-kvm-gui.conf"
 
@@ -244,8 +255,7 @@ exit $rc`
 // FixIgnoreMSRs applies the fix via pkexec and then checks the real state.
 func (h Host) FixIgnoreMSRs() error {
 	err := h.Run("pkexec", "/bin/sh", "-c", fixScript)
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 126 {
+	if pkexecCancelled(err) {
 		return ErrCancelled
 	}
 	runtimeOK := h.checkMSRs().Status == OK
@@ -306,8 +316,7 @@ func (h Host) SetupHost(user string) (string, error) {
 		}
 	}
 	err := h.Run("pkexec", "/bin/sh", "-c", setupScript, "sh", user, module, strings.Join(pkgs, " "))
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 126 {
+	if pkexecCancelled(err) {
 		return "", ErrCancelled
 	}
 	if err != nil {

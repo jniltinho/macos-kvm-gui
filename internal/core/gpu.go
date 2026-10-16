@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -272,8 +271,7 @@ func (h Host) ReservedIDs() string {
 
 func (h Host) runPrivileged(script string, args ...string) error {
 	err := h.Run("pkexec", append([]string{"/bin/sh", "-c", script, "sh"}, args...)...)
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 126 {
+	if pkexecCancelled(err) {
 		return ErrCancelled
 	}
 	return err

@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -211,5 +212,30 @@ func TestSetupScriptRejectsInjection(t *testing.T) {
 		if !errors.As(err, &ee) || ee.ExitCode() != 2 {
 			t.Errorf("%q: expected exit 2, got %v", args, err)
 		}
+	}
+}
+
+func TestPkexecCancelled(t *testing.T) {
+	kde := fmt.Errorf("%w: Error executing command as another user: Not authorized This incident has been reported.", exitErr(127))
+	missing := fmt.Errorf("%w: Error executing command as another user: /x: No such file or directory", exitErr(127))
+	cases := []struct {
+		err  error
+		want bool
+	}{
+		{exitErr(126), true},
+		{kde, true},
+		{missing, false},
+		{exitErr(1), false},
+		{nil, false},
+	}
+	for _, c := range cases {
+		if got := pkexecCancelled(c.err); got != c.want {
+			t.Errorf("%v: got %v want %v", c.err, got, c.want)
+		}
+	}
+	h := fakeHost(t, "svm", "N")
+	h.Run = func(string, ...string) error { return kde }
+	if _, err := h.SetupHost("nilton"); !errors.Is(err, ErrCancelled) {
+		t.Errorf("KDE cancel must be reported as cancelled: %v", err)
 	}
 }
