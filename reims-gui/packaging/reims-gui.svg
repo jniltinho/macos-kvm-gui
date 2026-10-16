@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">Virtual machine display</title>
+  <desc id="desc">A blue angular monitor holds two overlapping virtual screens and an amber square core.</desc>
+  <rect width="512" height="512" fill="#071B33"/>
+  <path d="M224 352H288V416H352V448H160V416H224Z" fill="#0A84FF"/>
+  <rect x="48" y="64" width="416" height="304" fill="#0A84FF"/>
+  <rect x="80" y="96" width="352" height="240" fill="#102C50"/>
+  <rect x="208" y="144" width="176" height="128" fill="#245F99"/>
+  <rect x="224" y="160" width="144" height="96" fill="#071B33"/>
+  <rect x="128" y="192" width="192" height="128" fill="#0A84FF"/>
+  <rect x="144" y="208" width="160" height="96" fill="#071B33"/>
+  <rect x="192" y="224" width="64" height="64" fill="#FFB454"/>
+</svg>

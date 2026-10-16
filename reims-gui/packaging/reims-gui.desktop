@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Reims GUI
+GenericName=macOS Virtual Machine Manager
+Comment=Run macOS virtual machines on QEMU/KVM with Reims vGPU
+Exec=reims-gui
+Icon=reims-gui
+Terminal=false
+Categories=System;Emulator;
+Keywords=macos;vm;qemu;kvm;virtual machine;
+StartupWMClass=reims-gui
