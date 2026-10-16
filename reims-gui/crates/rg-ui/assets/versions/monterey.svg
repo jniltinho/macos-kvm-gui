@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="mt-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#D6E8CB"/><stop offset="0.5" stop-color="#7FB7A7"/><stop offset="1.0" stop-color="#2C6B73"/>
+    </linearGradient>
+    <radialGradient id="mt-light" cx=".34" cy=".32" r=".55">
+      <stop stop-color="#F8FFD7" stop-opacity=".32"/><stop offset="1" stop-color="#F8FFD7" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mt-far" x1="80" y1="174" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#4DAB9B"/><stop offset="1.0" stop-color="#246C74"/>
+    </linearGradient>
+    <linearGradient id="mt-near" x1="80" y1="238" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#B4D795"/><stop offset="1.0" stop-color="#538E6C"/>
+    </linearGradient>
+    <linearGradient id="mt-bay" x1="80" y1="308" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#D8F2CD"/><stop offset="0.5" stop-color="#A6DBCD"/><stop offset="1.0" stop-color="#459EAD"/>
+    </linearGradient>
+    <linearGradient id="mt-edge" x1="80" y1="238" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EDFFD3" stop-opacity=".6"/><stop offset="1" stop-color="#EDFFD3" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#mt-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#mt-light)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#mt-far)" d="M80 282C160 150 268 156 376 256L432 296V404H80Z"/>
+  <path fill="url(#mt-near)" d="M80 338C216 350 268 234 432 248V404H80Z"/>
+  <path fill="url(#mt-edge)" d="M80 338C216 350 268 234 432 248V254C268 240 216 356 80 344Z"/>
+  <path fill="url(#mt-bay)" d="M80 404C172 312 278 368 432 308V404Z"/>
+</svg>

@@ -1,5 +1,6 @@
 [package]
 name = "rg-ui"
+description = "egui desktop app: shell, theme, tabs, dialogs, wizard and the Screen area"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -13,3 +14,7 @@ workspace = true
 rg-core.workspace = true
 egui.workspace = true
 eframe.workspace = true
+egui_extras.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true

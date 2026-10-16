@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. A graphics card: bracket, board, two fans, PCIe contacts. -->
+  <path d="M1 1H2V15H1Z" fill="#8a99a6"/>
+  <path d="M2 3H15V12H2Z" fill="#365d72"/>
+  <circle cx="6" cy="7.5" r="3" fill="#d2e2ed"/>
+  <circle cx="11.5" cy="7.5" r="2.5" fill="#d2e2ed"/>
+  <path d="M6 5V10M3.6 7.5H8.4" stroke="#496e8b" stroke-width="1"/>
+  <path d="M11.5 5.5V9.5M9.5 7.5H13.5" stroke="#496e8b" stroke-width="1"/>
+  <circle cx="6" cy="7.5" r="1" fill="#365d72"/>
+  <circle cx="11.5" cy="7.5" r="0.8" fill="#365d72"/>
+  <path d="M4 12H8V14H4ZM9 12H13V14H9Z" fill="#dfac4f"/>
+</svg>

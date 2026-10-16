@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <defs>
+    <linearGradient id="new-gold" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#fff6aa"/>
+      <stop offset=".42" stop-color="#ffd348"/>
+      <stop offset="1" stop-color="#ef8d0b"/>
+    </linearGradient>
+    <linearGradient id="new-shine" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#fff3ad"/>
+    </linearGradient>
+    <linearGradient id="new-plus" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#b6eeff"/>
+      <stop offset=".45" stop-color="#51b9eb"/>
+      <stop offset="1" stop-color="#227db7"/>
+    </linearGradient>
+  </defs>
+  <path d="M14 2 17.5 8.5 24 5 22 12 29 15 22 18.5 24 26 17 23 12 30 10.5 22 3 23 6.5 16 2 10 10 10Z" fill="url(#new-gold)" stroke="#af7110"/>
+  <path d="M14 4.5 16.5 11 21.5 8.5 19 14 25 15 17 17 9 19 11 14 5.5 12 12 12Z" fill="url(#new-shine)"/>
+  <path d="M22 20V15H27V20H32V25H27V30H22V25H17V20Z" fill="#195a88"/>
+  <path d="M23 16H26V21H31V24H26V29H23V24H18V21H23Z" fill="url(#new-plus)"/>
+  <path d="M23 16H26V21H23ZM18 21H23V22H18Z" fill="#e7faff"/>
+</svg>
