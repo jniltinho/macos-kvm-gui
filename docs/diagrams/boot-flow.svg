@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1130" viewBox="0 0 1400 1130" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">Start to macOS boot flow</title>
+  <desc id="desc">Start validates configuration and GPU guards, locks the workspace, prepares boot files, builds QEMU arguments and launches QEMU. OVMF loads OpenCore. BaseSystem.img presence shows the picker; absence hides it and limits scanning to APFS and HFS+.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker></defs>
+  <rect width="1400" height="1130" fill="#071B33"/>
+  <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">Boot flow</text>
+  <text x="40" y="94" fill="#B9D4EF" font-size="22">Click Start · media presence controls OpenCore's picker, not an installation-complete flag</text>
+
+  <g fill="none" stroke="#0A84FF" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M410 205H515"/>
+    <path d="M885 205H990"/>
+    <path d="M1175 280V365"/>
+    <path d="M990 440H885"/>
+    <path d="M515 440H410"/>
+    <path d="M225 520V625"/>
+    <path d="M410 680H465V690H515"/>
+    <path d="M465 680V930H515"/>
+    <path d="M885 690H935V810H990"/>
+    <path d="M885 930H935V810"/>
+  </g>
+  <text x="250" y="579" fill="#B9D4EF" font-size="21">Read config.plist</text>
+  <text x="438" y="657" fill="#FFB454" font-size="21">yes</text>
+  <text x="475" y="902" fill="#FFB454" font-size="21">no</text>
+
+  <g fill="#102C50" stroke="#0A84FF" stroke-width="2">
+    <rect x="40" y="130" width="370" height="150"/>
+    <rect x="515" y="130" width="370" height="150"/>
+    <rect x="990" y="130" width="370" height="150"/>
+    <rect x="990" y="365" width="370" height="155"/>
+    <rect x="515" y="365" width="370" height="155"/>
+    <rect x="40" y="365" width="370" height="155"/>
+    <rect x="515" y="605" width="370" height="170"/>
+    <rect x="515" y="845" width="370" height="170"/>
+    <rect x="990" y="720" width="370" height="180"/>
+  </g>
+  <rect x="40" y="625" width="370" height="110" fill="#102C50" stroke="#FFB454" stroke-width="2"/>
+  <g fill="#FFFFFF" font-size="26" font-weight="bold">
+    <text x="62" y="174">Saved config → Start</text>
+    <text x="537" y="174">Validate + guards</text>
+    <text x="1012" y="174">Lock → PrepareBoot</text>
+    <text x="1012" y="409">BuildArgs</text>
+    <text x="537" y="409">QEMU + KVM</text>
+    <text x="62" y="409">OVMF → OpenCore</text>
+    <text x="62" y="670">BaseSystem.img?</text>
+    <text x="537" y="649">Picker ON</text>
+    <text x="537" y="889">Picker OFF</text>
+    <text x="1012" y="764">macOS</text>
+  </g>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="211">Workspace · version · resources</text>
+    <text x="62" y="243">SSH port · optional GPU</text>
+    <text x="537" y="211">Stopped · workspace · disk</text>
+    <text x="537" y="243">GPUReady if a GPU is selected</text>
+    <text x="1012" y="211">Refresh EFI / CODE / config</text>
+    <text x="1012" y="243">Keep existing VARS + identity</text>
+    <text x="1012" y="449">Profile · firmware · drives</text>
+    <text x="1012" y="482">NAT / SSH · QMP socket</text>
+    <text x="537" y="449">Unprivileged child process</text>
+    <text x="537" y="482">q35 · SATA disk / optional media</text>
+    <text x="62" y="449">EFI via read-only vvfat</text>
+    <text x="62" y="482">virtio-blk · bootindex=0</text>
+    <text x="62" y="707">Checked on each start</text>
+    <text x="537" y="688">5 s timeout · ScanPolicy=0</text>
+    <text x="537" y="720">Choose Base System / Installer</text>
+    <text x="537" y="752">or the installed disk</text>
+    <text x="537" y="928">0 s timeout · ScanPolicy=0x301</text>
+    <text x="537" y="960">APFS + HFS+ only</text>
+    <text x="537" y="992">Hold Esc to show the picker</text>
+    <text x="1012" y="804">Install manually / boot disk</text>
+    <text x="1012" y="837">1920×1080 requested</text>
+    <text x="1012" y="870">Identity + NVRAM persist</text>
+  </g>
+  <rect x="40" y="845" width="370" height="170" fill="#102C50" stroke="#245F99" stroke-width="2"/>
+  <text x="62" y="889" fill="#FFFFFF" font-size="26" font-weight="bold">Parallel QMP control</text>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="928">Negotiate qmp_capabilities</text>
+    <text x="62" y="960">ACPI request / state events</text>
+    <text x="62" y="992">Process exit → unlock / Stopped</text>
+  </g>
+  <text x="40" y="1082" fill="#B9D4EF" font-size="22">Validation or preparation failures abort Start. The workspace stays locked until the QEMU process exits.</text>
+</svg>

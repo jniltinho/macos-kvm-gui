@@ -1,0 +1,102 @@
+# Architecture
+
+[Documentation index](README.md)
+
+The app owns one QEMU child process per instance; it is not a libvirt frontend and cannot attach to an existing QEMU process. Host support is Linux. There is no bridge/tap networking or physical USB passthrough UI.
+
+[![Architecture](diagrams/architecture.png)](diagrams/architecture.svg)
+
+## Package layout
+
+| Location | Responsibility |
+| --- | --- |
+| `main.go` | Fyne tabs, forms, action/state wiring, dialogs and the last 1000 log lines. Long media operations run off the UI thread; callbacks use `fyne.Do`. |
+| `theme.go` | Fyne theme override: dark by default, blue accent, square corners, optional light theme. |
+| `internal/core/config.go`, `settings.go` | Validated JSON configuration, version-derived hardware profiles and runtime environment settings. |
+| `internal/core/host.go`, `gpu.go` | Host checks, sysfs PCI/DRM/IOMMU discovery, GPU guards and constant privileged scripts. |
+| `internal/core/workspace.go` | Workspace lock, staging, disk creation and media removal. |
+| `internal/core/recovery.go`, `chunklist.go` | Apple recovery protocol and signed chunklist/image verification. |
+| `internal/core/boot.go` | Asset extraction, SMBIOS identity and OpenCore template rendering. |
+| `internal/core/vm.go`, `qmp.go` | QEMU argument construction, process lifecycle and QMP control/events. |
+| `internal/assets/` | Embedded boot tree, OpenCore template and original app logo. |
+| `scripts/` | Fetch boot assets, fetch the test validator, package release artifacts. |
+
+`internal/core` is **one Go package**, independent of Fyne, not a separate package per source file. Host filesystem roots and command execution are injectable for tests.
+
+## From Start to macOS
+
+[![Boot flow](diagrams/boot-flow.png)](diagrams/boot-flow.svg)
+
+1. `VM.Start` refuses an already-running VM, validates a copy of the configuration and requires the workspace and `mac_hdd_ng.img`. A selected GPU is rechecked with `GPUReady` before taking the workspace lock. Host-tab checks are advisory, not a complete start-time gate.
+2. The lock is held for the whole QEMU run. `PrepareBoot` replaces the extracted EFI tree, refreshes OVMF CODE, preserves existing VARS/identity, and renders `EFI/OC/config.plist`.
+3. A private temporary directory (0700) holds `qmp.sock`. `BuildArgs` derives QEMU arguments from configuration, media presence and GPU slot functions. Commas in paths are escaped as `,,`.
+4. QEMU runs as the launching user: KVM, q35, OVMF pflash, OpenCore via read-only `vvfat` on virtio-blk, and SATA-attached qcow2 disk/optional raw recovery. `vmware-svga`, virtual USB keyboard/tablet and audio devices are retained. Networking is user-mode NAT with guest port 22 forwarded only from `127.0.0.1:<ssh_port>`.
+5. OVMF loads OpenCore. With `BaseSystem.img`, the text picker is shown (five seconds, `ScanPolicy=0`). Without it, the picker is hidden (zero timeout) and `ScanPolicy=0x301` permits APFS **and HFS+**, hiding the boot FAT volume. Output is requested at `1920x1080@32`. A selected GPU adds `agdpmod=pikera` to `keepsyms=1`.
+6. The app connects to QMP in the background (up to 50 attempts, 100 ms apart), negotiates `qmp_capabilities` and sends commands with five-second deadlines. `system_powerdown` requests ACPI shutdown; only process exit means Stopped. `BLOCK_IO_ERROR` with `action=stop` and `STOP` produce Paused (error); `RESUME` restores Running. There is no UI pause/resume control.
+7. On exit, output is interpreted, QMP and its temporary directory are cleaned up, and the lock is released. `Pdeathsig=SIGTERM` terminates QEMU if the creating app thread dies; Start/Wait pin that OS thread. An app crash is therefore a forced-stop risk, not a saved VM state.
+
+Profiles use Penryn through Monterey and Skylake-Client from Ventura onward. The NIC is vmxnet3 on High Sierra and virtio-net-pci otherwise. Only Sonoma is validated end to end.
+
+## Workspace and host files
+
+```text
+<workspace>/
+  mac_hdd_ng.img                    # qcow2 guest disk
+  BaseSystem.img                   # optional raw recovery media
+  .macos-kvm-gui-media              # downloaded media's version
+  .macos-kvm-gui-staging/           # temporary download/conversion area
+  macos-kvm-gui/
+    efi/EFI/BOOT/BOOTx64.efi
+    efi/EFI/OC/                    # OpenCore, drivers, kexts, generated config.plist
+    OVMF_CODE_4M.fd                 # refreshed firmware code
+    OVMF_VARS_4M.fd                 # persistent guest NVRAM
+    smbios.json                    # persistent serial, MLB, UUID and ROM
+```
+
+The normal user config directory is `~/.config/macos-kvm-gui/` (`os.UserConfigDir`, respecting `XDG_CONFIG_HOME`). It contains `config.json` and the optional runtime `.env`.
+
+Workspace `flock` files live outside the workspace in `$XDG_RUNTIME_DIR`, falling back to `os.TempDir()` when unset. Names contain the first eight bytes of SHA-256 of the cleaned workspace path. The same lock covers preparation, media work, disk creation/removal and a running VM across app instances. The kernel releases it on process death; an existing lock file alone does not mean it is held. External QEMU processes do not participate, so QEMU's own disk lock is still important.
+
+GPU reserve/release additionally use `/run/lock/macos-kvm-gui-host.lock`. Privileged scripts handle host setup and reservation, never QEMU itself. **Set up host** installs missing QEMU packages with `apt-get`, loads `kvm_amd`/`kvm_intel` if needed, creates/adds the current user to the `kvm` group, and enables/persists `ignore_msrs`. It uses validated arguments to a constant script and does not add `libvirt`/`input` groups, upgrade an existing QEMU or rebuild initramfs. See [GPU passthrough](gpu-passthrough.md) and [troubleshooting](troubleshooting.md#ignore_msrs).
+
+### Persistent NVRAM and identity
+
+VARS is copied through a temporary file/rename only when absent, never overwritten on normal preparation/start. `smbios.json` is generated once with a 12-character serial, 17-character MLB, UUID v4 and six-byte ROM. Back up both with the guest disk while stopped. Deleting the identity changes the guest's apparent Mac; it is not a general troubleshooting step.
+
+The generated model is iMac18,3 for High Sierra, iMac19,1 for Mojave, and iMac20,1 for Catalina–Tahoe. The iMac profile avoids AppleMCEReporter loading on AMD hosts; no extra MCE-disabler kext is embedded. Existing OSX-KVM disks/media are reused, but its boot scripts, OpenCore and NVRAM files are not used or modified.
+
+## Boot assets pipeline
+
+[![Boot assets pipeline](diagrams/assets-pipeline.png)](diagrams/assets-pipeline.svg)
+
+`assets.env` pins versions, download URLs and SHA-256 values. `scripts/fetch-assets.sh` verifies all five downloads before deleting/rebuilding `internal/assets/files`; extraction itself is not transactional. It writes `files/VERSIONS` and obtains OpenCore's test-only `ocvalidate`.
+
+`internal/assets/assets.go` embeds `all:files`, `config.plist.tmpl` and the logo. The binary needs no boot-asset download at runtime. `PrepareBoot` extracts the EFI directory into `<workspace>/macos-kvm-gui/efi`, which QEMU exposes as a **read-only FAT disk** using `file=fat:<path>`. Guest writes cannot edit that host EFI tree; local edits there are replaced on the next start.
+
+Pinned versions are OpenCore 1.0.8, Lilu 1.7.2, VirtualSMC 1.3.8, WhateverGreen 1.7.1 and Debian OVMF 2025.02-8+deb13u1. The authoritative pins are [`assets.env`](../assets.env); licenses are in [third-party notices](../THIRD_PARTY_NOTICES.md).
+
+## Recovery download and verification
+
+The Go macrecovery port obtains a session cookie from `http://osrecovery.apple.com/`, POSTs a board/MLB product identity to `/InstallationPayload/RecoveryImage`, then downloads chunklist and DMG URLs using the returned AssetTokens. Server-provided filenames are not used locally. API requests have a 60-second timeout; large image downloads have header/TLS timeouts but no overall client timeout.
+
+Downloads use exclusive `.part` temporary files and fixed final names in staging. The app validates the CNKL header, an RSA-2048 PKCS#1 v1.5/SHA-256 signature with Apple's EFI public key, every DMG chunk's SHA-256, and rejects missing or trailing image bytes. Do not confuse HTTP transport with signature verification: the recovery API is HTTP, and verification is required before conversion.
+
+`qemu-img convert -p -f dmg -O raw` writes a staged image on the workspace filesystem. Only successful conversion is renamed to `BaseSystem.img`; earlier failures preserve the previous image. The old version marker is removed before publication; a later marker-write failure leaves the version unknown rather than stale. Staging is removed on normal success/failure return. The app records the requested release family, not a verified exact macOS point version.
+
+## Settings and overrides
+
+| Source | Meaning and precedence |
+| --- | --- |
+| `config.json` | Defaults overlaid by saved JSON: workspace, version, `ram_mib`, cores, vCPUs, `ssh_port`, optional GPU PCI address. Save validates and uses temporary-file/rename. No general environment overlay for these fields. |
+| `MKG_ASSETS_DIR` | Runtime boot tree instead of embedded assets. Environment wins over the user-config `.env`; empty uses built-ins. |
+| `MKG_THEME` | Exactly `light` selects light mode; otherwise dark. Environment wins over the user-config `.env`. |
+| Repository `.env` and `assets.env` | Asset-fetch scripts only: **environment > repository `.env` > `assets.env`**. Not the runtime settings file. |
+
+The runtime `.env` accepts plain `KEY=value` lines, trims surrounding whitespace/quotes and skips comment lines; it does not execute shell code or expand `$HOME`/`~`. Use a literal absolute directory in it. For example:
+
+```text
+MKG_THEME=light
+MKG_ASSETS_DIR=/home/your-user/src/macos-kvm-gui/internal/assets
+```
+
+An override tree needs `config.plist.tmpl` and the same `files/` contents as `internal/assets`. Every embedded file except `files/VERSIONS` is checked for existence before preparation; missing versions merely display as unknown. This checks completeness, not trust or binary compatibility: use trusted boot assets and a matching OpenCore template. See [development](development.md#updating-boot-assets).

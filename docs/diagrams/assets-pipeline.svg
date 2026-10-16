@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1040" viewBox="0 0 1400 1040" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">Boot assets pipeline and runtime override</title>
+  <desc id="desc">Environment overrides repository .env overrides assets.env. fetch-assets.sh downloads and checks every SHA-256, then builds internal/assets/files. Go embeds that tree and the template into a binary. At runtime, built-ins or MKG_ASSETS_DIR supply the workspace's EFI and firmware files.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker></defs>
+  <rect width="1400" height="1040" fill="#071B33"/>
+  <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">Boot assets pipeline</text>
+  <text x="40" y="94" fill="#B9D4EF" font-size="22">Build-time source pins and runtime overrides are separate settings paths</text>
+
+  <g fill="none" stroke="#0A84FF" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M400 245H510"/>
+    <path d="M910 245H1020"/>
+    <path d="M1190 360V480"/>
+    <path d="M1020 545H910"/>
+    <path d="M710 610V780"/>
+    <path d="M220 450V410H1110V480"/>
+    <path d="M400 840H510"/>
+  </g>
+  <text x="735" y="702" fill="#B9D4EF" font-size="21">PrepareBoot at workspace creation / Start</text>
+  <text x="1095" y="447" fill="#B9D4EF" font-size="20">embed tree</text>
+  <text x="422" y="822" fill="#FFB454" font-size="21">or</text>
+
+  <g fill="#102C50" stroke="#0A84FF" stroke-width="2">
+    <rect x="40" y="130" width="360" height="230"/>
+    <rect x="510" y="130" width="400" height="230"/>
+    <rect x="1020" y="130" width="340" height="230"/>
+    <rect x="40" y="450" width="360" height="130"/>
+    <rect x="1020" y="480" width="340" height="130"/>
+    <rect x="510" y="480" width="400" height="130"/>
+    <rect x="510" y="780" width="850" height="180"/>
+  </g>
+  <rect x="40" y="680" width="360" height="280" fill="#102C50" stroke="#FFB454" stroke-width="2"/>
+  <g fill="#FFFFFF" font-size="26" font-weight="bold">
+    <text x="62" y="174">Asset source pins</text>
+    <text x="532" y="174">scripts/fetch-assets.sh</text>
+    <text x="1042" y="174">internal/assets/files</text>
+    <text x="62" y="494">config.plist.tmpl</text>
+    <text x="1042" y="524">go:embed</text>
+    <text x="532" y="524">App binary</text>
+    <text x="62" y="724">MKG_ASSETS_DIR</text>
+    <text x="532" y="824">&lt;workspace&gt;/macos-kvm-gui/</text>
+  </g>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="216">Process environment (highest)</text>
+    <text x="62" y="250">Repository .env</text>
+    <text x="62" y="284">assets.env (pinned defaults)</text>
+    <text x="62" y="333">Plain data · not shell code</text>
+    <text x="532" y="216">Download 5 upstream archives</text>
+    <text x="532" y="250">Verify every SHA-256</text>
+    <text x="532" y="284">Then replace / extract boot tree</text>
+    <text x="532" y="333">Also fetch test-only ocvalidate</text>
+    <text x="1042" y="216">EFI/BOOT + EFI/OC</text>
+    <text x="1042" y="250">Drivers + 3 kexts</text>
+    <text x="1042" y="284">ovmf/ CODE / VARS / license</text>
+    <text x="1042" y="333">VERSIONS · committed files</text>
+    <text x="62" y="537">From OpenCore Sample.plist</text>
+    <text x="1042" y="564">internal/assets/assets.go</text>
+    <text x="1042" y="593">Validator is not embedded</text>
+    <text x="532" y="564">Built-ins are the default source</text>
+    <text x="532" y="593">No boot download on launch</text>
+    <text x="62" y="765">Env wins over user-config .env</text>
+    <text x="62" y="797">Not the repository .env file</text>
+    <text x="62" y="844">Complete trusted asset tree:</text>
+    <text x="62" y="876">config.plist.tmpl + files/</text>
+    <text x="62" y="923">Replaces built-ins; no rebuild</text>
+    <text x="532" y="864">efi/ → refreshed OpenCore tree + rendered config.plist</text>
+    <text x="532" y="898">CODE refreshed · existing VARS + smbios.json preserved</text>
+    <text x="532" y="933">QEMU: file=fat:&lt;efi path&gt; · read-only vvfat on virtio-blk</text>
+  </g>
+  <text x="40" y="1005" fill="#B9D4EF" font-size="21">Hash failures leave the old source tree untouched. Later extraction is not transactional. Workspace EFI edits are replaced.</text>
+</svg>

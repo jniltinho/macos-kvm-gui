@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1090" viewBox="0 0 1400 1090" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">Installation journey</title>
+  <desc id="desc">Create workspace, obtain an Apple recovery session and image info, download chunklist and DMG, verify the signature and hashes, convert and publish the image, create a disk, start, install manually inside macOS, then stop and remove media.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker></defs>
+  <rect width="1400" height="1090" fill="#071B33"/>
+  <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">Installation journey</text>
+  <text x="40" y="94" fill="#B9D4EF" font-size="22">Host checks → save Settings → Install steps 1–5 · follow the arrows across each row</text>
+
+  <g fill="none" stroke="#0A84FF" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M340 205H410"/>
+    <path d="M690 205H760"/>
+    <path d="M1040 205H1110"/>
+    <path d="M1235 280V360"/>
+    <path d="M1110 435H1040"/>
+    <path d="M760 435H690"/>
+    <path d="M410 435H340"/>
+    <path d="M190 510V630"/>
+    <path d="M340 705H410"/>
+    <path d="M1040 705H1110"/>
+    <path d="M1235 780V870"/>
+  </g>
+  <text x="1036" y="330" text-anchor="end" fill="#B9D4EF" font-size="21">Download into workspace staging</text>
+  <text x="213" y="579" fill="#B9D4EF" font-size="21">VM tab</text>
+
+  <g fill="#102C50" stroke="#0A84FF" stroke-width="2">
+    <rect x="40" y="130" width="300" height="150"/>
+    <rect x="410" y="130" width="280" height="150"/>
+    <rect x="760" y="130" width="280" height="150"/>
+    <rect x="1110" y="130" width="250" height="150"/>
+    <rect x="1110" y="360" width="250" height="150"/>
+    <rect x="760" y="360" width="280" height="150"/>
+    <rect x="410" y="360" width="280" height="150"/>
+    <rect x="40" y="360" width="300" height="150"/>
+    <rect x="40" y="630" width="300" height="150"/>
+    <rect x="410" y="630" width="630" height="150"/>
+    <rect x="1110" y="630" width="250" height="150"/>
+    <rect x="760" y="870" width="600" height="150"/>
+  </g>
+  <g fill="#FFFFFF" font-size="25" font-weight="bold">
+    <text x="60" y="174">1 · Workspace</text>
+    <text x="430" y="174">2 · Recovery</text>
+    <text x="780" y="174">Image info</text>
+    <text x="1130" y="174">Chunklist</text>
+    <text x="1130" y="404">DMG</text>
+    <text x="780" y="404">Verify</text>
+    <text x="430" y="404">Convert / publish</text>
+    <text x="60" y="404">3 · Create disk</text>
+    <text x="60" y="674">4 · Start</text>
+    <text x="432" y="674">Install inside macOS · manual</text>
+    <text x="1130" y="674">5 · Clean up</text>
+    <text x="782" y="914">Next Start → installed macOS</text>
+  </g>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="60" y="214">Extract boot files</text>
+    <text x="60" y="247">No OSX-KVM clone</text>
+    <text x="430" y="214">GET / → session cookie</text>
+    <text x="430" y="247">Apple recovery service</text>
+    <text x="780" y="214">POST board / MLB / OS</text>
+    <text x="780" y="247">URLs + AssetTokens</text>
+    <text x="1130" y="214">Signed chunk data</text>
+    <text x="1130" y="247">Fixed local filename</text>
+    <text x="1130" y="444">BaseSystem.dmg</text>
+    <text x="1130" y="477">Temp .part → file</text>
+    <text x="780" y="444">Apple RSA signature</text>
+    <text x="780" y="477">Every chunk's SHA-256</text>
+    <text x="430" y="444">qemu-img → raw image</text>
+    <text x="430" y="477">→ BaseSystem.img</text>
+    <text x="60" y="444">Thin qcow2 · min. 40 GiB</text>
+    <text x="60" y="477">No disk overwrite</text>
+    <text x="60" y="714">OpenCore picker →</text>
+    <text x="60" y="747">macOS Base System</text>
+    <text x="432" y="714">Disk Utility → QEMU HARDDISK → APFS / GUID</text>
+    <text x="432" y="747">Reinstall → restarts → Installer → disk → desktop</text>
+    <text x="1130" y="714">Stop → delete</text>
+    <text x="1130" y="747">BaseSystem.img</text>
+    <text x="782" y="954">No media → picker hidden · APFS + HFS+ scan</text>
+    <text x="782" y="987">Guest disk, NVRAM and SMBIOS identity are kept</text>
+  </g>
+  <rect x="40" y="870" width="650" height="150" fill="#102C50" stroke="#FFB454" stroke-width="2"/>
+  <text x="62" y="914" fill="#FFB454" font-size="25" font-weight="bold">Safe media preparation</text>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="954">Download / verify / convert failure → old image stays</text>
+    <text x="62" y="987">Staging, DMG and chunklist are removed on return</text>
+  </g>
+  <text x="40" y="1061" fill="#B9D4EF" font-size="20">Only Sonoma is validated end to end. Removing media is a user-confirmed action, not automatic installation detection.</text>
+</svg>

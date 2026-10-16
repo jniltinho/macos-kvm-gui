@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="940" viewBox="0 0 1400 940" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">macos-kvm-gui architecture</title>
+  <desc id="desc">Fyne calls one UI-independent core package. Core extracts embedded assets into workspace files, downloads Apple recovery, launches QEMU, communicates through QMP and invokes pkexec for authorized host changes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker>
+  </defs>
+  <rect width="1400" height="940" fill="#071B33"/>
+  <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">Architecture</text>
+  <text x="40" y="94" fill="#B9D4EF" font-size="22">One desktop app, one core package, an unprivileged QEMU child</text>
+
+  <g fill="none" stroke="#0A84FF" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M340 195H440" marker-start="url(#arrow)"/>
+    <path d="M340 430H440"/>
+    <path d="M940 195H1040" marker-start="url(#arrow)"/>
+    <path d="M940 425H1040" marker-start="url(#arrow)"/>
+    <path d="M690 560V670"/>
+    <path d="M1200 500V600H860V670" marker-start="url(#arrow)"/>
+    <path d="M440 510H390V745H340"/>
+    <path d="M940 530H980V690H1040"/>
+    <path d="M940 770H1040" marker-start="url(#arrow)"/>
+  </g>
+  <text x="712" y="620" fill="#B9D4EF" font-size="21">BuildArgs / exec</text>
+  <text x="1006" y="581" fill="#B9D4EF" font-size="20">commands / events</text>
+  <text x="961" y="754" fill="#B9D4EF" font-size="20">I/O</text>
+  <text x="40" y="632" fill="#FFB454" font-size="21">Only authorized host changes</text>
+
+  <g fill="#102C50" stroke="#0A84FF" stroke-width="2">
+    <rect x="40" y="130" width="300" height="130"/>
+    <rect x="40" y="360" width="300" height="170"/>
+    <rect x="440" y="130" width="500" height="430"/>
+    <rect x="1040" y="130" width="320" height="130"/>
+    <rect x="1040" y="350" width="320" height="150"/>
+    <rect x="440" y="670" width="500" height="160"/>
+    <rect x="1040" y="650" width="320" height="180"/>
+  </g>
+  <rect x="40" y="660" width="300" height="170" fill="#102C50" stroke="#FFB454" stroke-width="2"/>
+  <g fill="#FFFFFF" font-size="26" font-weight="bold">
+    <text x="62" y="174">Fyne UI</text>
+    <text x="62" y="404">Embedded assets</text>
+    <text x="466" y="174">internal/core</text>
+    <text x="1062" y="174">Apple recovery</text>
+    <text x="1062" y="394">QMP Unix socket</text>
+    <text x="466" y="714">QEMU + KVM</text>
+    <text x="1062" y="694">Workspace files</text>
+    <text x="62" y="704">pkexec</text>
+  </g>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="211">main.go · tabs / log</text>
+    <text x="62" y="240">theme.go · dark / light</text>
+    <text x="62" y="441">OpenCore + 3 kexts</text>
+    <text x="62" y="473">OVMF CODE / VARS</text>
+    <text x="62" y="505">config.plist.tmpl · logo</text>
+    <text x="466" y="218">config.go / settings.go</text>
+    <text x="466" y="249">Configuration and environment overrides</text>
+    <text x="466" y="294">host.go / gpu.go</text>
+    <text x="466" y="325">Preflight, PCI eligibility, host scripts</text>
+    <text x="466" y="370">workspace.go / recovery.go / chunklist.go</text>
+    <text x="466" y="401">Locks, staging, signed recovery, disks</text>
+    <text x="466" y="446">boot.go / vm.go / qmp.go</text>
+    <text x="466" y="477">PrepareBoot → BuildArgs → process / QMP</text>
+    <text x="466" y="531" fill="#FFB454">One package · no Fyne dependency</text>
+    <text x="1062" y="211">Session → image info</text>
+    <text x="1062" y="240">Chunklist + DMG assets</text>
+    <text x="1062" y="431">Private runtime directory</text>
+    <text x="1062" y="463">Powerdown / state events</text>
+    <text x="466" y="753">OVMF → OpenCore → macOS</text>
+    <text x="466" y="788">vvfat EFI · qcow2 disk · optional raw media</text>
+    <text x="1062" y="732">EFI + generated config</text>
+    <text x="1062" y="765">Disk / media / staging</text>
+    <text x="1062" y="798">Persistent VARS + SMBIOS</text>
+    <text x="62" y="741">KVM setup / ignore_msrs</text>
+    <text x="62" y="774">VFIO reserve / release</text>
+    <text x="62" y="807">modprobe / udev files</text>
+  </g>
+  <text x="40" y="899" fill="#B9D4EF" font-size="22">Workspace flock spans the QEMU run. QEMU stays unprivileged; GPU passthrough is untested on real hardware.</text>
+</svg>

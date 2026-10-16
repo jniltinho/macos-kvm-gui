@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1170" viewBox="0 0 1400 1170" font-family="sans-serif" stroke-linejoin="miter" stroke-linecap="square" role="img" aria-labelledby="title desc">
+  <title id="title">GPU eligibility, VFIO reservation and start</title>
+  <desc id="desc">Eligible supported AMD GPUs can be reserved through pkexec, writing modprobe and udev files and rebuilding initramfs. After reboot vfio-pci owns every slot function. Start rechecks safety, version, device permissions and memory limits before adding QEMU vfio-pci devices. Release removes reservation files and requires another reboot.</desc>
+  <defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0 0L10 5L0 10Z" fill="#0A84FF"/></marker></defs>
+  <rect width="1400" height="1170" fill="#071B33"/>
+  <text x="40" y="58" fill="#FFFFFF" font-size="34" font-weight="bold">GPU passthrough</text>
+  <text x="40" y="94" fill="#FFB454" font-size="22">Untested on real hardware · supported device IDs are not a working-hardware guarantee</text>
+
+  <g fill="none" stroke="#0A84FF" stroke-width="3" marker-end="url(#arrow)">
+    <path d="M440 290H510"/>
+    <path d="M910 290H1020"/>
+    <path d="M1190 450V565"/>
+    <path d="M1020 665H910"/>
+    <path d="M510 665H440"/>
+  </g>
+  <text x="1215" y="517" fill="#B9D4EF" font-size="21">next boot</text>
+  <text x="40" y="903" fill="#B9D4EF" font-size="22">Undo / recovery · stop the VM before changing the reservation</text>
+
+  <g fill="#102C50" stroke="#0A84FF" stroke-width="2">
+    <rect x="40" y="130" width="400" height="320"/>
+    <rect x="510" y="130" width="400" height="320"/>
+    <rect x="1020" y="130" width="340" height="320"/>
+    <rect x="1020" y="565" width="340" height="200"/>
+    <rect x="510" y="565" width="400" height="260"/>
+    <rect x="40" y="565" width="400" height="260"/>
+    <rect x="40" y="940" width="650" height="170"/>
+  </g>
+  <rect x="760" y="940" width="600" height="170" fill="#102C50" stroke="#FFB454" stroke-width="2"/>
+  <g fill="#FFFFFF" font-size="26" font-weight="bold">
+    <text x="62" y="174">Eligibility checks</text>
+    <text x="532" y="174">Reserve for VFIO</text>
+    <text x="1042" y="174">Reboot host</text>
+    <text x="1042" y="609">vfio-pci binding</text>
+    <text x="532" y="609">Start-time guards</text>
+    <text x="62" y="609">QEMU devices</text>
+    <text x="62" y="984">Release reservation → reboot</text>
+    <text x="782" y="984">Broken host display?</text>
+  </g>
+  <g fill="#D7E8FA" font-size="21">
+    <text x="62" y="216">Supported AMD ID · IOMMU active</text>
+    <text x="62" y="250">Not boot GPU / DRM-connected</text>
+    <text x="62" y="284">Another GPU remains for host</text>
+    <text x="62" y="318">Only display + audio slot functions</text>
+    <text x="62" y="352">Groups: slot functions + bridges</text>
+    <text x="62" y="386">No duplicate IDs outside the slot</text>
+    <text x="62" y="425" fill="#FFB454">Refusal → reason in GPU tab</text>
+    <text x="532" y="216">pkexec + host-wide flock</text>
+    <text x="532" y="256">/etc/modprobe.d/</text>
+    <text x="532" y="284">macos-kvm-gui-vfio.conf</text>
+    <text x="532" y="324">/etc/udev/rules.d/</text>
+    <text x="532" y="352">99-macos-kvm-gui-vfio.rules</text>
+    <text x="532" y="397">update-initramfs -u -k all</text>
+    <text x="532" y="428" fill="#FFB454">No driver blacklist / live rebind</text>
+    <text x="1042" y="216">Host uses another GPU</text>
+    <text x="1042" y="250">IDs claim GPU + audio</text>
+    <text x="1042" y="300">udev: kvm group / 0660</text>
+    <text x="1042" y="350">Rebuild failure:</text>
+    <text x="1042" y="384">remove files, rebuild again,</text>
+    <text x="1042" y="418">then report the error</text>
+    <text x="1042" y="652">Every slot function bound</text>
+    <text x="1042" y="686">GPU tab selection persists</text>
+    <text x="1042" y="720">QEMU still runs as your user</text>
+    <text x="532" y="652">Recheck eligibility / presence</text>
+    <text x="532" y="686">macOS family meets minimum</text>
+    <text x="532" y="720">Every function uses vfio-pci</text>
+    <text x="532" y="754">/dev/vfio/&lt;group&gt; opens R/W</text>
+    <text x="532" y="794">Soft memlock ≥ guest RAM</text>
+    <text x="62" y="652">One vfio-pci per slot function</text>
+    <text x="62" y="686">vmware-svga stays for input / boot</text>
+    <text x="62" y="720">OpenCore adds agdpmod=pikera</text>
+    <text x="62" y="754">macOS driver → physical monitor</text>
+    <text x="62" y="794">No emulated-display Metal</text>
+    <text x="62" y="1026">Remove app-owned files → rebuild all initramfs images</text>
+    <text x="62" y="1060">Reboot → normal driver; choose None for emulation</text>
+    <text x="782" y="1026">One boot: GRUB modprobe.blacklist=vfio_pci</text>
+    <text x="782" y="1060">Then release and successfully rebuild initramfs</text>
+  </g>
+  <text x="40" y="1146" fill="#B9D4EF" font-size="21">Selecting None does not release the host reservation. Releasing does not clear the saved GPU selection.</text>
+</svg>
