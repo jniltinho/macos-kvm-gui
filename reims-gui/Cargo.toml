@@ -49,6 +49,7 @@ image = { version = "=0.25.10", default-features = false, features = ["png"] }
 rmcp = { version = "=3.5.1", features = ["server", "transport-io"] }
 rusqlite = { version = "=0.40.2", features = ["bundled"] }
 dirs = "=7.0.0"
+tempfile = "=3.27.0"
 
 [profile.release]
 lto = "thin"
