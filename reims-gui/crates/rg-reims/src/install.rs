@@ -2,13 +2,12 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::io::{self, Read, Seek, Write};
+use std::io::{self, Read, Seek};
 use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::atomic::AtomicBool;
 
+use rg_core::http::{Client, ClientOpts, HttpError};
 use sha2::{Digest, Sha256};
 use tar::EntryType;
 
@@ -94,56 +93,19 @@ pub(crate) fn download_to(
     max: u64,
     cancel: &AtomicBool,
 ) -> Result<()> {
-    if !url.starts_with("https://") {
-        return Err(msg(format!("refusing a non-HTTPS URL: {url}")));
-    }
-    let mut tls = ureq::tls::TlsConfig::builder();
-    if let Some(roots) = &r.roots {
-        let certs = roots
-            .iter()
-            .map(|d| ureq::tls::Certificate::from_der(d).to_owned())
-            .collect();
-        tls = tls.root_certs(ureq::tls::RootCerts::Specific(Arc::new(certs)));
-    }
-    let agent = ureq::Agent::new_with_config(
-        ureq::config::Config::builder()
-            .https_only(true)
-            .max_redirects(5)
-            .http_status_as_error(false)
-            .timeout_connect(Some(Duration::from_secs(30)))
-            .timeout_recv_response(Some(Duration::from_secs(60)))
-            .tls_config(tls.build())
-            .build(),
-    );
-    let resp = agent
-        .get(url)
-        .call()
-        .map_err(|e| msg(format!("{url}: {e}")))?;
-    if resp.status() != 200 {
-        return Err(msg(format!("{url}: {}", resp.status())));
-    }
-    let mut body = resp.into_body().into_reader().take(max + 1);
+    let client = Client::new(&ClientOpts {
+        download: true,
+        roots: r.roots.clone().unwrap_or_default(),
+        ..ClientOpts::default()
+    });
     let mut out = fs::File::create(file)?;
-    let mut buf = vec![0; 1 << 16];
-    let mut n = 0u64;
-    loop {
-        // ponytail: cancel is seen between reads, so a stalled read delays it.
-        if cancel.load(Ordering::Relaxed) {
-            return Err(Error::Cancelled);
-        }
-        let k = body
-            .read(&mut buf)
-            .map_err(|e| msg(format!("{url}: {e}")))?;
-        if k == 0 {
-            break;
-        }
-        n += k as u64;
-        out.write_all(&buf[..k])?;
-    }
+    client
+        .get_to(url, max, &mut out, cancel)
+        .map_err(|e| match e {
+            HttpError::Cancelled => Error::Cancelled,
+            HttpError::Failed(s) => msg(s),
+        })?;
     out.sync_all()?;
-    if n > max {
-        return Err(msg(format!("{url} is larger than {} MiB", max >> 20)));
-    }
     Ok(())
 }
 

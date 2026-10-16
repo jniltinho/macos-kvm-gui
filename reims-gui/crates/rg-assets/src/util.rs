@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
@@ -79,19 +78,6 @@ impl Drop for TempDir {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0); // gone already when it was renamed into place
     }
-}
-
-/// Writes through a temporary file in the same folder and renames it over `path`.
-pub(crate) fn write_atomic(path: &Path, data: &[u8], mode: u32) -> std::io::Result<()> {
-    let dir = path.parent().unwrap_or(Path::new("."));
-    let tmp = dir.join(format!(".tmp-{}", hex(&random_bytes(6)?)));
-    let res = fs::write(&tmp, data)
-        .and_then(|()| fs::set_permissions(&tmp, fs::Permissions::from_mode(mode)))
-        .and_then(|()| fs::rename(&tmp, path));
-    if res.is_err() {
-        let _ = fs::remove_file(&tmp);
-    }
-    res
 }
 
 /// Copies a folder of regular files; links and other special files are refused.

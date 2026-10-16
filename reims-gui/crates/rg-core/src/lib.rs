@@ -7,6 +7,7 @@
 
 pub mod bundle;
 pub mod config;
+pub mod http;
 pub mod keyboard;
 pub mod network;
 pub mod registry;

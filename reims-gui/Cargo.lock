@@ -3134,7 +3134,6 @@ dependencies = [
  "serde_json",
  "sha2",
  "thiserror 2.0.21",
- "ureq",
  "zip",
 ]
 
@@ -3153,6 +3152,7 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.21",
+ "ureq",
 ]
 
 [[package]]
@@ -3184,11 +3184,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "rg-ops"
+version = "0.1.0"
+dependencies = [
+ "rg-assets",
+ "rg-core",
+ "rg-host",
+ "rg-macos",
+ "rg-qemu",
+ "rg-reims",
+ "tempfile",
+ "thiserror 2.0.21",
+ "tokio",
+]
+
+[[package]]
 name = "rg-qemu"
 version = "0.1.0"
 dependencies = [
  "parking_lot",
  "rg-core",
+ "rg-host",
  "rustix 1.1.5",
  "serde_json",
  "tempfile",
@@ -3212,7 +3228,6 @@ dependencies = [
  "tar",
  "tempfile",
  "thiserror 2.0.21",
- "ureq",
 ]
 
 [[package]]

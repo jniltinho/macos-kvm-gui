@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::chunklist::{parse_integrity, verify_chunks};
 use crate::http::{Http, copy_body, http_err, status_text};
-use crate::{Error, Progress, Result, check_cancel, compat, other};
+use crate::{Error, Progress, Result, check_cancel, other};
 
 /// The macOS major version of each app version that has an InstallAssistant.
 const INSTALLER_MAJOR: [(&str, u32); 6] = [
@@ -77,7 +77,7 @@ pub fn find_installers(http: &Http, version: &str) -> Result<Vec<InstallerProduc
     let Some(major) = installer_major(version) else {
         return other(format!(
             "Apple has no full installer package for {}: use the recovery",
-            compat::version_display(version)
+            rg_core::config::version_display(version)
         ));
     };
     let mut last = Error::Other("no catalog".into());
@@ -104,7 +104,7 @@ pub fn find_installers(http: &Http, version: &str) -> Result<Vec<InstallerProduc
     let candidates = catalog_installers(&cat)?;
     let board = BOARD_IDS
         .iter()
-        .find(|(m, _)| *m == compat::smbios_model(version))
+        .find(|(m, _)| *m == rg_core::config::smbios_model(version))
         .map(|(_, b)| b.as_bytes());
 
     let next = AtomicUsize::new(0);
@@ -136,7 +136,7 @@ pub fn find_installers(http: &Http, version: &str) -> Result<Vec<InstallerProduc
     if out.is_empty() {
         return other(format!(
             "Apple's catalog has no full installer of {} for this Mac model",
-            compat::version_display(version)
+            rg_core::config::version_display(version)
         ));
     }
     Ok(out)
@@ -255,7 +255,8 @@ pub fn cached_installers(dir: &Path) -> Vec<CachedInstaller> {
             let b = fs::read(e.path().join("info.json")).ok()?;
             let product: InstallerProduct = serde_json::from_slice(&b).ok()?;
             let path = e.path().join(DISC_FILE);
-            (compat::valid_name(&product.build) && fs::metadata(&path).ok()?.len() > product.size)
+            (rg_core::network::valid_bridge_name(&product.build)
+                && fs::metadata(&path).ok()?.len() > product.size)
                 .then_some(CachedInstaller { product, path })
         })
         .collect();
@@ -273,7 +274,7 @@ pub fn cached_installer_for(dir: &Path, version: &str) -> Option<CachedInstaller
 
 /// Deletes a cached installer; one attached to a running VM is kept.
 pub fn remove_installer(dir: &Path, build: &str) -> Result<()> {
-    if !compat::valid_name(build) {
+    if !rg_core::network::valid_bridge_name(build) {
         return other(format!("invalid build {build:?}"));
     }
     let path = dir.join(build);
@@ -314,7 +315,7 @@ pub fn download_installer(
         p.size as f64 / 1e9,
         p.url
     ));
-    if !compat::valid_name(&p.build) {
+    if !rg_core::network::valid_bridge_name(&p.build) {
         return other(format!("unexpected build {:?} in Apple's catalog", p.build));
     }
     let bdir = dir.join(&p.build);
@@ -345,7 +346,7 @@ pub fn download_installer(
     let have = fs::metadata(&part).map_or(0, |m| m.len());
     // The package, then the disc written from it: twice its size for a moment.
     let need = (2 * p.size).saturating_sub(have);
-    if let Ok(free) = compat::free_bytes(&bdir)
+    if let Some(free) = rg_core::workspace::free_bytes(&bdir)
         && free < need + (1 << 30)
     {
         return other(format!(
@@ -380,7 +381,7 @@ pub fn download_installer(
     write_installer_disc(&part, &disc, DISC_PIECE, cancel)?; // cancelled: the package stays for next time
     let _ = fs::remove_file(&part);
     let info = serde_json::to_vec_pretty(&p).map_err(|e| Error::Other(e.to_string()))?;
-    compat::write_file_atomic(&bdir.join("info.json"), &info)?;
+    rg_core::workspace::write_file_atomic(&bdir.join("info.json"), &info, 0o644)?;
     Ok(CachedInstaller {
         product: p,
         path: disc,
@@ -415,7 +416,7 @@ fn resume_download(
             let _ = fs::remove_file(part);
             have = 0;
         }
-        let mut req = http.download.get(&url);
+        let mut req = http.download.agent().get(&url);
         if have > 0 {
             req = req.header("Range", format!("bytes={have}-"));
         }
@@ -684,7 +685,7 @@ pub fn installer_name(version: &str) -> String {
         .find(|(_, m)| *m == major)
         .map_or_else(
             || version.to_owned(),
-            |(short, _)| compat::version_display(short).to_owned(),
+            |(short, _)| rg_core::config::version_display(short).to_owned(),
         )
 }
 

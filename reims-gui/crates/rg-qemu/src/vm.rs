@@ -17,12 +17,12 @@
 //! sockets are O_CLOEXEC, so no other descriptor leaks into QEMU.
 
 use crate::args::{ArgsEnv, build_args, vnc_socket};
-use crate::compat::{self, DISK_FILE};
 use crate::qmp::{Qmp, QmpEvent};
 use crate::running::{RUN_DIR_PREFIX, find_running};
 use crate::{Error, Result};
 use parking_lot::Mutex;
 use rg_core::Config;
+use rg_core::workspace::DISK_FILE;
 use std::io::BufRead;
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::process::ExitStatusExt;
@@ -85,8 +85,9 @@ pub struct StartSpec {
     /// Reims vGPU: an X11 display is usable and the app will embed the library's window, so
     /// QEMU gets `SDL_VIDEO_DRIVER=x11`. Off leaves SDL's own choice (native Wayland).
     pub x11_embed: bool,
-    /// VMware SVGA: QEMU's own GTK window for the app to embed (see [`ArgsEnv::gtk_window`]).
-    pub gtk_window: bool,
+    /// VMware SVGA: QEMU's own SDL window for the app to embed (see [`ArgsEnv::sdl_window`]),
+    /// with `SDL_VIDEO_DRIVER=x11`.
+    pub sdl_window: bool,
     /// Runs once QEMU has exited (or failed to start), after the run directory is gone.
     pub on_exit: Option<OnExit>,
 }
@@ -172,8 +173,7 @@ impl Vm {
             return Err(Error::msg("the VM is already running"));
         }
         let c = &spec.config;
-        let dir = compat::workspace_dir(c)
-            .ok_or_else(|| Error::msg("workspace: must be an absolute path"))?;
+        let dir = c.workspace_dir().map_err(|e| Error::msg(e.to_string()))?;
         if !dir.is_dir() {
             return Err(Error::msg(format!(
                 "VM folder {} does not exist: create it in the Install tab",
@@ -196,15 +196,15 @@ impl Vm {
                 r.pid
             )));
         }
-        let run_dir = private_run_dir(&compat::runtime_base())?;
+        let run_dir = private_run_dir(&runtime_base())?;
         let sock = run_dir.join("qmp.sock");
         let mut env = ArgsEnv::host(&dir, &sock);
         env.with_media = spec.with_media;
         env.installer_disc = spec.installer_disc.clone();
         env.gpu_funcs = std::mem::take(&mut spec.gpu_funcs);
-        env.gtk_window = spec.gtk_window;
+        env.sdl_window = spec.sdl_window;
         let args = build_args(c, &env);
-        let serves_vnc = spec.gtk_window || c.in_app() || c.reims();
+        let serves_vnc = spec.sdl_window || c.in_app() || c.reims();
         self.log(format!("{} {}", spec.qemu.display(), args.join(" ")));
 
         let started = Started {
@@ -339,12 +339,14 @@ impl Vm {
         cmd.args(args).current_dir(dir).stdin(Stdio::null());
         // Ctrl+C in a terminal must not reach QEMU.
         cmd.process_group(0);
-        if spec.config.reims() {
+        let reims = spec.config.reims();
+        if reims {
             // The library opens its window only without REIMS_VGPU_WINDOW.
             cmd.env_remove("REIMS_VGPU_WINDOW");
-            if spec.x11_embed {
-                cmd.env("SDL_VIDEO_DRIVER", "x11");
-            }
+        }
+        // An SDL window the app embeds must be an X11 one (design D3).
+        if (reims && spec.x11_embed) || (!reims && spec.sdl_window) {
+            cmd.env("SDL_VIDEO_DRIVER", "x11");
         }
         let (r, w) = std::io::pipe()?;
         cmd.stdout(w.try_clone()?).stderr(w);
@@ -435,6 +437,13 @@ impl Vm {
     }
 }
 
+/// The base of the private run directories: `$XDG_RUNTIME_DIR`, or the temporary directory.
+pub fn runtime_base() -> PathBuf {
+    std::env::var_os("XDG_RUNTIME_DIR")
+        .filter(|r| !r.is_empty())
+        .map_or_else(std::env::temp_dir, PathBuf::from)
+}
+
 /// Creates a private (0700) run directory `macos-kvm-gui-*` under `base`, as Go's
 /// `os.MkdirTemp(base, "macos-kvm-gui-")` does, so both apps find each other's sockets.
 fn private_run_dir(base: &Path) -> Result<PathBuf> {
@@ -492,11 +501,8 @@ pub fn explain_exit(err: Option<&str>, last_lines: &[String]) -> String {
     let Some(err) = err else {
         return String::new();
     };
-    if has("udmabuf") {
-        return format!(
-            "Reims vGPU could not use /dev/udmabuf (needed to render on an AMD GPU): {}, or load it with sudo modprobe udmabuf.",
-            compat::udmabuf_hint()
-        );
+    if let Some(m) = rg_host::Host::system().udmabuf_exit(&out) {
+        return m;
     }
     if has("Could not access KVM kernel module") || has("/dev/kvm") {
         return "No access to KVM. Check the Host tab.".into();

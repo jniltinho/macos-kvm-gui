@@ -172,6 +172,65 @@ impl AppDir {
         }
         String::new()
     }
+
+    /// The `reims_qemu` setting made absolute: `MKG_REIMS_QEMU` relative to the current
+    /// directory, settings.yaml's or `.env`'s relative to this folder. `None` when unset or empty.
+    pub fn reims_qemu_setting(&self) -> Option<PathBuf> {
+        let (v, base) = match std::env::var_os(MKG_REIMS_QEMU) {
+            Some(v) => (v.to_string_lossy().into_owned(), None),
+            None => (self.file_setting(MKG_REIMS_QEMU), Some(&self.0)),
+        };
+        if v.is_empty() {
+            return None;
+        }
+        let p = match base {
+            Some(dir) if Path::new(&v).is_relative() => dir.join(v),
+            _ => PathBuf::from(v),
+        };
+        Some(std::path::absolute(&p).unwrap_or(p))
+    }
+}
+
+/// `qemu/current/bin/qemu-system-x86_64` under a Reims install folder.
+const REIMS_QEMU_BIN: &str = "qemu/current/bin/qemu-system-x86_64";
+
+/// Go `ReimsQEMU`: the `reims_qemu` setting (`setting`, which must exist; `settings_file` is
+/// named when it does not), else the first install folder in `roots` (`<Workspace>/.reims`,
+/// `$XDG_DATA_HOME/reims-ctl`) with a regular `qemu/current/bin/qemu-system-x86_64`.
+pub fn find_reims_qemu(
+    setting: Option<&Path>,
+    settings_file: &Path,
+    roots: &[PathBuf],
+) -> Result<PathBuf> {
+    if let Some(p) = setting {
+        return match std::fs::metadata(p) {
+            Ok(_) => Ok(p.to_path_buf()),
+            Err(e) => Err(msg(format!(
+                "reims_qemu in {}: {}: {e}",
+                settings_file.display(),
+                p.display()
+            ))),
+        };
+    }
+    let tried: Vec<PathBuf> = roots.iter().map(|r| r.join(REIMS_QEMU_BIN)).collect();
+    if let Some(p) = tried
+        .iter()
+        .find(|p| std::fs::metadata(p).is_ok_and(|m| m.is_file()))
+    {
+        return Ok(p.clone());
+    }
+    Err(msg(format!(
+        "Reims vGPU is not installed (looked for {}): install it in the Host tab or with `reims-gui reims install`",
+        tried
+            .first()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default()
+    )))
+}
+
+/// The upstream reims-ctl install folder, `$XDG_DATA_HOME/reims-ctl`.
+pub fn reims_ctl_dir() -> Option<PathBuf> {
+    dirs::data_dir().map(|d| d.join("reims-ctl"))
 }
 
 fn parse_settings(text: &str) -> Result<FileSettings, String> {
@@ -328,6 +387,38 @@ mod tests {
             "kexts:\n  - url: https://example.com/a.zip\n    load: []\n",
         )?;
         assert!(app.load_extra_kexts()?.entries[0].kexts.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn reims_qemu_setting_then_install_folders() -> Result<()> {
+        let (tmp, app) = app()?;
+        std::fs::create_dir_all(app.path())?;
+        let file = app.settings_file();
+        if std::env::var_os(MKG_REIMS_QEMU).is_none() {
+            assert_eq!(app.reims_qemu_setting(), None);
+            std::fs::write(&file, "reims_qemu: q/bin\n")?;
+            assert_eq!(app.reims_qemu_setting(), Some(app.path().join("q/bin")));
+        }
+        let missing = tmp.path().join("missing");
+        let err = find_reims_qemu(Some(&missing), &file, &[])
+            .err()
+            .map(|e| e.to_string());
+        assert!(err.unwrap_or_default().starts_with("reims_qemu in "));
+        let (a, b) = (tmp.path().join("a"), tmp.path().join("b"));
+        let err = find_reims_qemu(None, &file, &[a.clone(), b.clone()])
+            .err()
+            .map(|e| e.to_string());
+        assert!(
+            err.unwrap_or_default()
+                .contains(&a.join(REIMS_QEMU_BIN).display().to_string())
+        );
+        std::fs::create_dir_all(b.join("qemu/current/bin"))?;
+        std::fs::write(b.join(REIMS_QEMU_BIN), "")?;
+        assert_eq!(
+            find_reims_qemu(None, &file, &[a, b.clone()])?,
+            b.join(REIMS_QEMU_BIN)
+        );
         Ok(())
     }
 }

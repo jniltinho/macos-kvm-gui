@@ -1,8 +1,8 @@
 //! Finding the QEMU that uses a VM's disk, whoever started it (Go `running.go`).
 
-use crate::compat::{self, DISK_FILE};
 use crate::{Error, Result};
 use rg_core::Config;
+use rg_core::workspace::{DISK_FILE, real_path};
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -47,7 +47,7 @@ pub fn find_running(c: &Config) -> Option<RunInfo> {
 
 /// [`find_running`] over another `/proc` (tests).
 pub fn running_in(proc: &Path, c: &Config) -> Option<RunInfo> {
-    let disk = compat::real_path(&compat::workspace_dir(c)?.join(DISK_FILE));
+    let disk = real_path(&c.workspace_dir().ok()?.join(DISK_FILE));
     for e in std::fs::read_dir(proc).ok()?.flatten() {
         let Some(pid) = e.file_name().to_str().and_then(|n| n.parse::<u32>().ok()) else {
             continue;
@@ -116,7 +116,7 @@ fn uses_disk(args: &[&str], disk: &Path, cwd: Option<&Path>) -> bool {
                 Some(cwd) if !f.starts_with('/') => PathBuf::from(format!("{}/{f}", cwd.display())),
                 _ => PathBuf::from(f),
             };
-            compat::real_path(&p) == disk
+            real_path(&p) == disk
         })
     })
 }

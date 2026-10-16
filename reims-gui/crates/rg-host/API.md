@@ -14,8 +14,8 @@ global state except the cached `apple-gfx-pci` probe.
 | `look_path: LookPathFn` | `PATH` search |
 | `output: OutputFn` | runs a program, combined output, `Err(CmdError)` on a non-zero exit |
 | `run: RunFn` | runs a program, `CmdError { code, output }` (output on one line) |
-| `reims_qemu: ReimsQemuFn` | **wire to the full lookup** (rg-reims/rg-core); the default only knows `MKG_REIMS_QEMU` and `~/.local/share/reims-ctl` |
-| `extra_kexts: ExtraKextsFn` | **wire to settings.yaml's kexts** (count of entries, or the load error); the default returns 0 |
+| `reims_qemu: ReimsQemuFn` | `Host::reims_qemu_in(&[])`: rg-core's `find_reims_qemu` (the `reims_qemu` setting, then upstream reims-ctl). rg-ops sets it to `rg_reims::Reims::qemu`, which adds `<Workspace>/.reims` (the Workspace lives in the registry) |
+| `extra_kexts: ExtraKextsFn` | the number of kexts in the user's settings.yaml (rg-core `load_extra_kexts`), or the load error |
 | `settings_file: String` | `~/.config/macos-kvm-gui/settings.yaml`, named in the patch-kext reason |
 
 `Host::system()` builds the real one.
@@ -54,4 +54,4 @@ global state except the cached `apple-gfx-pci` probe.
 - `gpu_ready(&Config, extra_kexts, memlock) -> Result<Vec<String>, HostError>`: right before
   QEMU starts; `extra_kexts` is the start's settings.yaml snapshot (number of kexts listed),
   `memlock` the soft RLIMIT_MEMLOCK in bytes. Returns the slot's PCI addresses.
-- `is_kepler("10de:128b")`: OCLP 2.5.1's Kepler IDs.
+- `is_kepler("10de:128b")`: OCLP 2.5.1's Kepler IDs (the only copy).

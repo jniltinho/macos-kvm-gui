@@ -8,17 +8,18 @@ Layer 0: types, persistence and locks only; nothing here calls a higher crate. E
   `.recommended(threads, mem_mib)`, `.validate()`, `.workspace_dir()`, `.reims()`, `.reims_kext()`,
   `.in_app()`, `.reims_resolution()`; `VERSIONS`, `version_index`, `version_display`,
   `profile_for(version) -> Profile { cpu, experimental, needs_avx2 }`, `root_patch_version`,
-  `wide_resolution`, `is_pci_addr`, `clean(path)`, `load_config`/`save_config` (standalone JSON);
+  `wide_resolution`, `is_pci_addr`, `smbios_model`, `reims_dir(workspace_root)`, `clean(path)`, `load_config`/`save_config` (standalone JSON);
   constants `DISPLAY_*`, `GRAPHICS_*`, `RESOLUTIONS`, `DEFAULT_RESOLUTION`, `MIN_RAM_MIB`.
 - `network`: `Nic`, `Config::adapters()` (`None` = legacy NAT adapter with `LEGACY_MAC`),
   `.nic_mut(i)`, `.ssh_forwarded()`; `new_networks`, `random_mac`, `nic_supported`,
   `default_nic_model`, `validate_nics`, `net_args(c, helper) -> (first, rest)`, `bridge_helper`,
-  `host_bridges`/`bridges_in`, `check_bridges`, `bridge_allowed`, `check_ssh_port`,
+  `valid_bridge_name` (Go `bridgeNameRe`, also installer build names), `host_bridges`/`bridges_in`, `check_bridges`, `bridge_allowed`, `check_ssh_port`,
   `disk_virtual_size`; `NIC_MODELS`, `MAX_NICS`, `NET_NAT`, `NET_BRIDGED`.
 - `settings`: `AppDir` (`user()` = `dirs::config_dir()/macos-kvm-gui`, `at(dir)`, `db_path`,
   `settings_file`, `env_file`, `load_settings`, `reset_settings`, `load_extra_kexts`,
-  `setting(key)` env > settings.yaml > .env, `file_setting`), `FileSettings`, `ExtraKext`,
-  `ExtraKexts`, `DEFAULT_SETTINGS_YAML`, keys `MKG_THEME`, `MKG_ASSETS_DIR`, `MKG_REIMS_QEMU`.
+  `setting(key)` env > settings.yaml > .env, `file_setting`, `reims_qemu_setting`), `FileSettings`,
+  `ExtraKext`, `ExtraKexts` (the only definitions; rg-assets downloads them),
+  `find_reims_qemu(setting, settings_file, roots)` (Go `ReimsQEMU`), `reims_ctl_dir()`, `DEFAULT_SETTINGS_YAML`, keys `MKG_THEME`, `MKG_ASSETS_DIR`, `MKG_REIMS_QEMU`.
 - `registry`: `Registry::open(&AppDir)` (schema 1→5 migrations, legacy file import), `list`,
   `create`, `save`, `delete(e, purge)`, `selected`, `select`, `preference`/`set_preference`
   (`PREF_*` keys), `workspace_root`, `set_workspace_root`, `vm_folder`, `move_vm`,
@@ -32,4 +33,12 @@ Layer 0: types, persistence and locks only; nothing here calls a higher crate. E
   `MIN_DISK_GIB`, `MIN_FREE_GIB`, `GIB`.
 - `bundle`: `export_bundle(e, dst, cancel, progress)`, `Registry::import_bundle`,
   `check_standalone_disk`, `BUNDLE_MANIFEST`, `BUNDLE_FILES`.
+- `http`: the one HTTP client for every download (rg-assets, rg-macos, rg-reims; it lives here
+  because those crates are siblings or above it, so a shared copy anywhere else would be a
+  cycle): `Client::new(&ClientOpts { plain_http, download, user_agent, roots })` (ureq 3 +
+  rustls; HTTPS only unless `plain_http`, at most 5 redirects, 60 s per request or, for
+  `download`, 30 s connect and 60 s to the headers), `.get(url, limit)` (truncates, Go
+  `httpsGet`), `.get_max(url, max, cancel)` / `.get_to(url, max, w, cancel)` (fail past `max`,
+  Go `httpsGetMax`), `.agent()` for custom requests, `copy(r, w, cancel, each)`,
+  `status_text`, `HttpError { Cancelled, Failed }`.
 - `keyboard`: `recovery_keyboard`, `mac_keyboard_id`, `host_keyboard`, `guest_typing_ok`.

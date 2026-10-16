@@ -7,7 +7,6 @@
 
 pub mod args;
 pub mod blocking;
-mod compat;
 pub mod keys;
 pub mod qcode;
 pub mod qmp;
@@ -16,7 +15,6 @@ pub mod vm;
 pub mod vnc;
 
 pub use args::{ArgsEnv, build_args, control_socket, vnc_socket};
-pub use compat::{DISK_FILE, EFI_DIR, MEDIA_FILE, OVMF_CODE, VARS_FILE};
 pub use keys::KeyCode;
 pub use qmp::{Qmp, QmpEvent};
 pub use running::{RunInfo, check_run_dir, find_running};

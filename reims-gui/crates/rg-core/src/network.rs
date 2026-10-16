@@ -138,7 +138,8 @@ impl Config {
     }
 }
 
-fn valid_bridge_name(s: &str) -> bool {
+/// Go `bridgeNameRe` (`^[A-Za-z0-9_.-]{1,15}$`), also used for installer build names.
+pub fn valid_bridge_name(s: &str) -> bool {
     (1..=15).contains(&s.len())
         && s.bytes()
             .all(|c| c.is_ascii_alphanumeric() || b"_.-".contains(&c))

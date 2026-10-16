@@ -7,7 +7,6 @@
 
 mod assets;
 mod boot;
-pub mod compat;
 mod extrakexts;
 mod http;
 mod reimskext;
@@ -15,23 +14,19 @@ mod rootpatch;
 mod util;
 
 pub use assets::{BootAssets, LOGO, asset_versions, icon, version_icon};
-pub use boot::{
-    BOOT_DIR, BootOptions, BootState, EFI_DIR, Identity, KextCache, OVMF_CODE, VARS_FILE,
-    opencore_config, prepare_boot, smbios_model,
-};
-pub use compat::{ExtraKext, ExtraKexts};
+pub use boot::{BootOptions, BootState, Identity, KextCache, opencore_config, prepare_boot};
 pub use extrakexts::{download_extra_kexts, extra_kexts_ready, kext_switches};
 pub use reimskext::{REIMS_UTIL_COMMIT, download_reims_kext, reims_kext_ready};
-pub use rootpatch::{
-    ROOT_PATCH_MARKER, clear_root_patch_marker, download_root_patch_kexts, is_kepler,
-    root_patch_kexts_ready, root_patch_version,
-};
+pub use rootpatch::{clear_root_patch_marker, download_root_patch_kexts, root_patch_kexts_ready};
 
 /// What can go wrong; the messages follow the Go app's.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
+    /// A file or settings error from rg-core.
+    #[error(transparent)]
+    Core(#[from] rg_core::Error),
     #[error(transparent)]
     Zip(#[from] zip::result::ZipError),
     #[error(transparent)]

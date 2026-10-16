@@ -2,8 +2,9 @@
 //! written by the Go `OpenCoreConfig` (internal/core) with the identity below; `keyboard.txt`
 //! is the `RecoveryKeyboard()` the Go run used.
 
-use rg_assets::{BootAssets, BootOptions, BootState, ExtraKexts, Identity, opencore_config};
+use rg_assets::{BootAssets, BootOptions, BootState, Identity, opencore_config};
 use rg_core::Config;
+use rg_core::ExtraKexts;
 use rg_core::config::GRAPHICS_REIMS;
 
 type R = Result<(), Box<dyn std::error::Error>>;

@@ -12,7 +12,8 @@ use rsa::RsaPublicKey;
 
 use crate::chunklist::{apple_efi_key, verify_image_with};
 use crate::http::{Http, copy_body, http_err, status_text};
-use crate::{Error, Progress, Result, check_cancel, compat, other};
+use crate::{Error, Progress, Result, check_cancel, other};
+use rg_core::workspace::{GIB, MEDIA_FILE, MEDIA_MARKER, MIN_FREE_GIB, STAGING_DIR};
 
 /// What Apple's recovery server should return for a macOS version.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,15 +99,6 @@ pub const STAGE_VERIFY: &str = "Verifying signature and hashes";
 /// `qemu-img convert`.
 pub const STAGE_CONVERT: &str = "Converting to raw image";
 
-/// The install media in a VM folder.
-pub const MEDIA_FILE: &str = "BaseSystem.img";
-/// The file recording the media's macOS version.
-pub const MEDIA_MARKER: &str = ".macos-kvm-gui-media";
-/// Where the media is prepared before it replaces the old one.
-pub const STAGING_DIR: &str = ".macos-kvm-gui-staging";
-const MIN_FREE_GIB: u64 = 4;
-const GIB: u64 = 1 << 30;
-
 /// Downloads the chunklist and the DMG for `version` into `dir` and returns their paths
 /// (`BaseSystem.dmg`, `BaseSystem.chunklist`: names from the server never reach the file
 /// system). Each file goes through a `.part` file renamed when complete; on any error nothing is
@@ -162,7 +154,7 @@ fn recovery_request<B>(b: ureq::RequestBuilder<B>, host: &str) -> ureq::RequestB
 /// The "session=..." cookie from the server root.
 fn session(http: &Http) -> Result<String> {
     let url = format!("{}/", http.recovery_base);
-    let resp = recovery_request(http.recovery_api.get(&url), RECOVERY_HOST)
+    let resp = recovery_request(http.recovery_api.agent().get(&url), RECOVERY_HOST)
         .call()
         .map_err(|e| http_err("recovery: session", e))?;
     if resp.status() != 200 {
@@ -202,7 +194,7 @@ fn image_info(http: &Http, session: &str, p: &RecoveryProduct) -> Result<ImageIn
     ]
     .join("\n");
     let url = format!("{}/InstallationPayload/RecoveryImage", http.recovery_base);
-    let resp = recovery_request(http.recovery_api.post(&url), RECOVERY_HOST)
+    let resp = recovery_request(http.recovery_api.agent().post(&url), RECOVERY_HOST)
         .header("Cookie", session)
         .header("Content-Type", "text/plain")
         .send(body.as_bytes())
@@ -276,7 +268,7 @@ fn save(
         .parse()
         .map_err(|e| Error::Other(format!("recovery: bad {stage} URL: {e}")))?;
     let host = uri.host().unwrap_or_default().to_owned();
-    let resp = recovery_request(http.recovery_download.get(url), &host)
+    let resp = recovery_request(http.recovery_download.agent().get(url), &host)
         .header("Cookie", format!("AssetToken={token}"))
         .call()
         .map_err(|e| http_err(&format!("recovery: download {name}"), e))?;
@@ -363,7 +355,7 @@ pub(crate) fn download_media_with(
     log: &mut dyn FnMut(&str),
 ) -> Result<()> {
     fs::create_dir_all(dir)?;
-    if let Ok(free) = compat::free_bytes(dir)
+    if let Some(free) = rg_core::workspace::free_bytes(dir)
         && free < MIN_FREE_GIB * GIB
     {
         return other(format!(
@@ -411,15 +403,6 @@ pub(crate) fn download_media_with(
         log(&format!("warning: could not record the media version: {e}"));
     }
     Ok(())
-}
-
-/// The recorded version of `<dir>/BaseSystem.img`: "" without media, "unknown" without a marker.
-pub fn media_version(dir: &Path) -> String {
-    if !dir.join(MEDIA_FILE).exists() {
-        return String::new();
-    }
-    fs::read_to_string(dir.join(MEDIA_MARKER))
-        .map_or_else(|_| "unknown".into(), |v| v.trim().to_owned())
 }
 
 /// The percentage printed by `qemu-img convert -p`, e.g. "(42.50/100%)".
@@ -811,7 +794,7 @@ pub(crate) mod tests {
             "the previous media must stay"
         );
         assert_eq!(
-            media_version(&ws),
+            rg_core::Workspace::new(&ws).media_version(),
             "monterey",
             "the previous marker must stay"
         );

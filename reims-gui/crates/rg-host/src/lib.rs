@@ -1,7 +1,6 @@
 //! Host checks and setup, GPU listing, eligibility and VFIO reservation, Reims vGPU host checks
 //! (port of the Go app's internal/core host.go, gpu.go and reimshost.go). See API.md.
 
-mod compat;
 mod gpu;
 mod host;
 mod reims;
