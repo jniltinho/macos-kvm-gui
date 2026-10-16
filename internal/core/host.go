@@ -318,12 +318,18 @@ fi
 getent group kvm >/dev/null || groupadd --system kvm || exit 1
 usermod -aG kvm "$1" || exit 1
 echo 1 > /sys/module/kvm/parameters/ignore_msrs || exit 1
-printf 'options kvm ignore_msrs=1 report_ignored_msrs=0\n' > /etc/modprobe.d/macos-kvm-gui.conf || exit 1`
+printf 'options kvm ignore_msrs=1 report_ignored_msrs=0\n' > /etc/modprobe.d/macos-kvm-gui.conf || exit 1
+# Reims vGPU maps guest memory in many small views: 2097152 covers a VM of up to 30 GiB.
+if [ "$(cat /proc/sys/vm/max_map_count)" -lt 2097152 ]; then
+  printf 'vm.max_map_count = 2097152\n' > /etc/sysctl.d/90-macos-kvm-gui.conf || exit 1
+  sysctl -qw vm.max_map_count=2097152 || exit 1
+fi`
 
 var userNameRe = regexp.MustCompile(`^[a-z_][a-z0-9_.-]*$`)
 
 // SetupHost does, with one password prompt, the basics KVM needs: missing QEMU packages,
-// the KVM module, kvm group membership and ignore_msrs. It returns what the user still has
+// the KVM module, kvm group membership (which also opens /dev/udmabuf on Ubuntu), ignore_msrs
+// and a vm.max_map_count large enough for Reims vGPU. It returns what the user still has
 // to do, such as logging in again for the new group to apply.
 func (h Host) SetupHost(user string) (string, error) {
 	if !userNameRe.MatchString(user) {
