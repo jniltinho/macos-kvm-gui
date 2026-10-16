@@ -8,7 +8,8 @@
 # instead of the built-in ones.
 # assets_dir: /path/to/assets
 
-# Reims vGPU's QEMU, instead of the one installed in <Workspace>/.reims (Host tab).
+# Reims vGPU's QEMU, instead of the one installed in <Workspace>/.reims (Host tab). A relative
+# path is relative to this file's folder (MKG_REIMS_QEMU: to the current directory).
 # reims_qemu: /path/to/qemu-system-x86_64
 
 # Extra kexts OpenCore loads in every VM, after the built-in ones. The app ships no

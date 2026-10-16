@@ -49,10 +49,11 @@ var (
 
 // Package limits: a size over a limit fails the install, nothing is ever truncated.
 const (
-	maxReimsPackage  = 512 << 20
-	maxReimsExpanded = 2 << 30
-	maxReimsEntries  = 20000
+	maxReimsPackage = 512 << 20
+	maxReimsEntries = 20000
 )
+
+var maxReimsExpanded int64 = 2 << 30 // a var for tests
 
 type reimsPackage struct {
 	File   string `json:"file"`
@@ -213,19 +214,19 @@ func downloadTo(ctx context.Context, url, file string, max int64) error {
 	return err
 }
 
-// unpackReims extracts a .tar.gz into dst, refusing absolute paths, "..", links that point
-// outside dst, anything written through a link, and entries other than files, folders and links.
+// unpackReims extracts a .tar.gz into dst, refusing absolute paths, "..", links that are
+// absolute or contain "..", anything written through a link, and entries other than files,
+// folders and links. Every byte decompressed counts against maxReimsExpanded.
 func unpackReims(r io.Reader, dst string) error {
 	zr, err := gzip.NewReader(r)
 	if err != nil {
 		return err
 	}
-	tr := tar.NewReader(zr)
+	tr := tar.NewReader(&budgetReader{r: zr, left: maxReimsExpanded})
 	if err := os.MkdirAll(dst, 0o755); err != nil {
 		return err
 	}
 	links := map[string]bool{}
-	var total int64
 	for n := 0; ; n++ {
 		h, err := tr.Next()
 		if err == io.EOF {
@@ -242,6 +243,9 @@ func unpackReims(r io.Reader, dst string) error {
 		}
 		name := path.Clean(h.Name)
 		if name == "." {
+			if h.Typeflag != tar.TypeDir {
+				return fmt.Errorf("unexpected entry %q in the archive", h.Name)
+			}
 			continue
 		}
 		for p := path.Dir(name); p != "."; p = path.Dir(p) {
@@ -257,12 +261,11 @@ func unpackReims(r io.Reader, dst string) error {
 		case tar.TypeDir:
 			err = os.MkdirAll(target, 0o755)
 		case tar.TypeReg:
-			if total += h.Size; total > maxReimsExpanded {
-				return fmt.Errorf("the archive expands to more than %d MiB", maxReimsExpanded>>20)
-			}
 			err = writeFileFrom(target, tr, h.FileInfo().Mode().Perm())
 		case tar.TypeSymlink:
-			if path.IsAbs(h.Linkname) || !filepath.IsLocal(path.Join(path.Dir(name), h.Linkname)) {
+			// Without ".." or a leading "/", a link (and any chain of them) only reaches
+			// below its own folder; the packages have no other links.
+			if path.IsAbs(h.Linkname) || slices.Contains(strings.Split(h.Linkname, "/"), "..") {
 				return fmt.Errorf("the link %q points outside the archive (%s)", h.Name, h.Linkname)
 			}
 			links[name] = true
@@ -274,6 +277,20 @@ func unpackReims(r io.Reader, dst string) error {
 			return err
 		}
 	}
+}
+
+// budgetReader fails once more than left bytes have been read through it.
+type budgetReader struct {
+	r    io.Reader
+	left int64
+}
+
+func (b *budgetReader) Read(p []byte) (int, error) {
+	n, err := b.r.Read(p)
+	if b.left -= int64(n); b.left < 0 {
+		return n, fmt.Errorf("the archive expands to more than %d MiB", maxReimsExpanded>>20)
+	}
+	return n, err
 }
 
 // writeFileFrom creates a new file (never through an existing link) from r.
@@ -419,11 +436,29 @@ func pruneReims(qdir, rel, keep string, log func(string)) {
 	}
 }
 
-// reimsInUse reports whether a running process's executable is inside dir.
-func reimsInUse(dir string) bool {
-	exes, _ := filepath.Glob("/proc/[0-9]*/exe")
-	for _, e := range exes {
-		if t, err := os.Readlink(e); err == nil && strings.HasPrefix(t, dir+"/") {
+// reimsInUse reports whether a running process's executable is inside dir, or whether that
+// cannot be told (dir does not resolve, a QEMU process's executable is unreadable).
+func reimsInUse(dir string) bool { return reimsInUseIn("/proc", dir) }
+
+func reimsInUseIn(proc, dir string) bool {
+	// /proc/<pid>/exe is canonical, so dir must be too (a Workspace may be behind a symlink).
+	dir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return true
+	}
+	pids, _ := filepath.Glob(filepath.Join(proc, "[0-9]*"))
+	for _, p := range pids {
+		t, err := os.Readlink(filepath.Join(p, "exe"))
+		if err != nil {
+			if comm, _ := os.ReadFile(filepath.Join(p, "comm")); strings.HasPrefix(string(comm), "qemu-system") {
+				return true
+			}
+			continue
+		}
+		if real, err := filepath.EvalSymlinks(t); err == nil {
+			t = real
+		}
+		if strings.HasPrefix(t, dir+"/") {
 			return true
 		}
 	}

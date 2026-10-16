@@ -118,7 +118,7 @@ func TestUnpackReims(t *testing.T) {
 		tarEntry{name: "./bin/qemu", typ: tar.TypeReg, body: "x"},
 		tarEntry{name: "./share/qemu/a.rom", typ: tar.TypeReg, body: "rom"},
 		tarEntry{name: "./share/qemu/b.rom", typ: tar.TypeSymlink, link: "a.rom"},
-		tarEntry{name: "./share/top", typ: tar.TypeSymlink, link: "../bin/qemu"})
+		tarEntry{name: "./share/top", typ: tar.TypeSymlink, link: "qemu/a.rom"})
 	dst := filepath.Join(t.TempDir(), "b")
 	if err := unpackReims(bytes.NewReader(good), dst); err != nil {
 		t.Fatal(err)
@@ -130,6 +130,9 @@ func TestUnpackReims(t *testing.T) {
 		"..":               tarGz(t, tarEntry{name: "bin/../../x", typ: tar.TypeReg}),
 		"absolute":         tarGz(t, tarEntry{name: "/etc/x", typ: tar.TypeReg}),
 		"outside link":     tarGz(t, tarEntry{name: "bin/l", typ: tar.TypeSymlink, link: "../../x"}),
+		"link chain":       tarGz(t, tarEntry{name: "a", typ: tar.TypeSymlink, link: "."}, tarEntry{name: "escape", typ: tar.TypeSymlink, link: "a/.."}),
+		"inside .. link":   tarGz(t, tarEntry{name: "bin/l", typ: tar.TypeSymlink, link: "../share"}),
+		". as a file":      tarGz(t, tarEntry{name: ".", typ: tar.TypeReg, body: "payload"}),
 		"absolute link":    tarGz(t, tarEntry{name: "l", typ: tar.TypeSymlink, link: "/etc/passwd"}),
 		"through a link":   tarGz(t, tarEntry{name: "d", typ: tar.TypeSymlink, link: "."}, tarEntry{name: "d/x", typ: tar.TypeReg}),
 		"hard link":        tarGz(t, tarEntry{name: "h", typ: tar.TypeLink, link: "bin/qemu"}),
@@ -144,6 +147,53 @@ func TestUnpackReims(t *testing.T) {
 		if _, err := os.Lstat(filepath.Join(filepath.Dir(dir), "x")); err == nil {
 			t.Errorf("%s: wrote outside", why)
 		}
+	}
+}
+
+func TestUnpackReimsBudget(t *testing.T) {
+	old := maxReimsExpanded
+	maxReimsExpanded = 4096
+	t.Cleanup(func() { maxReimsExpanded = old })
+	big := strings.Repeat("x", 8192)
+	for why, archive := range map[string][]byte{
+		"a file":     tarGz(t, tarEntry{name: "f", typ: tar.TypeReg, body: big}),
+		"many files": tarGz(t, tarEntry{name: "a", typ: tar.TypeReg, body: big[:3000]}, tarEntry{name: "b", typ: tar.TypeReg, body: big[:3000]}),
+	} {
+		if err := unpackReims(bytes.NewReader(archive), filepath.Join(t.TempDir(), "b")); err == nil || !strings.Contains(err.Error(), "expands") {
+			t.Errorf("%s: %v", why, err)
+		}
+	}
+}
+
+func TestReimsInUseIn(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "ws")
+	os.Symlink(real, link)
+	os.MkdirAll(filepath.Join(real, "b", "bin"), 0o755)
+	proc := t.TempDir()
+	pid := func(n, exe, comm string) {
+		os.MkdirAll(filepath.Join(proc, n), 0o755)
+		if exe != "" {
+			os.Symlink(exe, filepath.Join(proc, n, "exe"))
+		}
+		os.WriteFile(filepath.Join(proc, n, "comm"), []byte(comm+"\n"), 0o644)
+	}
+	pid("1", "/usr/bin/bash", "bash")
+	pid("2", "", "kthreadd") // no exe: a kernel thread
+	if reimsInUseIn(proc, filepath.Join(link, "b")) {
+		t.Fatal("no process uses it")
+	}
+	pid("3", filepath.Join(real, "b", "bin", "qemu-system-x86_64"), "qemu-system-x86")
+	if !reimsInUseIn(proc, filepath.Join(link, "b")) {
+		t.Fatal("the canonical exe is inside the build reached through a symlink")
+	}
+	os.RemoveAll(filepath.Join(proc, "3"))
+	pid("4", "", "qemu-system-x86") // unreadable exe
+	if !reimsInUseIn(proc, filepath.Join(link, "b")) {
+		t.Fatal("a QEMU whose executable cannot be read keeps the build")
+	}
+	if !reimsInUseIn(t.TempDir(), filepath.Join(link, "missing")) {
+		t.Fatal("a build that does not resolve is kept")
 	}
 }
 
@@ -303,5 +353,15 @@ func TestBuildReimsRelease(t *testing.T) {
 	osRelease(t, "ID=ubuntu\nVERSION_ID=\"22.04\"\nPRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\n")
 	if err := BuildReims(context.Background(), "", func(string) {}); err == nil || !strings.Contains(err.Error(), "--release") {
 		t.Fatalf("an unsupported host stops before Docker: %v", err)
+	}
+}
+
+func TestReimsDockerfileChownsOnExit(t *testing.T) {
+	// A failed build must not leave root-owned files in the Workspace: the chown is an EXIT trap
+	// set before anything is written to /build, not a last step.
+	s := string(reimsDockerfile)
+	trap, build := strings.Index(s, `trap 'chown -R "${HOST_UID:-0}:${HOST_GID:-0}" /build' EXIT`), strings.Index(s, "mkdir -p /build")
+	if trap < 0 || build < 0 || trap > build {
+		t.Fatalf("no EXIT trap before the build writes /build (trap at %d, mkdir at %d)", trap, build)
 	}
 }

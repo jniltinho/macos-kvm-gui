@@ -69,7 +69,7 @@ prints the QEMU a Reims VM runs, its build folder, upstream's commit and whether
 
 A VM on Reims vGPU runs the first `qemu-system-x86_64` found here:
 
-1. `reims_qemu` in `settings.yaml` (or the `MKG_REIMS_QEMU` environment variable, which wins), a path to your own build:
+1. `reims_qemu` in `settings.yaml` (or the `MKG_REIMS_QEMU` environment variable, which wins), a path to your own build. A relative `reims_qemu` is relative to the folder of `settings.yaml`, a relative `MKG_REIMS_QEMU` to the current directory:
 
    ```yaml
    reims_qemu: /opt/reims/qemu/bin/qemu-system-x86_64

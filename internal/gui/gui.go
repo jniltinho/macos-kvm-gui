@@ -133,6 +133,7 @@ type ui struct {
 	btnExport, btnImport           *toolButton
 	menuFor                        map[*fyne.MenuItem]*toolButton // menu items that mirror a toolbar button
 	lastPreview                    time.Time
+	previewGen                     int // bumped when the VM shown changes or stops: older preview frames are dropped
 
 	btnPrepare, btnDownload, btnDisk, btnRemove *widget.Button
 	btnStart, btnPowerdown, btnKill             *toolButton

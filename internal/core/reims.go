@@ -18,9 +18,15 @@ func ReimsDir() (string, error) {
 }
 
 // ReimsQEMU finds the Reims QEMU: reims_qemu in settings.yaml (or MKG_REIMS_QEMU), the app's
-// own install in <Workspace>/.reims, then an upstream reims-ctl install.
+// own install in <Workspace>/.reims, then an upstream reims-ctl install. A relative reims_qemu
+// is relative to settings.yaml's folder, a relative MKG_REIMS_QEMU to the current directory:
+// the VM runs QEMU from its own folder, so the path must be absolute by then.
 func ReimsQEMU() (string, error) {
 	if p := Setting("MKG_REIMS_QEMU"); p != "" {
+		if _, env := os.LookupEnv("MKG_REIMS_QEMU"); !env && !filepath.IsAbs(p) {
+			p = filepath.Join(filepath.Dir(SettingsFile()), p)
+		}
+		p, _ = filepath.Abs(p) // the env's path, from the current directory
 		if _, err := os.Stat(p); err != nil {
 			return "", errors.New("reims_qemu in " + SettingsFile() + ": " + err.Error())
 		}

@@ -341,3 +341,19 @@ func TestReimsRealizesPaused(t *testing.T) {
 	}
 	t.Logf("QEMU output: %s", out.String())
 }
+
+func TestReimsQEMURelative(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	dir := filepath.Join(cfg, "macos-kvm-gui")
+	write(t, filepath.Join(dir, "bin", "qemu"), "")
+	write(t, filepath.Join(dir, "settings.yaml"), "reims_qemu: bin/qemu\n")
+	if q, err := ReimsQEMU(); err != nil || q != filepath.Join(dir, "bin", "qemu") {
+		t.Fatalf("settings.yaml: %q %v", q, err)
+	}
+	t.Chdir(dir)
+	t.Setenv("MKG_REIMS_QEMU", "bin/qemu")
+	if q, err := ReimsQEMU(); err != nil || q != filepath.Join(dir, "bin", "qemu") {
+		t.Fatalf("env: %q %v", q, err)
+	}
+}
