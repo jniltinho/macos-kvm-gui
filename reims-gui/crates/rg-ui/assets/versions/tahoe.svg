@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="ta-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#C3EEF0"/><stop offset="0.5" stop-color="#78BCCE"/><stop offset="1.0" stop-color="#286586"/>
+    </linearGradient>
+    <linearGradient id="ta-peaks" x1="82" y1="130" x2="430" y2="252" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#4E9DB8"/><stop offset="1.0" stop-color="#205778"/>
+    </linearGradient>
+    <linearGradient id="ta-snow" x1="150" y1="130" x2="354" y2="206" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#F1FFFF"/><stop offset="1.0" stop-color="#B6E8EA"/>
+    </linearGradient>
+    <linearGradient id="ta-lake" x1="82" y1="276" x2="430" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#BDFCF0"/><stop offset="1.0" stop-color="#2DB2CA"/>
+    </linearGradient>
+    <linearGradient id="ta-reflection" x1="82" y1="276" x2="430" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#277F9F" stop-opacity=".5"/><stop offset="1" stop-color="#A4F5EA" stop-opacity=".1"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#ta-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#ta-peaks)" d="M82 252L180 130L256 218L318 154L430 252Z"/>
+  <path fill="url(#ta-snow)" d="M180 130L218 174L188 166L172 186L150 167ZM318 154L354 186L324 180L308 198L292 181Z"/>
+  <path fill="url(#ta-lake)" d="M82 276H430L362 404H150Z"/>
+  <path fill="url(#ta-reflection)" d="M82 276H430L318 374L256 310L180 398Z"/>
+</svg>

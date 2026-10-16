@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. A bold red X: one filled shape, square ends. -->
+  <defs>
+    <linearGradient id="remove-fill" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#ff8a80"/>
+      <stop offset=".45" stop-color="#e53935"/>
+      <stop offset="1" stop-color="#9f1b1b"/>
+    </linearGradient>
+  </defs>
+  <path d="M4 8 8 4 16 12 24 4 28 8 20 16 28 24 24 28 16 20 8 28 4 24 12 16Z" fill="url(#remove-fill)" stroke="#7a1010"/>
+  <path d="M5.5 8 8 5.5 15 12.5 12.5 15Z" fill="#ffffff" fill-opacity="0.45"/>
+</svg>
