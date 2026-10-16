@@ -117,7 +117,7 @@ If the Apple logo stays without a progress bar, use **Start with verbose boot** 
 
 ### Recovery language
 
-The recovery and the installer start in **English with the U.S. keyboard**: OpenCore sets the `prev-lang:kbd` NVRAM variable to `en-US:0` at every boot. (Releases up to 0.7.0 kept the value from OpenCore's sample configuration, `ru-RU:252`, so the recovery opened in Russian.) To use another language for the installer, pick it in the recovery's menu; the installed macOS uses the language chosen in Setup Assistant.
+The recovery and the installer start in **English with the host's keyboard layout**: OpenCore sets the `prev-lang:kbd` NVRAM variable at every boot from the host's layout (`/etc/default/keyboard`, else `localectl`): `en-US:0` for U.S., `en-US:128` for Brazilian ABNT2, and so on; unknown layouts get U.S. Keys reach macOS by physical position. On ABNT2, the extra `/?` key right of `;` does not reach macOS (QEMU's USB keyboard sends it as a Japanese key); use the keypad `/`. (Releases up to 0.7.0 kept the value from OpenCore's sample configuration, `ru-RU:252`, so the recovery opened in Russian.) To use another language for the installer, pick it in the recovery's menu; the installed macOS uses the language chosen in Setup Assistant.
 
 ### Valid processor counts
 
@@ -141,6 +141,26 @@ Any other total cannot be split into such cores: with 2 threads per core, 6, 10,
 | 6 cores × 2 threads = 12 vCPUs, 16 GB (Sequoia recovery) | Hangs at the Apple logo after `EXITBS:START` |
 
 Other combinations in the table follow the same rule but were not booted one by one. Do not give the VM more vCPUs than the host has threads, and leave some for the host: **Recommended for this host** proposes about half of them as a power-of-two core count (24 host threads give 4 cores × 2 = 8 vCPUs; 32 or more give 8 × 2 = 16). Without a GPU the CPU draws the screen, so more vCPUs make it smoother, up to what the host can spare.
+
+## Full installer
+
+**Download full installer** (Install step 2, or `download --full`) fetches Apple's `InstallAssistant.pkg` for the VM's macOS version from the public Software Update catalog. Only Big Sur and later have one; older versions install from the recovery. The app picks the newest public release that supports the VM's Mac model (so Apple-silicon-only versions are skipped), checks free space, resumes an interrupted download and checks every chunk's SHA-256 against Apple's integrity data. That data is not signed with Apple's key like the recovery's chunklist; it and the package come from Apple's HTTPS servers, and the app refuses redirects away from HTTPS.
+
+After the check, the app writes the package into an installer disc, `<Workspace>/.installers/<build>/InstallAssistant.iso` (ISO 9660, volume `OFFLINE`), and deletes the package; for that moment the download needs twice its size free. The package is on the disc as pieces `PKG.000`, `PKG.001`, … of under 4 GiB, because macOS reads no ISO 9660 file over 4 GiB.
+
+While a VM starts with install media, the disc is attached to it as a disk (its writes are discarded, so the cache stays unchanged). No network is needed. Install step 4 shows the line to type in the recovery's Terminal, `sh /Volumes/OFFLINE/INSTALL.SH`. What it does, in order:
+
+1. Copies the recovery's own "Install macOS ….app" to "/Volumes/Macintosh HD/private/tmp" (the recovery's volume is read-only).
+2. Joins the pieces into the app's `Contents/SharedSupport/SharedSupport.dmg`, which takes a few minutes. The disk needs room for the package and macOS itself: use a disk of 80 GB or more.
+3. Opens the installer. Continue there, choosing "Macintosh HD".
+
+**Type it in the VM** does the typing: once the recovery shows its window (not earlier: keys pressed while macOS boots change how it boots), it opens Utilities › Terminal through the menu bar (Control+F2, then the arrow keys: Big Sur's recovery has no Terminal shortcut) and types `sh /V*/OFFLINE/I*`, the same line spelled with keys that give the same characters in every Latin QWERTY, AZERTY or QWERTZ layout (no A, M, Q, W, Y or Z, and the keypad's `/`, `*` and `-`). Caps Lock must be off. With Dvorak or Russian, it refuses: type the line yourself.
+
+**Unattended** (the check box, or `-u` after the line) needs no Disk Utility and no clicks: the script erases the VM's empty disk as APFS "Macintosh HD" (the only internal disk with no partitions that is not mounted; with none or several it stops), then runs the installer's `startosinstall --agreetolicense`, which **accepts Apple's macOS license for you**, and restarts the VM. The installation continues on its own (about 30 minutes) up to Setup Assistant.
+
+- **"No volume at /Volumes/Macintosh HD":** erase the disk in Disk Utility as APFS named "Macintosh HD", or give the volume: `sh /Volumes/OFFLINE/INSTALL.SH "/Volumes/Your Disk"`.
+- **No `/Volumes/OFFLINE`:** the disc is attached only when the VM starts with install media and a cached installer of its macOS version; shut the VM down and start it again after the download.
+- **Delete installer** (Install step 2, or **File › Offline installers**, which lists every cached one and the VMs that use it) refuses while a VM is using it.
 
 ## Network adapters
 

@@ -36,10 +36,11 @@
 - **A manager like VirtualBox's.** Menus, toolbar, a VM list, Details with a live Preview, a Settings window and a New VM wizard, in a light theme with VirtualBox's colors or a dark one.
 - **Several VMs.** One folder per VM in the Workspace, move, export/import, and macOS on screen inside the app.
 - **Guided install.** A step-by-step Install tab, and Host checks with one-click setup.
+- **Offline install.** Download Apple's full installer once (Big Sur and later) and every VM of that version installs from a local disc, with no network; **Type it in the VM** does the typing, and **Unattended** goes all the way to Setup Assistant.
 - **Networking.** Up to four adapters per VM, NAT or bridged, with the adapter type and MAC address of your choice.
-- **Scriptable.** The same binary is a [command line tool](docs/cli.md).
+- **Scriptable.** The same binary is a [command line tool](docs/cli.md) and an [MCP server](docs/mcp.md) that lets AI agents see, type in and install VMs.
 
-Sonoma 14 is validated end to end; High Sierra through Tahoe are experimental. More in the [overview](docs/overview.md).
+Sonoma 14 is validated end to end; Sequoia 15 and Big Sur 11 have installed from the offline installer; the other versions, High Sierra through Tahoe, are experimental. More in the [overview](docs/overview.md).
 
 ## Quick start
 
@@ -52,13 +53,13 @@ Both add "macOS KVM" to the applications menu, and a `.tar.gz` is there for othe
 
 1. Open **macOS KVM** and make the **Host** checks green (**Set up host** fixes the basics).
 2. Click **New**: the wizard creates the VM's folder and disk and downloads the macOS recovery from Apple.
-3. Click **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**; the **Install** tab walks you through it.
+3. Click **Start**. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**; the **Install** tab walks you through it. To install offline instead, click **Download full installer** in Install step 2 before starting.
 
 Full walkthrough: [getting started](docs/getting-started.md).
 
 ## Documentation
 
-[Overview](docs/overview.md) · [Getting started](docs/getting-started.md) · [Command line](docs/cli.md) · [Architecture](docs/architecture.md) · [GPU passthrough](docs/gpu-passthrough.md) · [Troubleshooting](docs/troubleshooting.md) · [Development](docs/development.md) · [Screenshots](docs/screenshots/README.md) · [References](docs/references.md)
+[Overview](docs/overview.md) · [Getting started](docs/getting-started.md) · [Command line](docs/cli.md) · [MCP server](docs/mcp.md) · [Architecture](docs/architecture.md) · [GPU passthrough](docs/gpu-passthrough.md) · [Troubleshooting](docs/troubleshooting.md) · [Development](docs/development.md) · [Screenshots](docs/screenshots/README.md) · [References](docs/references.md)
 
 ## Build
 

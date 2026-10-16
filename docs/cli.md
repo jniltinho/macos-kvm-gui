@@ -16,13 +16,15 @@ VMs live in `~/.config/macos-kvm-gui/macos-kvm-gui.db` (SQLite). Commands act on
 | Command | What it does |
 |---|---|
 | `check` | Runs the Host tab's checks. Exits with an error when any check fails. |
+| `mcp` | Runs the [MCP server](mcp.md) for AI agents on standard input and output. |
 | `setup` | Installs missing QEMU packages, loads the KVM module, adds you to the `kvm` group and enables `ignore_msrs`. It asks for your password once, through `pkexec`. |
 | `config show` | Prints the settings as JSON. |
 | `config set key=value...` | Changes settings. The keys are `workspace`, `version`, `ram`, `cores`, `vcpus`, `ssh-port`, `display` (`app` or `window`), `gpu`, and for network adapter N (1–4) `nicN.enabled` (`true`/`false`), `nicN.mode` (`nat` or `bridged`), `nicN.bridge`, `nicN.model` (`virtio-net-pci`, `vmxnet3`, `e1000-82545em`) and `nicN.mac` (an address, or `random`). Values go through the same validation as the app. |
 | `config recommend` | Sets CPU and RAM to the values recommended for this host. |
 | `workspace show` / `workspace set <dir>` | Prints or sets the Workspace, the folder that holds one folder per VM (default `~/macOS-VMs`). Existing VMs are not moved. |
 | `workspace create` | Creates the VM's folder and extracts the built-in OpenCore and OVMF. |
-| `download [--version sonoma]` | Downloads the macOS recovery from Apple, verifies its signature and converts it. |
+| `download [--version sonoma] [--full]` | Downloads the macOS recovery from Apple, verifies its signature and converts it. With `--full`, downloads Apple's full installer (Big Sur and later, 12–18 GB) into the shared cache instead, resuming an interrupted download. |
+| `installer list` / `installer remove <build>` | Lists or deletes the cached full installers. A VM started with install media gets the cached installer of its version as a disc, and `vm start` prints the line to type in the recovery's Terminal to install from it. |
 | `disk create [--size 80]` | Creates the thin qcow2 disk, in GiB (minimum 40). It never overwrites an existing disk. |
 | `media remove --yes` | Deletes `BaseSystem.img` once macOS boots from the disk. |
 | `vm list` / `vm status [name]` | Lists the VMs (`*` marks the selected one) with their state, or shows one VM's state, PID, uptime and folder. VMs started outside the app, for example by OSX-KVM's script, show as running too. |
