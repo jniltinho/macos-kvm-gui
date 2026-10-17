@@ -35,6 +35,17 @@ Reims vGPU and GPU passthrough are mutually exclusive per VM. Other VMs keep VMw
 
 ## Install
 
+### In short: is it automatic?
+
+| What | Automatic? | How |
+|---|---|---|
+| **Reims vGPU's QEMU on the host** (needed by every Reims vGPU VM) | **No**: install it once per host | Host tab › **Set up host** (once), then **Install Reims vGPU**; or `macos-kvm-gui reims install` / `reims-gui reims install` |
+| Choosing Reims vGPU for a VM | Partly: the New VM wizard picks it for Sequoia and Tahoe **once it is installed** | Settings › Display › Graphics Controller › Reims vGPU, or `config set graphics=reims-vgpu` |
+| `ReimsVgpu.kext` (macOS Tahoe guests) | **Yes**: downloaded at the first start and injected by OpenCore | nothing to do |
+| `METAL_ERROR_MODE` inside macOS | **No**: once per macOS install | the commands under [First boot in macOS](#first-boot-in-macos) (also shown in Settings › Display) |
+
+Starting a Reims vGPU VM on a host without its QEMU does not download anything: Start stops with *"Reims vGPU is not installed (looked for …): install it in the Host tab or with `macos-kvm-gui reims install`"*. The prebuilt package exists for Ubuntu 24.04 and 26.04. On Debian 13 and Rocky Linux 10, build it as below and point `reims_qemu` at it. On any release, **Build from source (Docker)** builds the Ubuntu ones.
+
 The app does not embed Reims vGPU. It installs a separate QEMU build into `<Workspace>/.reims/qemu/<build>` and points `<Workspace>/.reims/qemu/current` at it, next to `.kexts` and `.installers`. Nothing else on the host changes.
 
 ### Prebuilt package

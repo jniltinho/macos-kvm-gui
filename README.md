@@ -47,7 +47,7 @@ sudo apt install ./reims-gui_0.1.4_amd64.deb
 
 It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x86`, `qemu-system-gui`, `qemu-utils`). Or unpack the `.tar.gz` and run `reims-gui` from it. Needs an x86_64 CPU with VT-x/AMD-V and KVM.
 
-1. Open **Reims GUI** and, in the **Host** tab, click **Set up host** (one password prompt), then **Install Reims vGPU**.
+1. Open **Reims GUI** and, in the **Host** tab, click **Set up host** (one password prompt), then **Install Reims vGPU**: it downloads Reims vGPU's QEMU once for the host (it is not downloaded on its own when a VM starts). macOS Tahoe's `ReimsVgpu.kext` is the only part fetched automatically, at the first start. [More](docs/reims-vgpu.md#in-short-is-it-automatic).
 2. Click **New**: the wizard creates the VM's folder and disk and downloads the macOS recovery from Apple.
 3. Click **Start**: macOS shows in the **Screen** tab. Inside the VM, erase the disk as APFS in Disk Utility and run **Reinstall macOS**; the **Install** tab walks you through it.
 

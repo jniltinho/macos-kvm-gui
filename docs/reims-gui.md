@@ -12,7 +12,7 @@ Take the package from the [Releases](https://github.com/jniltinho/macos-kvm-gui/
 sudo apt install ./reims-gui_<version>_amd64.deb
 ```
 
-Then, in the **Host** tab: **Set up host** (one password prompt), then **Install Reims vGPU**, then **Check again**. Requirements and host settings are those of [Reims vGPU](reims-vgpu.md#requirements).
+Then, in the **Host** tab: **Set up host** (one password prompt), then **Install Reims vGPU**, then **Check again**. Requirements and host settings are those of [Reims vGPU](reims-vgpu.md#requirements). Reims vGPU's QEMU is installed once per host by that button (or `reims-gui reims install`); it is not downloaded when a VM starts, and a Reims vGPU VM refuses to start until it is installed. Only macOS Tahoe's `ReimsVgpu.kext` comes on its own, at the first start ([what is automatic](reims-vgpu.md#in-short-is-it-automatic)).
 
 ## Reims vGPU inside the window
 
