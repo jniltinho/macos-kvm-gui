@@ -1,13 +1,16 @@
 package core
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver, registered as "sqlite"
@@ -22,6 +25,9 @@ type VMEntry struct {
 	ID     string
 	Path   string
 	Config Config
+	// Notice is set by CreateVM when the requested SSH port belonged to another VM and the VM
+	// got another one; callers print or log it.
+	Notice string
 }
 
 // DisplayName is the VM's name, or a name derived from its macOS version.
@@ -145,7 +151,9 @@ func openDB() (*sql.DB, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err
 	}
-	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
+	// _txlock=immediate: a transaction takes the write lock at BEGIN, so two creates (from
+	// either app) cannot pick the same SSH port.
+	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)&_txlock=immediate")
 	if err != nil {
 		return nil, err
 	}
@@ -253,13 +261,119 @@ func isUniqueErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
 
-// CreateVM validates c, stores it as a new VM and returns its entry.
+// dbtx is a *sql.DB or a *sql.Tx.
+type dbtx interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	Query(query string, args ...any) (*sql.Rows, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+// FirstSSHPort is where the search for a free SSH port starts.
+const FirstSSHPort = 2222
+
+// portFree reports whether a port can be bound on 127.0.0.1; tests replace it.
+var portFree = func(p int) bool {
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", p))
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
+}
+
+// NextSSHPort is the lowest port from FirstSSHPort up that no VM but exceptID uses and that
+// probe (nil: bind on 127.0.0.1) says is free.
+func NextSSHPort(exceptID string, probe func(int) bool) (int, error) {
+	db, err := openDB()
+	if err != nil {
+		return 0, err
+	}
+	defer db.Close()
+	return nextSSHPort(db, exceptID, probe)
+}
+
+func nextSSHPort(q dbtx, exceptID string, probe func(int) bool) (int, error) {
+	if probe == nil {
+		probe = portFree
+	}
+	rows, err := q.Query(`SELECT ssh_port FROM vms WHERE id <> ?`, exceptID)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+	used := map[int]bool{}
+	for rows.Next() {
+		var p int
+		if err := rows.Scan(&p); err != nil {
+			return 0, err
+		}
+		used[p] = true
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	for p := FirstSSHPort; p <= 65535; p++ {
+		if !used[p] && probe(p) {
+			return p, nil
+		}
+	}
+	return 0, fmt.Errorf("no free SSH port from %d to 65535", FirstSSHPort)
+}
+
+// SSHPortUsers returns the names of the VMs other than exceptID that use port.
+func SSHPortUsers(port int, exceptID string) ([]string, error) {
+	db, err := openDB()
+	if err != nil {
+		return nil, err
+	}
+	defer db.Close()
+	return sshPortUsers(db, port, exceptID)
+}
+
+func sshPortUsers(q dbtx, port int, exceptID string) ([]string, error) {
+	rows, err := q.Query(`SELECT name FROM vms WHERE ssh_port = ? AND id <> ? ORDER BY name COLLATE NOCASE`, port, exceptID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			return nil, err
+		}
+		names = append(names, n)
+	}
+	return names, rows.Err()
+}
+
+// SSHPortWarning is the shared-port warning for a VM, or "" when no other VM uses its port.
+func SSHPortWarning(port int, exceptID string) string {
+	names, err := SSHPortUsers(port, exceptID)
+	if err != nil || len(names) == 0 {
+		return ""
+	}
+	return PortWarning(names)
+}
+
+// PortWarning words the shared-port warning, the same in both apps.
+func PortWarning(names []string) string {
+	return "Also used by " + strings.Join(names, ", ") + ": they cannot run at the same time"
+}
+
+// CreateVM validates c, stores it as a new VM and returns its entry. SSHPort 0 gets the next
+// free port; an explicit port another VM uses is replaced by the next free one, with a Notice.
+// The port is picked and the row inserted in one immediate transaction.
 func CreateVM(c Config) (VMEntry, error) {
 	c.Name = strings.TrimSpace(c.Name)
 	if c.Name == "" {
 		return VMEntry{}, &FieldError{"name", "give the VM a name"}
 	}
-	if err := c.Validate(); err != nil {
+	check := c
+	if check.SSHPort == 0 {
+		check.SSHPort = FirstSSHPort // any valid port: the real one is picked below
+	}
+	if err := check.Validate(); err != nil {
 		return VMEntry{}, err
 	}
 	db, err := openDB()
@@ -267,10 +381,40 @@ func CreateVM(c Config) (VMEntry, error) {
 		return VMEntry{}, err
 	}
 	defer db.Close()
-	return insertVM(db, c)
+	tx, err := db.Begin()
+	if err != nil {
+		return VMEntry{}, err
+	}
+	defer tx.Rollback()
+	notice := ""
+	if c.SSHPort != 0 {
+		users, err := sshPortUsers(tx, c.SSHPort, "")
+		if err != nil {
+			return VMEntry{}, err
+		}
+		if len(users) > 0 {
+			asked := c.SSHPort
+			if c.SSHPort, err = nextSSHPort(tx, "", nil); err != nil {
+				return VMEntry{}, err
+			}
+			notice = fmt.Sprintf("SSH port %d belongs to %s; using %d", asked, strings.Join(users, ", "), c.SSHPort)
+		}
+	} else if c.SSHPort, err = nextSSHPort(tx, "", nil); err != nil {
+		return VMEntry{}, err
+	}
+	e, err := insertVM(tx, c)
+	if err != nil {
+		return VMEntry{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return VMEntry{}, err
+	}
+	writeSnapshot(c)
+	e.Notice = notice
+	return e, nil
 }
 
-func insertVM(db *sql.DB, c Config) (VMEntry, error) {
+func insertVM(db dbtx, c Config) (VMEntry, error) {
 	base := Slug(c.Name)
 	id := base
 	for i := 2; ; i++ {
@@ -291,7 +435,6 @@ func insertVM(db *sql.DB, c Config) (VMEntry, error) {
 	if err != nil {
 		return VMEntry{}, err
 	}
-	writeSnapshot(c)
 	return VMEntry{ID: id, Config: c}, nil
 }
 
@@ -312,9 +455,17 @@ func SaveVM(e VMEntry, c Config) error {
 		return err
 	}
 	defer db.Close()
+	if err := updateVM(db, e.ID, c); err != nil {
+		return err
+	}
+	writeSnapshot(c)
+	return nil
+}
+
+func updateVM(db dbtx, id string, c Config) error {
 	res, err := db.Exec(`UPDATE vms SET name = ?, workspace = ?, version = ?, ram_mib = ?, cores = ?, vcpus = ?, ssh_port = ?,
 		display = ?, gpu = ?, networks = ?, root_patch = ?, graphics = ?, resolution = ?, updated_at = datetime('now') WHERE id = ?`,
-		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch, c.Graphics, c.Resolution, e.ID)
+		c.Name, c.Workspace, c.Version, c.RAMMiB, c.Cores, c.VCPUs, c.SSHPort, c.Display, c.GPU, networksJSON(c), c.RootPatch, c.Graphics, c.Resolution, id)
 	if isUniqueErr(err) {
 		return &FieldError{"name", "a VM with this name already exists"}
 	}
@@ -322,9 +473,8 @@ func SaveVM(e VMEntry, c Config) error {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return fmt.Errorf("VM %s no longer exists", e.ID)
+		return fmt.Errorf("VM %s no longer exists", id)
 	}
-	writeSnapshot(c)
 	return nil
 }
 
@@ -477,6 +627,8 @@ func importFiles(db *sql.DB) error {
 			if !errors.As(err, &fe) { // a duplicate name is skipped; anything else stops the import
 				return fmt.Errorf("importing %s: %w", f, err)
 			}
+		} else {
+			writeSnapshot(c)
 		}
 	}
 	if sel, err := os.ReadFile(filepath.Join(dir, "selected")); err == nil {
@@ -608,3 +760,39 @@ func requireEmpty(dir string) error {
 
 // RequireEmpty is requireEmpty for the GUI's checks before creating a VM.
 func RequireEmpty(dir string) error { return requireEmpty(dir) }
+
+// CreateVMWithDefaults is `vm create` (and MCP vm_create): a VM with the CPU and RAM recommended
+// for this host, a fresh network adapter, sshPort (0: the next free one), its folder (default
+// <Workspace>/<name>) prepared with the boot files and an 80 GiB thin disk (unless the folder
+// has one), and selected, so it can start. It downloads nothing. A disk warning goes in Notice.
+func CreateVMWithDefaults(ctx context.Context, name, version, folder string, sshPort int) (VMEntry, error) {
+	c := Recommended(Defaults(), runtime.NumCPU(), SystemHost().MemTotalMiB())
+	c.Name, c.Version, c.Workspace, c.SSHPort = name, version, folder, sshPort
+	if c.Workspace == "" {
+		c.Workspace = VMFolder(c.Name)
+	}
+	c.Networks = NewNetworks(c.Version)
+	e, err := CreateVM(c)
+	if err != nil {
+		return e, err
+	}
+	if err := SelectVM(e.ID); err != nil {
+		return e, err
+	}
+	dir, _ := e.Config.WorkspaceDir()
+	w := NewWorkspace(dir)
+	if err := w.Prepare(e.Config); err != nil {
+		return e, err
+	}
+	if w.HasDisk() {
+		return e, nil
+	}
+	warning, err := w.CreateDisk(ctx, DefaultDiskGiB)
+	if warning != "" {
+		e.Notice = strings.TrimPrefix(e.Notice+"; disk: "+warning, "; ")
+	}
+	return e, err
+}
+
+// DefaultDiskGiB is a new VM's disk size.
+const DefaultDiskGiB = 80

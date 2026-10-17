@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"text/tabwriter"
 
@@ -16,6 +15,7 @@ import (
 
 var (
 	createVersion, createWorkspace string
+	createSSHPort                  int
 	deletePurge, deleteYes         bool
 )
 
@@ -48,27 +48,15 @@ var vmCreateCmd = &cobra.Command{
 	Example: "  macos-kvm-gui vm create \"Tahoe lab\" --version tahoe --folder ~/macOS-VMs/tahoe",
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		c := core.Recommended(core.Defaults(), runtime.NumCPU(), core.SystemHost().MemTotalMiB())
-		c.Name, c.Version, c.Workspace = args[0], createVersion, createWorkspace
-		if c.Workspace == "" {
-			c.Workspace = core.VMFolder(c.Name)
+		e, err := core.CreateVMWithDefaults(cmd.Context(), args[0], createVersion, createWorkspace, createSSHPort)
+		if e.Notice != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), "note:", e.Notice)
 		}
-		c.Networks = core.NewNetworks(c.Version)
-		if err := c.Validate(); err != nil {
-			return err
-		}
-		e, err := core.CreateVM(c)
 		if err != nil {
 			return err
 		}
-		if err := core.SelectVM(e.ID); err != nil {
-			return err
-		}
-		dir, _ := c.WorkspaceDir()
-		if err := core.NewWorkspace(dir).Prepare(c); err != nil {
-			return err
-		}
-		fmt.Fprintf(cmd.OutOrStdout(), "created and selected %s (%s), folder %s\n", e.DisplayName(), e.ID, dir)
+		dir, _ := e.Config.WorkspaceDir()
+		fmt.Fprintf(cmd.OutOrStdout(), "created and selected %s (%s), folder %s, SSH port %d\n", e.DisplayName(), e.ID, dir, e.Config.SSHPort)
 		return nil
 	},
 }
@@ -207,7 +195,10 @@ var vmImportCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "imported %s (%s), folder %s\n", e.DisplayName(), e.ID, e.Config.Workspace)
+		if e.Notice != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), "note:", e.Notice)
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "imported %s (%s), folder %s, SSH port %d\n", e.DisplayName(), e.ID, e.Config.Workspace, e.Config.SSHPort)
 		return nil
 	},
 }
@@ -251,6 +242,9 @@ var vmStatusCmd = &cobra.Command{
 		fmt.Fprintf(out, "folder: %s\n", c.Workspace)
 		if c.SSHForwarded() {
 			fmt.Fprintf(out, "ssh:       ssh -p %d user@127.0.0.1\n", c.SSHPort)
+			if w := core.SSHPortWarning(c.SSHPort, e.ID); w != "" && e.Path == "" {
+				fmt.Fprintf(out, "warning:   %s\n", w)
+			}
 		} else {
 			fmt.Fprintln(out, "ssh:       no 127.0.0.1 forward (no NAT adapter): use the VM's address on its network")
 		}
@@ -266,6 +260,7 @@ func init() {
 	vmImportCmd.Flags().StringVar(&importWorkspace, "folder", "", "VM folder for a .tar bundle (default <Workspace>/<name>)")
 	vmCreateCmd.Flags().StringVar(&createVersion, "version", "sonoma", "macOS version (high-sierra ... tahoe)")
 	vmCreateCmd.Flags().StringVar(&createWorkspace, "folder", "", "VM folder (default <Workspace>/<name>)")
+	vmCreateCmd.Flags().IntVar(&createSSHPort, "ssh-port", 0, "SSH port on 127.0.0.1 (default: the lowest free port from 2222; another VM's port is replaced by a free one)")
 	vmDeleteCmd.Flags().BoolVar(&deletePurge, "purge", false, "also delete the disk, install media and boot files the app created in the VM folder")
 	vmDeleteCmd.Flags().BoolVar(&deleteYes, "yes", false, "confirm")
 	vmCmd.AddCommand(vmListCmd, vmStatusCmd, vmCreateCmd, vmSelectCmd, vmDeleteCmd, vmExportCmd, vmImportCmd, vmMoveCmd)

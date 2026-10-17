@@ -55,14 +55,22 @@ func TestTools(t *testing.T) {
 		got[tl.Name] = tl
 	}
 	for _, n := range []string{"vm_list", "vm_status", "vm_start", "vm_shutdown", "vm_force_stop", "screen_capture", "send_keys",
-		"type_text", "pointer", "installer_list", "installer_download", "installer_remove", "install_offline", "host_check"} {
+		"type_text", "pointer", "installer_list", "installer_download", "installer_remove", "install_offline", "host_check",
+		"vm_config_get", "vm_config_set", "vm_create", "vm_ssh"} {
 		if got[n] == nil {
 			t.Errorf("missing tool %s", n)
+		} else if got[n].InputSchema == nil {
+			t.Errorf("%s has no input schema", n)
 		}
 	}
-	for _, n := range []string{"vm_force_stop", "installer_remove", "install_offline"} {
+	for _, n := range []string{"vm_force_stop", "installer_remove", "install_offline", "vm_ssh"} {
 		if a := got[n].Annotations; a == nil || a.DestructiveHint == nil || !*a.DestructiveHint {
 			t.Errorf("%s must be marked destructive", n)
+		}
+	}
+	for _, n := range []string{"vm_config_get", "vm_config_set", "vm_create"} {
+		if a := got[n].Annotations; a == nil || (a.DestructiveHint != nil && *a.DestructiveHint) {
+			t.Errorf("%s must not be marked destructive", n)
 		}
 	}
 }

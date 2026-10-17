@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/jniltinho/macos-kvm-gui/internal/core"
 )
 
 func run(t *testing.T, args ...string) (string, error) {
@@ -104,6 +107,64 @@ func TestVMCommands(t *testing.T) {
 		t.Fatalf("delete: %v %s", err, out)
 	}
 	deletePurge, deleteYes = false, false
+}
+
+func TestSSHPortCommands(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
+	cfgFile, vmName = "", ""
+	t.Cleanup(func() { createSSHPort = 0; vmName = "" })
+	create := func(name string, port int) (string, error) {
+		createSSHPort = port
+		defer func() { createSSHPort = 0 }()
+		return run(t, "vm", "create", name, "--folder", filepath.Join(t.TempDir(), name))
+	}
+	// No flag: the lowest free port (2222 unless the host holds it).
+	want, err := core.NextSSHPort("", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := create("Nilton", 0); err != nil || !strings.Contains(out, fmt.Sprintf("SSH port %d\n", want)) || strings.Contains(out, "belongs to") {
+		t.Fatalf("automatic: %v %s", err, out)
+	}
+	// An unused explicit port is kept.
+	if out, err := create("sonoma-test", 2300); err != nil || !strings.Contains(out, "SSH port 2300\n") {
+		t.Fatalf("explicit: %v %s", err, out)
+	}
+	// Another VM's port: the next free one, and the command says why.
+	next, _ := core.NextSSHPort("", nil)
+	out, err := create("lab", want)
+	if err != nil || !strings.Contains(out, fmt.Sprintf("note: SSH port %d belongs to Nilton; using %d", want, next)) {
+		t.Fatalf("taken: %v %s", err, out)
+	}
+	// Out of range: refused, no VM added.
+	if _, err := create("bad", 80); err == nil || !strings.Contains(err.Error(), "use a port between 1024 and 65535") {
+		t.Fatalf("port 80: %v", err)
+	}
+	if vms, _ := core.ListVMs(); len(vms) != 3 {
+		t.Fatalf("port 80 must add no VM: %d", len(vms))
+	}
+
+	// config set ssh-port= to a shared port warns on stderr and still saves (exit 0).
+	var stdout, stderr bytes.Buffer
+	rootCmd.SetOut(&stdout)
+	rootCmd.SetErr(&stderr)
+	rootCmd.SetArgs([]string{"--vm", "sonoma-test", "config", "set", fmt.Sprintf("ssh-port=%d", want)})
+	if err := rootCmd.Execute(); err != nil || !strings.Contains(stderr.String(), "warning: Also used by Nilton: they cannot run at the same time") ||
+		strings.Contains(stdout.String(), "Also used") {
+		t.Fatalf("config set: %v\nstdout %s\nstderr %s", err, stdout.String(), stderr.String())
+	}
+	vmName = ""
+	vms, _ := core.ListVMs()
+	if e, _ := core.FindVM(vms, "sonoma-test"); e.Config.SSHPort != want {
+		t.Fatalf("the shared port must be saved: %d", e.Config.SSHPort)
+	}
+	if out, err := run(t, "vm", "status", "Nilton"); err != nil || !strings.Contains(out, "warning:   Also used by sonoma-test: they cannot run at the same time") {
+		t.Fatalf("status: %v %s", err, out)
+	}
+	if out, _ := run(t, "vm", "status", "lab"); strings.Contains(out, "warning") {
+		t.Fatalf("no warning for an unshared port: %s", out)
+	}
 }
 
 func TestSettingsAndKextsBeforeStart(t *testing.T) {

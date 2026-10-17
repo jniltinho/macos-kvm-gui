@@ -30,7 +30,7 @@ func TestRealQEMULifecycle(t *testing.T) {
 	if _, err := w.CreateDisk(context.Background(), 40); err != nil {
 		t.Fatal(err)
 	}
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace = w.Dir
 	c.SSHPort = 22299
 

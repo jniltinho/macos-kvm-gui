@@ -44,7 +44,7 @@ func TestPrepareExtractsBootFiles(t *testing.T) {
 	if w.Exists() {
 		t.Fatal("must not exist yet")
 	}
-	if err := w.Prepare(Defaults()); err != nil {
+	if err := w.Prepare(testDefaults()); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range []string{EFIDir + "/EFI/BOOT/BOOTx64.efi", EFIDir + "/EFI/OC/OpenCore.efi", EFIDir + "/EFI/OC/config.plist",
@@ -55,7 +55,7 @@ func TestPrepareExtractsBootFiles(t *testing.T) {
 	}
 	id1, _ := os.ReadFile(w.Path(identityFile))
 	write(t, w.Path(VarsFile), "modified-by-guest")
-	if err := w.PrepareBoot(Defaults(), false); err != nil {
+	if err := w.PrepareBoot(testDefaults(), false); err != nil {
 		t.Fatal(err)
 	}
 	if id2, _ := os.ReadFile(w.Path(identityFile)); !bytes.Equal(id1, id2) {
@@ -71,7 +71,7 @@ func TestOpenCoreConfig(t *testing.T) {
 	if err != nil || len(id.Serial) != 12 || len(id.MLB) != 17 || len(id.UUID) != 36 || len(id.ROM) != 12 {
 		t.Fatalf("identity: %+v %v", id, err)
 	}
-	c := Defaults()
+	c := testDefaults()
 	install, _ := OpenCoreConfig(c, id, true)
 	installed, _ := OpenCoreConfig(c, id, false)
 	c.GPU = "0000:03:00.0"
@@ -210,7 +210,7 @@ func TestDiskAndMediaRemoval(t *testing.T) {
 
 func TestOpenCoreVolumeHidden(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace = t.TempDir()
 	w := NewWorkspace(c.Workspace)
 	if err := w.PrepareBoot(c, true); err != nil {
@@ -226,7 +226,7 @@ func TestOpenCoreVolumeHidden(t *testing.T) {
 
 func TestRecoveryLanguageIsEnglish(t *testing.T) {
 	id, _ := newIdentity()
-	cfg, err := OpenCoreConfig(Defaults(), id, true)
+	cfg, err := OpenCoreConfig(testDefaults(), id, true)
 	if err != nil {
 		t.Fatal(err)
 	}

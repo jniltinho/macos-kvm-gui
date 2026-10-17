@@ -19,6 +19,7 @@ type RunInfo struct {
 	Control   string // the second QMP socket, for a process other than the starter
 	Disc      bool   // the offline installer disc is attached
 	Reims     bool   // it runs on Reims vGPU (apple-gfx-pci), whatever the VM's config says now
+	SSHPort   int    // the 127.0.0.1 port forwarded to the guest's port 22 (hostfwd); 0 without one
 }
 
 // CheckRunDir accepts a socket only inside a private run directory this user owns (0700), as
@@ -94,6 +95,10 @@ func runningIn(proc string, c Config) (RunInfo, bool) {
 			}
 			if strings.HasPrefix(a, "id=InstallerDisc,") {
 				info.Disc = true
+			}
+			if _, fwd, ok := strings.Cut(a, "hostfwd=tcp:127.0.0.1:"); ok && info.SSHPort == 0 {
+				p, _, _ := strings.Cut(fwd, "-")
+				info.SSHPort, _ = strconv.Atoi(p)
 			}
 			if strings.HasPrefix(a, "apple-gfx-pci") {
 				info.Reims = true

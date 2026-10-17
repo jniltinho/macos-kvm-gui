@@ -15,7 +15,7 @@ func TestPrintBootArgs(t *testing.T) {
 	if dir == "" {
 		t.Skip("MKG_BOOT_WS not set")
 	}
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace, c.SSHPort = dir, 22299
 	w := NewWorkspace(dir)
 	if err := w.PrepareBoot(c, false); err != nil {

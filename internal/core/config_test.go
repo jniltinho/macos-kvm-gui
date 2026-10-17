@@ -11,7 +11,7 @@ import (
 func TestConfigRoundTripAndDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "config.json")
 	c, err := LoadConfig(path)
-	if err != nil || !reflect.DeepEqual(c, Defaults()) {
+	if err != nil || !reflect.DeepEqual(c, testDefaults()) {
 		t.Fatalf("no file should yield defaults: %+v %v", c, err)
 	}
 	c.RAMMiB = 16384
@@ -34,14 +34,14 @@ func TestConfigValidate(t *testing.T) {
 		"version":   func(c *Config) { c.Version = "lion" },
 	}
 	for field, mutate := range cases {
-		c := Defaults()
+		c := testDefaults()
 		mutate(&c)
 		var fe *FieldError
 		if err := c.Validate(); !errors.As(err, &fe) || fe.Field != field {
 			t.Errorf("%s: expected a FieldError for the field, got %v", field, err)
 		}
 	}
-	if err := Defaults().Validate(); err != nil {
+	if err := testDefaults().Validate(); err != nil {
 		t.Fatalf("defaults must be valid: %v", err)
 	}
 }
@@ -54,7 +54,7 @@ func TestRecommended(t *testing.T) {
 		{6, 24 * 1024, 2, 1, 6144}, // 6/2=3 rounds down to even: 2
 	}
 	for _, tc := range cases {
-		c := Recommended(Defaults(), tc.threads, tc.memMiB)
+		c := Recommended(testDefaults(), tc.threads, tc.memMiB)
 		if c.VCPUs != tc.vcpus || c.Cores != tc.cores || c.RAMMiB != tc.ram {
 			t.Errorf("%d threads/%d MiB: got %d vCPUs, %d cores, %d MiB", tc.threads, tc.memMiB, c.VCPUs, c.Cores, c.RAMMiB)
 		}
@@ -66,7 +66,7 @@ func TestRecommended(t *testing.T) {
 
 func TestWorkspaceTilde(t *testing.T) {
 	t.Setenv("HOME", "/home/x")
-	d, err := Defaults().WorkspaceDir()
+	d, err := testDefaults().WorkspaceDir()
 	if err != nil || d != "/home/x/OSX-KVM" {
 		t.Fatalf("got %q %v", d, err)
 	}
@@ -92,7 +92,7 @@ func TestProfileFor(t *testing.T) {
 }
 
 func TestCoresPowerOfTwo(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	for _, cores := range []int{1, 2, 4, 8, 16} {
 		c.Cores, c.VCPUs = cores, cores*2
 		if err := c.Validate(); err != nil {

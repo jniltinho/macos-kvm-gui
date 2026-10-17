@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -39,76 +38,10 @@ var configShowCmd = &cobra.Command{
 	},
 }
 
-// configKeys lists the settable keys and how each one is applied.
-var configKeys = map[string]func(*core.Config, string) error{
-	"workspace":  func(c *core.Config, v string) error { c.Workspace = v; return nil },
-	"version":    func(c *core.Config, v string) error { c.Version = v; return nil },
-	"display":    func(c *core.Config, v string) error { c.Display = v; return nil },
-	"gpu":        func(c *core.Config, v string) error { c.GPU = v; return nil },
-	"graphics":   func(c *core.Config, v string) error { c.Graphics = v; return nil },
-	"resolution": func(c *core.Config, v string) error { c.Resolution = v; return nil },
-	"ram":        intKey(func(c *core.Config, n int) { c.RAMMiB = n }),
-	"cores":      intKey(func(c *core.Config, n int) { c.Cores = n }),
-	"vcpus":      intKey(func(c *core.Config, n int) { c.VCPUs = n }),
-	"ssh-port":   intKey(func(c *core.Config, n int) { c.SSHPort = n }),
-	"root-patch": func(c *core.Config, v string) error {
-		b, err := strconv.ParseBool(v)
-		if err != nil {
-			return fmt.Errorf("%q is not true or false", v)
-		}
-		c.RootPatch = b
-		return nil
-	},
-}
-
 var rootPatchReverted bool
 
-// nic<N>.<field> keys edit network adapter N (1-4).
 func init() {
 	configSetCmd.Flags().BoolVar(&rootPatchReverted, "root-patch-reverted", false, "confirm the root patch was reverted in OCLP, to turn root-patch mode off")
-	fields := map[string]func(*core.NIC, string) error{
-		"enabled": func(n *core.NIC, v string) error {
-			b, err := strconv.ParseBool(v)
-			if err != nil {
-				return fmt.Errorf("%q is not true or false", v)
-			}
-			n.Enabled = b
-			return nil
-		},
-		"mode":   func(n *core.NIC, v string) error { n.Mode = v; return nil },
-		"bridge": func(n *core.NIC, v string) error { n.Bridge = v; return nil },
-		"model":  func(n *core.NIC, v string) error { n.Model = v; return nil },
-		"mac": func(n *core.NIC, v string) error {
-			if v == "random" {
-				v = core.RandomMAC()
-			}
-			n.MAC = strings.ToLower(v)
-			return nil
-		},
-	}
-	for i := 1; i <= core.MaxNICs; i++ {
-		for name, set := range fields {
-			i, set := i, set
-			configKeys[fmt.Sprintf("nic%d.%s", i, name)] = func(c *core.Config, v string) error {
-				n, err := c.NIC(i - 1)
-				if err != nil {
-					return err
-				}
-				return set(n, v)
-			}
-		}
-	}
-}
-
-func intKey(set func(*core.Config, int)) func(*core.Config, string) error {
-	return func(c *core.Config, v string) error {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return fmt.Errorf("%q is not a whole number", v)
-		}
-		set(c, n)
-		return nil
-	}
 }
 
 var configSetCmd = &cobra.Command{
@@ -125,7 +58,7 @@ var configSetCmd = &cobra.Command{
 		c := e.Config
 		for _, a := range args {
 			k, v, ok := strings.Cut(a, "=")
-			set, known := configKeys[k]
+			set, known := core.ConfigKeys[k]
 			if !ok || !known {
 				return fmt.Errorf("expected key=value with a known key, got %q", a)
 			}
@@ -155,6 +88,11 @@ var configSetCmd = &cobra.Command{
 		}
 		if c.Reims() && core.WideResolution(c.ReimsResolution()) && !c.ReimsKext() {
 			fmt.Fprintln(out, "warning: between 2048 and 3840 px wide, WindowServer crashed at every login on macOS Sequoia (ReimsVgpu.kext, which fixes it, loads on macOS 26 only); 3840x2160 works as a HiDPI desktop")
+		}
+		if e.Path == "" {
+			if w := core.SSHPortWarning(c.SSHPort, e.ID); w != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), "warning:", w)
+			}
 		}
 		fmt.Fprintln(out, "saved", e.DisplayName())
 		return nil

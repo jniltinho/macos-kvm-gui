@@ -85,8 +85,9 @@ type Config struct {
 	VerboseBoot bool `json:"-"`
 }
 
+// Defaults are a new VM's settings. SSHPort 0 means automatic: CreateVM picks a free port.
 func Defaults() Config {
-	return Config{Workspace: "~/OSX-KVM", Version: validated, RAMMiB: 8192, Cores: 4, VCPUs: 8, SSHPort: 2222}
+	return Config{Workspace: "~/OSX-KVM", Version: validated, RAMMiB: 8192, Cores: 4, VCPUs: 8}
 }
 
 // Recommended fits CPU and RAM to the host. Without a supported GPU macOS draws the
@@ -232,9 +233,11 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "macos-kvm-gui", "config.json"), nil
 }
 
-// LoadConfig returns the defaults when the file does not exist yet.
+// LoadConfig returns the defaults when the file does not exist yet. A standalone file has no
+// VM list to pick a port from, so it gets FirstSSHPort unless it names one.
 func LoadConfig(path string) (Config, error) {
 	c := Defaults()
+	c.SSHPort = FirstSSHPort
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil

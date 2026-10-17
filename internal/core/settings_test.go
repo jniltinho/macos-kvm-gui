@@ -60,11 +60,11 @@ func TestAssetsDirOverride(t *testing.T) {
 		t.Errorf("override not reported: %q", v)
 	}
 	w := readyWorkspace(t)
-	if err := w.PrepareBoot(Defaults(), false); err != nil || !exists(w.Path(EFIDir+"/EFI/OC/OpenCore.efi")) {
+	if err := w.PrepareBoot(testDefaults(), false); err != nil || !exists(w.Path(EFIDir+"/EFI/OC/OpenCore.efi")) {
 		t.Fatalf("boot from override: %v", err)
 	}
 	t.Setenv("MKG_ASSETS_DIR", t.TempDir())
-	if err := w.PrepareBoot(Defaults(), false); err == nil || !strings.Contains(err.Error(), "missing") {
+	if err := w.PrepareBoot(testDefaults(), false); err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("an empty override must be refused: %v", err)
 	}
 	// A copy without the firmware's fallback loader must be refused too.
@@ -74,7 +74,7 @@ func TestAssetsDirOverride(t *testing.T) {
 	}
 	os.Remove(filepath.Join(partial, "files/EFI/BOOT/BOOTx64.efi"))
 	t.Setenv("MKG_ASSETS_DIR", partial)
-	if err := w.PrepareBoot(Defaults(), false); err == nil || !strings.Contains(err.Error(), "BOOTx64.efi") {
+	if err := w.PrepareBoot(testDefaults(), false); err == nil || !strings.Contains(err.Error(), "BOOTx64.efi") {
 		t.Fatalf("an override without BOOTx64.efi must be refused: %v", err)
 	}
 }

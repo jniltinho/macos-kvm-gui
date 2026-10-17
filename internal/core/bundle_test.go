@@ -13,7 +13,7 @@ import (
 func TestBundleRoundTrip(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
-	c := Defaults()
+	c := testDefaults()
 	c.Name, c.Workspace, c.GPU = "Lab", filepath.Join(t.TempDir(), "lab"), "0000:03:00.0"
 	w := NewWorkspace(c.Workspace)
 	if err := w.PrepareBoot(c, false); err != nil {
@@ -77,7 +77,7 @@ func TestBundleRejectsDiskWithBackingFile(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	secret := filepath.Join(t.TempDir(), "host-file")
 	write(t, secret, "host data")
-	c := Defaults()
+	c := testDefaults()
 	c.Name, c.Workspace = "Crafted", filepath.Join(t.TempDir(), "src")
 	w := NewWorkspace(c.Workspace)
 	if err := w.PrepareBoot(c, false); err != nil {
@@ -129,7 +129,7 @@ func TestBundleRejectsUnexpectedEntries(t *testing.T) {
 
 func TestImportSettings(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	c := Defaults()
+	c := testDefaults()
 	c.Name = "From JSON"
 	e, _ := CreateVM(c)
 	b, _ := ExportVM(e)

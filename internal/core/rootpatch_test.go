@@ -36,7 +36,7 @@ func TestKeplerAllowlist(t *testing.T) {
 		if RootPatchVersion(v) != want {
 			t.Errorf("%s: root-patch mode %v", v, !want)
 		}
-		c := Defaults()
+		c := testDefaults()
 		c.Version, c.RootPatch = v, true
 		if err := c.Validate(); (err == nil) != want {
 			t.Errorf("%s: Validate = %v", v, err)
@@ -46,7 +46,7 @@ func TestKeplerAllowlist(t *testing.T) {
 
 func TestRootPatchConfig(t *testing.T) {
 	id, _ := newIdentity()
-	c := Defaults()
+	c := testDefaults()
 	c.Version = "sequoia"
 	off, err := OpenCoreConfig(c, id, false)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestRootPatchKextsAndTransitions(t *testing.T) {
 	// lowered SIP once; the one after is the default again.
 	w := NewWorkspace(filepath.Join(root, "vm"))
 	os.MkdirAll(w.Dir, 0o755)
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace, c.Version, c.RootPatch = w.Dir, "sequoia", true
 	read := func() string { b, _ := os.ReadFile(w.Path(EFIDir + "/EFI/OC/config.plist")); return string(b) }
 	if err := w.PrepareBoot(c, false); err != nil {

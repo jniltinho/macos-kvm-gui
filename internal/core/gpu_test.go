@@ -203,7 +203,7 @@ func TestReserveAndRelease(t *testing.T) {
 }
 
 func TestGPUReady(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	c.GPU, c.RAMMiB = "0000:03:00.0", 16384
 	devs := slices.Clone(referenceHost)
 	if _, err := fakeSysfs(t, devs).GPUReady(c, 1<<40); err == nil || !strings.Contains(err.Error(), "reserve the GPU") {
@@ -243,7 +243,7 @@ func TestReserveScriptRejectsInjection(t *testing.T) {
 }
 
 func TestBuildArgsWithGPU(t *testing.T) {
-	args := BuildArgs(Defaults(), NewWorkspace("/vm"), "/run/q.sock", false, []string{"0000:03:00.0", "0000:03:00.1"})
+	args := BuildArgs(testDefaults(), NewWorkspace("/vm"), "/run/q.sock", false, []string{"0000:03:00.0", "0000:03:00.1"})
 	if !slices.Contains(args, "vmware-svga") {
 		t.Fatal("vmware-svga must stay: the QEMU window needs a graphical console for input")
 	}
@@ -251,10 +251,10 @@ func TestBuildArgsWithGPU(t *testing.T) {
 		argAfter(args, "-device", "vfio-pci,host=0000:03:00.1") == "" {
 		t.Fatalf("vfio args missing: %q", args)
 	}
-	if !slices.Contains(BuildArgs(Defaults(), NewWorkspace("/vm"), "/run/q.sock", false, nil), "vmware-svga") {
+	if !slices.Contains(BuildArgs(testDefaults(), NewWorkspace("/vm"), "/run/q.sock", false, nil), "vmware-svga") {
 		t.Fatal("without a GPU the emulated display stays")
 	}
-	c := Defaults()
+	c := testDefaults()
 	c.GPU = "03:00.0"
 	var fe *FieldError
 	if err := c.Validate(); !errors.As(err, &fe) || fe.Field != "gpu" {
@@ -275,7 +275,7 @@ func TestKeplerGPU(t *testing.T) {
 	if compatOf("10de", "1380") != CompatUnsupported || compatOf("10de", "0f02") != CompatUnsupported {
 		t.Fatal("Maxwell (GTX 750 Ti) and Fermi (GT 730 GF108) are not Kepler")
 	}
-	c := Defaults()
+	c := testDefaults()
 	c.GPU, c.RAMMiB = "0000:05:00.0", 8192
 	for v, want := range map[string]string{"big-sur": "", "catalina": "", "sequoia": "root-patch mode", "tahoe": "no driver"} {
 		c.Version, c.RootPatch = v, false
@@ -314,7 +314,7 @@ func TestPatchKextGPU(t *testing.T) {
 	}
 
 	kextsYAML(t, "kexts:\n  - url: https://example.com/a.zip\n")
-	c := Defaults()
+	c := testDefaults()
 	c.GPU, c.Version = "0000:03:00.0", "sequoia"
 	c.Extras = &ExtraKexts{} // the start's snapshot, taken before settings.yaml was edited
 	if _, err := fakeSysfs(t, host).GPUReady(c, 1<<40); err == nil || !strings.Contains(err.Error(), "settings.yaml") {

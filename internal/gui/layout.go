@@ -325,10 +325,11 @@ func (u *ui) detailsTab() fyne.CanvasObject {
 		add("Display", "display", theme.ViewFullScreenIcon(), "Shown", "Graphics Controller", "Resolution", "Remote Display"),
 		add("Storage", "storage", theme.StorageIcon(), "Controller", "SATA Port 0", "SATA Port 1", "SATA Port 2", "Boot Disk"),
 		add("Audio", "audio", theme.VolumeUpIcon(), "Controller"),
-		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Adapter 2", "Adapter 3", "Adapter 4", "Port Forwarding"),
+		add("Network", "network", theme.MailSendIcon(), "Adapter 1", "Adapter 2", "Adapter 3", "Adapter 4", "Port Forwarding", "Warning"),
 		add("USB", "usb", theme.SettingsIcon(), "Controller", "Devices"),
 		add("GPU Passthrough", "gpu", gpuTabIcon(), "GPU", "3D Acceleration"),
 	)
+	u.details["Network/Warning"].Color = theme.Color(theme.ColorNameWarning)
 	return container.NewVScroll(container.NewVBox(top, rest))
 }
 
@@ -388,6 +389,19 @@ func (u *ui) refreshDetails() {
 		fwd = fmt.Sprintf("SSH 127.0.0.1:%d → 22", u.cfg.SSHPort)
 	}
 	set("Network/Port Forwarding", fwd)
+	var sharing []string
+	if u.cfg.SSHForwarded() && !u.singleFile {
+		for _, e := range u.vms {
+			if e.ID != u.cur.ID && e.Config.SSHPort == u.cfg.SSHPort {
+				sharing = append(sharing, e.DisplayName())
+			}
+		}
+	}
+	warn := ""
+	if len(sharing) > 0 {
+		warn = core.PortWarning(sharing)
+	}
+	set("Network/Warning", warn)
 	set("USB/Devices", "Keyboard, Tablet")
 	gpu, accel := "None", "Disabled: the CPU draws the screen"
 	switch {

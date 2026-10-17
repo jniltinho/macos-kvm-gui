@@ -23,7 +23,7 @@ func argAfter(args []string, flag, prefix string) string {
 
 func TestBuildArgs(t *testing.T) {
 	w := NewWorkspace("/vm/a,b")
-	c := Defaults()
+	c := testDefaults()
 	cases := []struct {
 		name      string
 		version   string
@@ -185,7 +185,7 @@ func TestVMEvents(t *testing.T) {
 
 func TestStartRefusesWithoutDisk(t *testing.T) {
 	w := readyWorkspace(t)
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace = w.Dir
 	if err := (&VM{}).Start(c); err == nil || !strings.Contains(err.Error(), DiskFile) {
 		t.Fatalf("must not start without a disk: %v", err)

@@ -27,3 +27,16 @@ need explicit flags, which only the user should decide.`,
 }
 
 func init() { rootCmd.AddCommand(mcpCmd) }
+
+// sshAskpassCmd is the helper ssh runs (through a symlink named ssh-askpass, as SSH_ASKPASS) for
+// the MCP server's vm_ssh: it prints the password the server's one-shot socket gives.
+var sshAskpassCmd = &cobra.Command{
+	Use:    mcp.AskpassName,
+	Hidden: true,
+	Args:   cobra.ArbitraryArgs, // ssh passes its prompt
+	RunE: func(cmd *cobra.Command, _ []string) error {
+		return mcp.Askpass(cmd.OutOrStdout())
+	},
+}
+
+func init() { rootCmd.AddCommand(sshAskpassCmd) }

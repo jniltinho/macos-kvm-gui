@@ -15,7 +15,7 @@ import (
 )
 
 func TestResolution(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	var fe *FieldError
 	for _, r := range append([]string{""}, Resolutions...) {
 		c.Resolution = r
@@ -34,7 +34,7 @@ func TestResolution(t *testing.T) {
 	}
 
 	withAudio(t, "none")
-	c = Defaults()
+	c = testDefaults()
 	c.Graphics = GraphicsReims
 	if a := strings.Join(BuildArgs(c, NewWorkspace("/vm/a"), "/run/x/qmp.sock", false, nil), " "); !strings.Contains(a, "resolution=1920x1080 ") {
 		t.Errorf("empty is 1920x1080: %s", a)
@@ -157,7 +157,7 @@ func TestReimsKext(t *testing.T) {
 		{"sequoia", GraphicsReims, true, false},
 		{"tahoe", GraphicsSVGA, true, false},
 	} {
-		c := Defaults()
+		c := testDefaults()
 		c.Workspace, c.Version, c.Graphics = w.Dir, tc.version, tc.graphics
 		if tc.start {
 			c.Extras = &ExtraKexts{}
@@ -172,7 +172,7 @@ func TestReimsKext(t *testing.T) {
 
 	// Order: after Lilu and the other built-in kexts, before the extra kexts; MinKernel 25.0.0.
 	id, _ := newIdentity()
-	c := Defaults()
+	c := testDefaults()
 	c.Version, c.Graphics, c.reimsKext = "tahoe", GraphicsReims, true
 	c.extraKexts = [][2]string{{"", "Foo"}}
 	cfg, err := OpenCoreConfig(c, id, false)
