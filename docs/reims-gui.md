@@ -114,3 +114,7 @@ Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop 
 - `scripts/check-gnome.sh <release>` runs GNOME's compositor (Mutter, headless, Wayland + XWayland) in a clean container with the `.deb` and `/dev/kvm`: self-tests on XWayland and Wayland, a VMware SVGA VM's QEMU window embedded in the Screen tab, and SIGTERM releasing it with Xwayland still up.
 
 For messages shared with the Go app (KVM, disks, recovery, network, GPU), see [Troubleshooting](troubleshooting.md).
+
+## SSH port per VM
+
+Both apps give each new or imported VM its own SSH port: the lowest from 2222 up that no other VM uses and that is free on 127.0.0.1. Settings › Network has **Use a free port**, and Settings, Details, `config set ssh-port=` and `vm status` warn when two VMs share a port. Over MCP, `vm_config_set` changes the port and `vm_ssh` runs a command in the guest over it (see [MCP](mcp.md)).
