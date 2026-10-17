@@ -6,10 +6,10 @@
 
 ## Install
 
-Take the package for your Ubuntu release from the [Releases](https://github.com/jniltinho/macos-kvm-gui/releases) tagged `reims-gui-v*`:
+Take the package from the [Releases](https://github.com/jniltinho/macos-kvm-gui/releases) tagged `reims-gui-v*`, one for Ubuntu 24.04 and 26.04:
 
 ```sh
-sudo apt install ./reims-gui_<version>_ubuntu24.04_amd64.deb   # or ubuntu26.04 on 26.04
+sudo apt install ./reims-gui_<version>_amd64.deb
 ```
 
 Then, in the **Host** tab: **Set up host** (one password prompt), then **Install Reims vGPU**, then **Check again**. Requirements and host settings are those of [Reims vGPU](reims-vgpu.md#requirements).
@@ -49,7 +49,7 @@ VMs on VMware SVGA with **Display: In the app** embed QEMU's own GTK window (`-d
 | New Sequoia and Tahoe VMs | Reims vGPU when installed and the host checks pass | The same |
 | MCP input | Over the VM's VNC socket | Over the VM's QMP control socket, so a VM in QEMU's own window can be driven too |
 | Switching VMs | Blocked while the current VM runs | Allowed: other VMs can be selected while one runs |
-| Packages | `.deb`, `.rpm`, `.tar.gz` | `.deb` and `.tar.gz` for Ubuntu 24.04 and 26.04 only |
+| Packages | `.deb`, `.rpm`, `.tar.gz` | one `.deb` and one `.tar.gz` for Ubuntu 24.04 and 26.04 |
 | Build | Go toolchain | Docker only |
 | License | BSD-3-Clause | Source GPL-2.0-or-later OR LGPL-3.0-or-later; binaries GPL-3.0-or-later |
 | Command name | `macos-kvm-gui` | `reims-gui` (same commands, flags and output) |
@@ -104,13 +104,13 @@ Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop 
 - `permission denied ... /var/run/docker.sock`: add yourself to the `docker` group (`sudo usermod -aG docker "$USER"`) and log in again, or use rootless Docker.
 - The first `scripts/cargo-docker.sh` or `scripts/build.sh` run builds the `reims-gui-build:<release>` image; it needs network access. Every run goes through `docker build`, so the image follows changes to `reims-gui/docker/Dockerfile` (cached, it takes a fraction of a second).
 - Builds go to `reims-gui/target/`, owned by your user. If a run as root left files there, `sudo chown -R "$USER": reims-gui/target`.
-- Always build packages with `scripts/build.sh <release>`: a binary built in the 24.04 image may not run on 26.04 and the reverse.
+- Always build packages with `scripts/build.sh`: it builds in the 24.04 image, whose older libraries make the package run on 26.04 too. A binary built in the 26.04 image (`scripts/cargo-docker.sh 26.04`) does not run on 24.04.
 
 ### Packages
 
-- `apt` cannot resolve dependencies: the package is for the other Ubuntu release (`ubuntu24.04` vs `ubuntu26.04` in the file name).
+- `apt` cannot resolve dependencies: the package targets Ubuntu 24.04 and 26.04 only; on another release, build from source.
 - The window does not open on a machine without a GPU driver: install `mesa-vulkan-drivers` (software Vulkan); `reims-gui --self-test` draws a few frames and exits 0 when the window works.
-- `scripts/check-package.sh <release>` installs the built `.deb` in a clean `ubuntu:<release>` container and runs `--self-test` under Xvfb; run it before publishing.
+- `scripts/check-package.sh <release>` installs the built `.deb` in a clean `ubuntu:<release>` container and runs `--self-test` under Xvfb; run it for 24.04 and 26.04 before publishing.
 - `scripts/check-gnome.sh <release>` runs GNOME's compositor (Mutter, headless, Wayland + XWayland) in a clean container with the `.deb` and `/dev/kvm`: self-tests on XWayland and Wayland, a VMware SVGA VM's QEMU window embedded in the Screen tab, and SIGTERM releasing it with Xwayland still up.
 
 For messages shared with the Go app (KVM, disks, recovery, network, GPU), see [Troubleshooting](troubleshooting.md).

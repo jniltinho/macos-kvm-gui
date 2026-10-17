@@ -10,8 +10,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/ci.yml"><img src="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/release.yml"><img src="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/release.yml/badge.svg" alt="Release build"></a>
+  <a href="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/reims-gui-ci.yml"><img src="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/reims-gui-ci.yml/badge.svg" alt="reims-gui CI"></a>
+  <a href="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/reims-gui-release.yml"><img src="https://github.com/jniltinho/macos-kvm-gui/actions/workflows/reims-gui-release.yml/badge.svg" alt="reims-gui release"></a>
   <a href="https://github.com/jniltinho/macos-kvm-gui/releases/latest"><img src="https://img.shields.io/github/v/release/jniltinho/macos-kvm-gui?color=blue" alt="Latest release"></a>
   <a href="https://github.com/jniltinho/macos-kvm-gui/releases"><img src="https://img.shields.io/github/downloads/jniltinho/macos-kvm-gui/total?color=blue" alt="Downloads"></a>
   <a href="https://go.dev/"><img src="https://img.shields.io/github/go-mod/go-version/jniltinho/macos-kvm-gui" alt="Go version"></a>
@@ -26,6 +26,9 @@
 <p align="center">
   <b><a href="https://github.com/jniltinho/macos-kvm-gui/releases/latest">⬇ Download the latest release</a></b>
 </p>
+
+> [!TIP]
+> **Use [reims-gui](reims-gui/README.md), the Rust version of this app.** This repository has two apps: `reims-gui` in Rust (recommended, `reims-gui-v*` releases) and `macos-kvm-gui` in Go (this page, `v*` releases, no longer released). Both read the same VMs and settings.
 
 > **For home lab use.** macOS is Apple's software, and its license only allows it on Apple-branded hardware. Make sure your use complies with Apple's macOS license terms. This project is not affiliated with Apple.
 
@@ -63,10 +66,10 @@ Full walkthrough: [getting started](docs/getting-started.md).
 [reims-gui](reims-gui/README.md) is this app rewritten in Rust for Ubuntu 24.04 and 26.04, built around Reims vGPU: macOS's Metal display runs inside the app's window, and VMware SVGA VMs show QEMU's own screen there too. It reads the same Workspace and settings, so both apps can be installed side by side.
 
 ```sh
-sudo apt install ./reims-gui_0.1.3_ubuntu24.04_amd64.deb   # or the ubuntu26.04 package
+sudo apt install ./reims-gui_0.1.4_amd64.deb   # one package for Ubuntu 24.04 and 26.04
 ```
 
-Packages are on the [reims-gui releases](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true), built in Docker (`reims-gui/scripts/build.sh 24.04|26.04`). Guide and known limits: [docs/reims-gui.md](docs/reims-gui.md) and [PARITY.md](reims-gui/PARITY.md).
+Packages are on the [reims-gui releases](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true), built in Docker (`reims-gui/scripts/build.sh`). Guide and known limits: [docs/reims-gui.md](docs/reims-gui.md) and [PARITY.md](reims-gui/PARITY.md).
 
 <p align="center">
   <img src="docs/screenshots/reims-gui-screen-desktop.png" width="860" alt="reims-gui with macOS on the Reims vGPU display">
@@ -82,6 +85,8 @@ Packages are on the [reims-gui releases](https://github.com/jniltinho/macos-kvm-
 make build   # dist/macos-kvm-gui (Go 1.27+, Fyne build deps: see docs/development.md)
 make test
 ```
+
+The Go app's CI and release workflows no longer run on push or tags (run them by hand from the Actions tab); new builds and releases are those of reims-gui.
 
 ## License
 

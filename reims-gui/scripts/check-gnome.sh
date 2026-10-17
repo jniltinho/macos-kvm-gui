@@ -9,8 +9,8 @@ set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 case "${1:-}" in 24.04|26.04) rel=$1 ;; *) echo "usage: $0 <24.04|26.04>" >&2; exit 2 ;; esac
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)
-deb=reims-gui_${version}_ubuntu${rel}_amd64.deb
-[ -f "$root/dist/$deb" ] || { echo "missing dist/$deb: run scripts/build.sh $rel" >&2; exit 1; }
+deb=reims-gui_${version}_amd64.deb
+[ -f "$root/dist/$deb" ] || { echo "missing dist/$deb: run scripts/build.sh" >&2; exit 1; }
 [ -c /dev/kvm ] || { echo "needs /dev/kvm" >&2; exit 1; }
 out=${OUT:-$root/target/check-gnome-$rel}
 rm -rf "$out"; mkdir -p "$out"

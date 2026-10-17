@@ -1,9 +1,10 @@
 #!/bin/sh
-# build.sh <24.04|26.04>: release build in that Ubuntu release's image, then the binary, .tar.gz
-# and .deb (with .sha256 files) in reims-gui/dist/. The host needs only Docker.
+# build.sh: release build in the Ubuntu 24.04 image, then the .tar.gz and .deb (with .sha256
+# files) in reims-gui/dist/. Built against 24.04's libraries, the same package installs and runs
+# on 26.04 (scripts/check-package.sh and check-gnome.sh check both). The host needs only Docker.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-case "${1:-}" in 24.04|26.04) rel=$1 ;; *) echo "usage: $0 <24.04|26.04>" >&2; exit 2 ;; esac
+rel=24.04
 version=$(sed -n 's/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml" | head -n 1)
 [ -n "$version" ] || { echo "no version in Cargo.toml" >&2; exit 1; }
 target=target/release-$rel
@@ -25,5 +26,5 @@ runtime=$(docker run --rm "reims-gui-build:$rel" sh -c '
 runtime=${runtime% }
 
 CARGO_TARGET_DIR=$target "$root/scripts/cargo-docker.sh" "$rel" \
-    sh packaging/package.sh "$rel" "$version" "$target/release/reims-gui" "$runtime"
+    sh packaging/package.sh "$version" "$target/release/reims-gui" "$runtime"
 ls -l "$root/dist"

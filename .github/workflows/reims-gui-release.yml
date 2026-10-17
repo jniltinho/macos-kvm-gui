@@ -1,8 +1,9 @@
 name: reims-gui release
 
-# Tag reims-gui-v<version> (the version in reims-gui/Cargo.toml): packages for Ubuntu 24.04 and
-# 26.04, each checked in a clean container, plus the corresponding source (vendored crates and
-# the build Dockerfile) and every crate's license text, on a GitHub Release of their own.
+# Tag reims-gui-v<version> (the version in reims-gui/Cargo.toml): one .deb and one .tar.gz, built
+# on Ubuntu 24.04 and checked in clean 24.04 and 26.04 containers, plus the corresponding source
+# (vendored crates and the build Dockerfile) and every crate's license text, on a GitHub Release
+# of their own.
 
 on:
   push:
@@ -15,10 +16,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        release: ['24.04', '26.04']
+    timeout-minutes: 90
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -34,20 +32,23 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
-      - name: Build
-        run: reims-gui/scripts/build.sh ${{ matrix.release }}
+      - name: Build (in Ubuntu 24.04, one package for 24.04 and 26.04)
+        run: reims-gui/scripts/build.sh
 
-      - name: Install and run in a clean ubuntu:${{ matrix.release }}
-        run: reims-gui/scripts/check-package.sh ${{ matrix.release }}
+      - name: Install and run in clean ubuntu:24.04 and ubuntu:26.04
+        run: |
+          reims-gui/scripts/check-package.sh 24.04
+          reims-gui/scripts/check-package.sh 26.04
 
-      - name: Under GNOME's compositor (Mutter, Wayland + XWayland) in ubuntu:${{ matrix.release }}
+      - name: Under GNOME's compositor (Mutter, Wayland + XWayland) in ubuntu:24.04 and ubuntu:26.04
         run: |
           sudo chmod 666 /dev/kvm
-          reims-gui/scripts/check-gnome.sh ${{ matrix.release }}
+          reims-gui/scripts/check-gnome.sh 24.04
+          reims-gui/scripts/check-gnome.sh 26.04
 
       - uses: actions/upload-artifact@v4
         with:
-          name: reims-gui-${{ matrix.release }}
+          name: reims-gui
           path: reims-gui/dist/*
           if-no-files-found: error
 
@@ -82,9 +83,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
-          make_latest: false # the Go app's releases stay "latest" until reims-gui replaces it
+          make_latest: true # reims-gui is the recommended app; the Go app gets no new releases
           body: |
-            reims-gui, the Rust rewrite of macos-kvm-gui, for Ubuntu 24.04 and 26.04 (x86_64): `.deb` packages, `.tar.gz` archives and plain binaries, each with a `.sha256`.
+            > **For home lab use.** macOS is Apple's software, and its license only allows it on Apple-branded hardware.
+
+            **This is the Rust app (`reims-gui`), the recommended version.** The older `macos-kvm-gui` in Go (the `v*` releases) is no longer released; both read the same VMs and settings.
+
+            reims-gui, the Rust rewrite of macos-kvm-gui, for Ubuntu 24.04 and 26.04 (x86_64): one `.deb` and one `.tar.gz` for both releases, each with a `.sha256`.
 
             The binaries are distributed under GPL-3.0-or-later (the source is GPL-2.0-or-later OR LGPL-3.0-or-later). `THIRD_PARTY_LICENSES` holds the license text of every crate compiled in; `reims-gui-*-source.tar.gz` is the corresponding source, with vendored crates and the build Dockerfile.
           files: dist/*

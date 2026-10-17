@@ -1,9 +1,9 @@
 name: Release
 
+# Disabled: no more Go app releases on v* tags; reims-gui (Rust) releases on reims-gui-v* tags.
+# Run it by hand from the Actions tab if needed.
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 jobs:
   release:

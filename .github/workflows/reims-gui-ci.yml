@@ -1,7 +1,7 @@
 name: reims-gui CI
 
-# The Rust rewrite (reims-gui/): checks in the Ubuntu 24.04 build image, then packages for both
-# Ubuntu releases, each installed and run in a clean container. Everything runs in Docker.
+# The Rust rewrite (reims-gui/): checks in the Ubuntu 24.04 build image, then one package built on
+# 24.04, installed and run in clean 24.04 and 26.04 containers. Everything runs in Docker.
 
 on:
   push:
@@ -33,10 +33,7 @@ jobs:
 
   package:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    strategy:
-      matrix:
-        release: ['24.04', '26.04']
+    timeout-minutes: 90
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -47,19 +44,22 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
-      - name: Build
-        run: reims-gui/scripts/build.sh ${{ matrix.release }}
+      - name: Build (in Ubuntu 24.04, one package for 24.04 and 26.04)
+        run: reims-gui/scripts/build.sh
 
-      - name: Install and run in a clean ubuntu:${{ matrix.release }}
-        run: reims-gui/scripts/check-package.sh ${{ matrix.release }}
+      - name: Install and run in clean ubuntu:24.04 and ubuntu:26.04
+        run: |
+          reims-gui/scripts/check-package.sh 24.04
+          reims-gui/scripts/check-package.sh 26.04
 
-      - name: Under GNOME's compositor (Mutter, Wayland + XWayland) in ubuntu:${{ matrix.release }}
+      - name: Under GNOME's compositor (Mutter, Wayland + XWayland) in ubuntu:24.04 and ubuntu:26.04
         run: |
           sudo chmod 666 /dev/kvm
-          reims-gui/scripts/check-gnome.sh ${{ matrix.release }}
+          reims-gui/scripts/check-gnome.sh 24.04
+          reims-gui/scripts/check-gnome.sh 26.04
 
       - uses: actions/upload-artifact@v4
         with:
-          name: reims-gui-${{ matrix.release }}
+          name: reims-gui
           path: reims-gui/dist/*
           if-no-files-found: error

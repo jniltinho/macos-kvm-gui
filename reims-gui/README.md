@@ -41,12 +41,11 @@ To be added:
 ## Install
 
 Download from the project's [GitHub Releases](https://github.com/jniltinho/macos-kvm-gui/releases)
-(tags `reims-gui-v*`) the package for your Ubuntu release, and check it against its `.sha256`:
+(tags `reims-gui-v*`) the package, one for Ubuntu 24.04 and 26.04, and check it against its `.sha256`:
 
 ```sh
-# Ubuntu 24.04 (use ubuntu26.04 on 26.04)
-sha256sum -c reims-gui_0.1.3_ubuntu24.04_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.3_ubuntu24.04_amd64.deb
+sha256sum -c reims-gui_0.1.4_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.4_amd64.deb
 ```
 
 The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
@@ -56,12 +55,12 @@ Or the `.tar.gz`, which holds the binary, the license texts and notices, a short
 desktop entry:
 
 ```sh
-tar xf reims-gui-0.1.3-ubuntu24.04-x86_64.tar.gz
+tar xf reims-gui-0.1.4-x86_64.tar.gz
 sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
-./reims-gui-0.1.3-ubuntu24.04-x86_64/reims-gui
+./reims-gui-0.1.4-x86_64/reims-gui
 ```
 
-Take the package built for your release: each is linked against that release's libraries.
+The package is built against Ubuntu 24.04's libraries, the older of the two, so the same files install and run on 26.04 (the release checks run both).
 
 ## First run
 
@@ -109,14 +108,15 @@ Only Docker is needed on the host; nothing else is installed. From `reims-gui/`:
 ```sh
 scripts/cargo-docker.sh cargo test --workspace     # tests in the Ubuntu 24.04 image
 scripts/cargo-docker.sh 26.04 cargo build          # any cargo command, in the 26.04 image
-scripts/build.sh 24.04                             # release build and packages
-scripts/build.sh 26.04
+scripts/build.sh                                   # release build and packages, in the 24.04 image
 scripts/check-package.sh 24.04                     # install the .deb in a clean container, run --self-test under Xvfb
+scripts/check-package.sh 26.04                     # the same package on 26.04
 scripts/check-gnome.sh 24.04                       # the .deb under Mutter (Wayland + XWayland): self-tests, SVGA embed
+scripts/check-gnome.sh 26.04
 ```
 
-`build.sh` leaves in `dist/` the binary (`reims-gui-<version>-ubuntu<release>-x86_64`), `reims-gui-<version>-ubuntu<release>-x86_64.tar.gz`,
-`reims-gui_<version>_ubuntu<release>_amd64.deb` and their `.sha256` files. The first run builds the
+`build.sh` leaves in `dist/` `reims-gui-<version>-x86_64.tar.gz`, `reims-gui_<version>_amd64.deb`
+and their `.sha256` files. The first run builds the
 `reims-gui-build:<release>` image (`docker/Dockerfile`, pinned Rust toolchain).
 `scripts/source-archive.sh` writes `dist/reims-gui-<version>-source.tar.gz`, the corresponding
 source of a release with the vendored crates.

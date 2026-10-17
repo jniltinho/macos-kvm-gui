@@ -1,10 +1,11 @@
 #!/bin/sh
-# package.sh <release> <version> <binary> "<runtime deps>": runs in the reims-gui build image
+# package.sh <version> <binary> "<runtime deps>": runs in the reims-gui build image
 # (scripts/build.sh calls it through cargo-docker.sh) and writes the .tar.gz, the .deb and their
-# .sha256 files to dist/. <runtime deps> are the dlopened libraries, already named for this
-# release by build.sh.
+# .sha256 files to dist/. <runtime deps> are the dlopened libraries, already named for the build
+# release by build.sh. The build release is the oldest supported one (24.04), so the same
+# package runs on 26.04 too.
 set -eu
-rel=$1 version=$2 bin=$3 runtime=$4
+version=$1 bin=$2 runtime=$3
 here=packaging
 dist=dist
 umask 022
@@ -23,9 +24,7 @@ cp assets/BOOT_ASSETS_NOTICES.md crates/rg-ui/assets/lucide/LICENSE-lucide.txt \
     crates/rg-ui/assets/fonts/OFL-NotoSans.txt crates/rg-ui/assets/fonts/OFL-JetBrainsMono.txt "$third/"
 cp assets/files/ovmf/copyright "$third/OVMF-copyright"
 
-# Plain binary, named per release so both releases' files sit side by side in dist/.
-base=reims-gui-$version-ubuntu$rel-x86_64
-install -m 0755 "$bin" "$dist/$base"
+base=reims-gui-$version-x86_64
 
 # Tarball: fixed order, owner and mtime keep it independent of the build host.
 tree=$work/tar/$base
@@ -70,11 +69,11 @@ Description: macOS virtual machines on QEMU/KVM with Reims vGPU
  Reims vGPU display. One binary holds the GUI, the CLI and the MCP server.
  Distributed under GPL-3.0-or-later.
 EOF
-deb=reims-gui_${version}_ubuntu${rel}_amd64.deb
+deb=reims-gui_${version}_amd64.deb
 SOURCE_DATE_EPOCH=0 dpkg-deb --root-owner-group -Zxz --build "$root" "$dist/$deb" >/dev/null
 echo "Depends: $depends"
 
 cd "$dist"
-for f in "$base" "$base.tar.gz" "$deb"; do
+for f in "$base.tar.gz" "$deb"; do
     sha256sum "$f" > "$f.sha256"
 done

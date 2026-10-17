@@ -6,14 +6,14 @@
 ## Requirements
 
 ### Requirement: Docker-only build
-`reims-gui` SHALL build only inside Docker images based on `ubuntu:24.04` and `ubuntu:26.04`, with a pinned Rust toolchain, from one script (`reims-gui/scripts/build.sh <release>`), producing for each release a binary, a `.tar.gz` and a `.deb`, each with a `.sha256`. The host needs only Docker.
+`reims-gui` SHALL build only inside Docker, in an image based on `ubuntu:24.04` with a pinned Rust toolchain, from one script (`reims-gui/scripts/build.sh`), producing one `.tar.gz` and one `.deb` for both Ubuntu 24.04 and 26.04, each with a `.sha256`, and no separate binary. The host needs only Docker.
 
-#### Scenario: Build for 24.04
-- **WHEN** a developer runs `reims-gui/scripts/build.sh 24.04`
-- **THEN** `reims-gui/dist/` holds `reims-gui_<version>_ubuntu24.04_amd64.deb`, `reims-gui-<version>-ubuntu24.04-x86_64.tar.gz`, the binary and their `.sha256` files, and nothing was installed on the host
+#### Scenario: Build
+- **WHEN** a developer runs `reims-gui/scripts/build.sh`
+- **THEN** `reims-gui/dist/` holds `reims-gui_<version>_amd64.deb`, `reims-gui-<version>-x86_64.tar.gz` and their `.sha256` files, and nothing was installed on the host
 
-#### Scenario: Package installs on its release
-- **WHEN** the 26.04 `.deb` is installed in a clean `ubuntu:26.04` container with apt
+#### Scenario: One package installs on both releases
+- **WHEN** the `.deb` is installed in a clean `ubuntu:24.04` or `ubuntu:26.04` container with apt
 - **THEN** its dependencies resolve and `reims-gui --self-test` opens the GUI under Xvfb, renders a frame and exits 0
 
 ### Requirement: Single binary
