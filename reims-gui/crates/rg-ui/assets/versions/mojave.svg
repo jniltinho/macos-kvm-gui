@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="mj-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#CB8A66"/><stop offset="0.5" stop-color="#87556B"/><stop offset="1.0" stop-color="#332848"/>
+    </linearGradient>
+    <linearGradient id="mj-sun" x1="156" y1="114" x2="356" y2="314" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#FFF0BD"/><stop offset="1.0" stop-color="#F6B563"/>
+    </linearGradient>
+    <linearGradient id="mj-sand" x1="80" y1="252" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#F7CD88"/><stop offset="0.5" stop-color="#DB9C62"/><stop offset="1.0" stop-color="#A96757"/>
+    </linearGradient>
+    <linearGradient id="mj-edge" x1="80" y1="252" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFF1C6" stop-opacity=".8"/><stop offset="1" stop-color="#FFF1C6" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#mj-sky)" d="M0 0H512V512H0Z"/>
+  <circle cx="256" cy="214" r="100" fill="url(#mj-sun)"/>
+  <path fill="url(#mj-sand)" d="M80 322C192 328 260 232 432 278V404H80Z"/>
+  <path fill="url(#mj-edge)" d="M80 322C192 328 260 232 432 278V286C260 240 192 336 80 330Z"/>
+</svg>

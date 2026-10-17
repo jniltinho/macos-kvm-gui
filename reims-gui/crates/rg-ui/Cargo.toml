@@ -1,0 +1,40 @@
+[package]
+name = "rg-ui"
+description = "egui desktop app: shell, theme, tabs, dialogs, wizard and the Screen area"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rg-core.workspace = true
+rg-assets.workspace = true
+rg-host.workspace = true
+rg-macos.workspace = true
+rg-ops.workspace = true
+rg-qemu.workspace = true
+rg-reims.workspace = true
+anyhow.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true
+rg-x11.workspace = true
+ashpd.workspace = true
+raw-window-handle.workspace = true
+winit.workspace = true
+egui.workspace = true
+eframe.workspace = true
+egui_extras.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true
+tempfile.workspace = true
+x11rb.workspace = true
+
+# Xvfb: the real window embeds a real SDL window (winit needs the main thread).
+[[test]]
+name = "xvfb_embed"
+harness = false

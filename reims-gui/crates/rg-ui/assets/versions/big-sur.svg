@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none" stroke-linejoin="miter" stroke-linecap="square">
+  <defs>
+    <linearGradient id="bs-sky" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#9EC7CC"/><stop offset="0.5" stop-color="#5886A0"/><stop offset="1.0" stop-color="#24456E"/>
+    </linearGradient>
+    <linearGradient id="bs-ocean" x1="80" y1="252" x2="432" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#399ECC"/><stop offset="1.0" stop-color="#103C70"/>
+    </linearGradient>
+    <linearGradient id="bs-rock" x1="96" y1="132" x2="336" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#C4B398"/><stop offset="1.0" stop-color="#73645D"/>
+    </linearGradient>
+    <linearGradient id="bs-grass" x1="96" y1="132" x2="336" y2="240" gradientUnits="userSpaceOnUse">
+      <stop offset="0.0" stop-color="#B2CCA3"/><stop offset="1.0" stop-color="#568779"/>
+    </linearGradient>
+    <linearGradient id="bs-edge" x1="284" y1="200" x2="336" y2="404" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EFF4CE" stop-opacity=".8"/><stop offset="1" stop-color="#EFF4CE" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#bs-sky)" d="M0 0H512V512H0Z"/>
+  <path fill="url(#bs-ocean)" d="M80 252H432V404H80Z"/>
+  <path fill="url(#bs-rock)" d="M96 190L226 132L336 200L284 240L268 334L180 404H96Z"/>
+  <path fill="url(#bs-grass)" d="M96 190L226 132L336 200L284 240L224 215L96 240Z"/>
+  <path fill="url(#bs-edge)" d="M336 200L284 240L268 334L180 404H192L276 339L292 244L336 212Z"/>
+</svg>

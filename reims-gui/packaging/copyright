@@ -1,0 +1,18 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: reims-gui
+Source: https://github.com/jniltinho/macos-kvm-gui
+
+Files: *
+Copyright: macos-kvm-gui contributors
+License: GPL-3.0-or-later
+Comment:
+ The reims-gui source is GPL-2.0-or-later OR LGPL-3.0-or-later. The binary links crates
+ licensed Apache-2.0 only, which GPL-2.0 does not allow, so this package (the binary) is
+ distributed under GPL-3.0-or-later. Code adapted from other projects is listed in
+ THIRD_PARTY_NOTICES.md; the license text of every Rust crate compiled in is in
+ THIRD_PARTY_LICENSES. The corresponding source is reims-gui-<version>-source.tar.gz on the
+ project's GitHub Release of this version.
+
+License: GPL-3.0-or-later
+ On Debian systems, the full text of the GNU General Public License version 3 can be found
+ in /usr/share/common-licenses/GPL-3 (also LICENSES/GPL-3.0-or-later.txt in this directory).

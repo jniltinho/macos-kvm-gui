@@ -198,6 +198,20 @@ func TestInstallerDiscAndCache(t *testing.T) {
 	if err := RemoveInstaller("24H32"); err != nil || exists(dir) {
 		t.Fatalf("remove after the VM stops: %v", err)
 	}
+	outside := t.TempDir()
+	os.WriteFile(filepath.Join(outside, "keep"), nil, 0o644)
+	os.Symlink(outside, filepath.Join(root, ".installers", "24H33"))
+	for _, b := range []string{"..", ".", "a/../..", "../x", outside, "24H33", ""} {
+		if err := RemoveInstaller(b); err == nil {
+			t.Errorf("RemoveInstaller(%q) must fail", b)
+		}
+	}
+	if !exists(filepath.Join(outside, "keep")) || !exists(filepath.Join(root, ".installers")) {
+		t.Fatal("a rejected build deleted something")
+	}
+	if !buildRe.MatchString("25A5279m") || buildRe.MatchString("24H32/..") {
+		t.Fatal("buildRe")
+	}
 }
 
 func TestGuestKeys(t *testing.T) {

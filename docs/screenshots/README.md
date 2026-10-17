@@ -85,3 +85,23 @@ The Host tab's Reims vGPU section: whether this host is ready, the build in use 
 ![Details of a running Reims VM](reims-details.png)
 
 A Sequoia VM running on Reims vGPU: Details shows the graphics controller and the Preview follows the guest, which draws in its own Reims vGPU window on the host's GPU (RTX 4070 here).
+
+## reims-gui (Rust)
+
+![reims-gui: macOS on Reims vGPU inside the Screen tab](reims-gui-screen-desktop.png)
+
+`reims-gui`, the Rust app: a Sequoia VM on Reims vGPU drawn by the RTX 4070 inside the Screen tab (the login was typed there). See [reims-gui](../reims-gui.md).
+
+![reims-gui: Details](reims-gui-details.png)
+
+Details with the same sections as the Go app; the VM list shows memory, CPUs and the graphics adapter.
+
+![reims-gui: Details, dark theme](reims-gui-details-dark.png)
+
+![reims-gui: Settings › Display](reims-gui-settings-display.png)
+
+Settings › Display: Graphics Controller, Resolution and the one-time `METAL_ERROR_MODE` commands.
+
+![reims-gui: a dialog hides the guest](reims-gui-dialog-hides-screen.png)
+
+While a dialog covers the Screen tab, the embedded guest is hidden, so clicks never reach macOS.

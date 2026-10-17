@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" stroke-linejoin="miter" stroke-linecap="square">
+  <!-- Original artwork for macos-kvm-gui; BSD-3-Clause. -->
+  <defs>
+    <linearGradient id="state-paused-amber" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0" stop-color="#ffe28c"/>
+      <stop offset=".45" stop-color="#f5ba42"/>
+      <stop offset="1" stop-color="#cf831c"/>
+    </linearGradient>
+  </defs>
+  <path d="M3 2H6V14H3ZM10 2H13V14H10Z" fill="url(#state-paused-amber)" stroke="#a56815" stroke-width="0.75"/>
+  <path d="M3.5 2.5H5.5V7H3.5ZM10.5 2.5H12.5V7H10.5Z" fill="#fff0aa" fill-opacity="0.6"/>
+</svg>

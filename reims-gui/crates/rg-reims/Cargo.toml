@@ -1,0 +1,26 @@
+[package]
+name = "rg-reims"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+rg-core.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
+dirs.workspace = true
+tar.workspace = true
+flate2.workspace = true
+
+[dev-dependencies]
+rcgen.workspace = true
+rustls.workspace = true
+tempfile.workspace = true
