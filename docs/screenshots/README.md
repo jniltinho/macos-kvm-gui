@@ -71,3 +71,23 @@ import -window "$WID" docs/screenshots/<tab>.png      # MKG_THEME=dark for the -
 ```
 
 Keep personal paths and data out of the captures: run a separate instance with `XDG_CONFIG_HOME` pointing to an empty folder and a short Workspace such as `~/VMs` (`macos-kvm-gui workspace set ~/VMs`), so the captures show no personal VM.
+
+## reims-gui (Rust)
+
+![reims-gui: macOS on Reims vGPU inside the Screen tab](reims-gui-screen-desktop.png)
+
+`reims-gui`, the Rust app: a Sequoia VM on Reims vGPU drawn by the RTX 4070 inside the Screen tab (the login was typed there). See [reims-gui](../reims-gui.md).
+
+![reims-gui: Details](reims-gui-details.png)
+
+Details with the same sections as the Go app; the VM list shows memory, CPUs and the graphics adapter.
+
+![reims-gui: Details, dark theme](reims-gui-details-dark.png)
+
+![reims-gui: Settings › Display](reims-gui-settings-display.png)
+
+Settings › Display: Graphics Controller, Resolution and the one-time `METAL_ERROR_MODE` commands.
+
+![reims-gui: a dialog hides the guest](reims-gui-dialog-hides-screen.png)
+
+While a dialog covers the Screen tab, the embedded guest is hidden, so clicks never reach macOS.

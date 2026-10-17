@@ -16,6 +16,10 @@ Then, in the **Host** tab: **Set up host** (one password prompt), then **Install
 
 ## Reims vGPU inside the window
 
+![macOS Sequoia on Reims vGPU inside reims-gui's Screen tab](screenshots/reims-gui-screen-desktop.png)
+
+*macOS Sequoia 15.8.1 on Reims vGPU (RTX 4070), drawn by the GPU inside the Screen tab; the login was typed in the tab.*
+
 The Go app leaves a Reims VM's screen in Reims vGPU's own window ([The screen](reims-vgpu.md#the-screen)). `reims-gui` places that same window inside its **Screen** tab:
 
 - **The GPU still draws it.** The guest is rendered by the library on the host's GPU in QEMU's process, exactly as in its own window. Nothing is copied through VNC, so the frame rate stays that of the standalone window (the release gate is at least 90% of it).
@@ -30,14 +34,18 @@ The **Preview** in Details, `screen_capture` and the MCP input tools keep using 
 
 ### VMware SVGA VMs
 
-With X11, a VM on VMware SVGA with **Display: In the app** (Settings › Display › Shown) runs QEMU's own SDL window (`-display sdl`) and the app embeds it the same way, so every key reaches macOS as its own scancode. Without X11, the Screen tab draws QEMU's VNC socket instead, as the Go app does. **Display: QEMU window** keeps QEMU's window on the desktop.
+VMs on VMware SVGA with **Display: In the app** show QEMU's VNC socket in the Screen tab, as the Go app does: click it to type, Ctrl+Alt releases the keyboard. Keys that egui merges (keypad Enter and Divide, ISO and JIS extra keys) cannot be told apart there; Reims VMs, embedded natively, are not affected. Embedding QEMU's own SDL window was tried and left out of 0.1.0: QEMU's SDL display withdraws its window when the VM has no text consoles, and paints "parallel0 console" over the guest when it has them. **Display: QEMU window** keeps QEMU's window on the desktop.
+
+### Dialogs over the screen
+
+![Preferences open over a running VM: the guest is hidden](screenshots/reims-gui-dialog-hides-screen.png)
 
 ## Differences from the Go app
 
 | | `macos-kvm-gui` (Go) | `reims-gui` (Rust) |
 | --- | --- | --- |
 | Reims vGPU screen | Reims vGPU's own window | Inside the Screen tab (X11/XWayland), own window as fallback |
-| VMware SVGA screen | VNC drawn by the app | QEMU's SDL window embedded; VNC without X11 |
+| VMware SVGA screen | VNC drawn by the app | VNC drawn by the app |
 | New Sequoia and Tahoe VMs | Reims vGPU when installed and the host checks pass | The same |
 | MCP input | Over the VM's VNC socket | Over the VM's QMP control socket, so a VM in QEMU's own window can be driven too |
 | Switching VMs | Blocked while the current VM runs | Allowed: other VMs can be selected while one runs |
