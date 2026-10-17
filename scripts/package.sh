@@ -33,6 +33,7 @@ Name=macOS KVM
 Comment=Install and run macOS on KVM (home lab use)
 Exec=macos-kvm-gui
 Icon=macos-kvm-gui
+StartupWMClass=io.github.jniltinho.macos-kvm-gui
 Terminal=false
 Categories=System;Emulator;
 EOF

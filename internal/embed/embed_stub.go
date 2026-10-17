@@ -10,6 +10,9 @@ func Available() bool { return false }
 // Probe reports whether an X server answers on display; always false without embedding.
 func Probe(string) bool { return false }
 
+// SetWMClass always fails with ErrUnavailable.
+func SetWMClass(string, uint32, string) error { return ErrUnavailable }
+
 // Embedder is unavailable without the reims_embed tag.
 type Embedder struct{}
 

@@ -33,16 +33,17 @@ This repository has two apps that read the same VMs and settings:
 
 | App | Language | Releases | Status |
 |---|---|---|---|
-| **[reims-gui](reims-gui/README.md)** | Rust (egui) | [`reims-gui-v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true) | **Recommended.** Reims vGPU's Metal display inside the window; `.deb` for Ubuntu 24.04, 26.04 and Debian 13, `.tar.gz` also for Rocky Linux 10 |
+| **[reims-gui](reims-gui/README.md)** | Rust (egui) | [`reims-gui-v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true) | **Recommended.** Reims vGPU's Metal display inside the window; `.deb` for Ubuntu 24.04, 26.04 and Debian 13, `.rpm` for Rocky Linux 10 and Fedora 40+, `.tar.gz` |
 | macos-kvm-gui | Go (Fyne) | [`v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=macos-kvm-gui&expanded=true) | The first app; also embeds Reims vGPU's window since v0.11.0; `.deb`, `.rpm` (Fedora 39+), `.tar.gz` |
 
 ## Download and install reims-gui
 
-From the [latest release](https://github.com/jniltinho/macos-kvm-gui/releases/latest), take the `.deb` (one package for Ubuntu 24.04, 26.04 and Debian 13) and check it:
+From the [latest release](https://github.com/jniltinho/macos-kvm-gui/releases/latest), take the package for your system and check it:
 
 ```sh
-sha256sum -c reims-gui_0.1.4_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.4_amd64.deb
+sha256sum -c reims-gui_0.1.5_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.5_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
+sudo dnf install ./reims-gui-0.1.5-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
 ```
 
 It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x86`, `qemu-system-gui`, `qemu-utils`). Or unpack the `.tar.gz` and run `reims-gui` from it. Needs an x86_64 CPU with VT-x/AMD-V and KVM.
@@ -53,7 +54,7 @@ It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x
 
 Guide, limits and troubleshooting: [docs/reims-gui.md](docs/reims-gui.md).
 
-**Debian 13 and Rocky Linux 10.** The `.deb` installs and runs on Debian 13, whose QEMU has what macOS needs. The `.tar.gz` runs on Rocky Linux 10.2 (the window opens on Wayland and XWayland), but Rocky's own `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so macOS VMs there need Reims vGPU's QEMU. On both, Reims vGPU's QEMU has its own package on the [`reims-c099dd5`](https://github.com/jniltinho/macos-kvm-gui/releases/tag/reims-c099dd5) release, installed by hand ([Debian](docs/reims-vgpu.md#debian-13), [Rocky](docs/reims-vgpu.md#rocky-linux-rhel-family)); **Install Reims vGPU** in the Host tab installs the Ubuntu packages only.
+**Debian 13 and Rocky Linux 10.** **Install Reims vGPU** downloads the right Reims vGPU package on Ubuntu 24.04/26.04, Debian 13 and Rocky Linux 10 (RHEL 10 family). Debian's own QEMU has what VMware SVGA VMs need; Rocky's `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so on Rocky macOS VMs run on Reims vGPU only. Checked in clean containers: the packages install, the window opens, and `reims install` fetches and activates the platform's package.
 
 ## Highlights
 
@@ -91,7 +92,7 @@ make package  # both apps' packages in dist/
 make test     # the Go app's tests; reims-gui's run in Docker (reims-gui/README.md)
 ```
 
-The Go app's CI and release workflows no longer run on push or tags (run them by hand from the Actions tab); new builds and releases are those of reims-gui.
+The Go app's CI and release workflows (`go-ci.yml`, `go-release.yml`) run by hand; reims-gui's run on push and on `reims-gui-v*` tags.
 
 ## License
 

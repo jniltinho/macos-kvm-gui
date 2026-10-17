@@ -481,14 +481,14 @@ impl App {
                             )));
                         }
                         let label = if self.cache.reims_status.installed { "Reinstall" } else { "Install Reims vGPU" };
-                        if widgets::button(ui, "download", label, !self.cache.reims_status.installed, free).on_hover_text("Install the prebuilt package for this Ubuntu release").clicked() {
+                        if widgets::button(ui, "download", label, !self.cache.reims_status.installed, free).on_hover_text("Install the prebuilt package for this host (Ubuntu 24.04 or 26.04, Debian 13, Rocky Linux 10)").clicked() {
                             out.push(Action::Run(Task::InstallReims));
                         }
                     });
                 });
                 let info = if self.cache.reims_status.installed { self.cache.reims_status.info.as_str() } else { "Not installed." };
                 ui.label(RichText::new(info).monospace().size(11.5));
-                caption(ui, "Reims vGPU is an experimental paravirtual GPU: Metal in macOS through the host's Vulkan driver, without passing a GPU through. It runs on its own QEMU build, installed in <Workspace>/.reims from a prebuilt package (Ubuntu 24.04 and 26.04) or built in Docker. Choose it per VM in Settings › Display.");
+                caption(ui, "Reims vGPU is an experimental paravirtual GPU: Metal in macOS through the host's Vulkan driver, without passing a GPU through. It runs on its own QEMU build, installed in <Workspace>/.reims from a prebuilt package (Ubuntu 24.04 and 26.04, Debian 13, Rocky Linux 10) or built in Docker (Ubuntu). Choose it per VM in Settings › Display.");
             });
             for c in &reims {
                 check_card(ui, c);

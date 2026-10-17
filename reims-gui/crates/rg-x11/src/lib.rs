@@ -61,6 +61,27 @@ pub fn probe(display: Option<&str>) -> bool {
     x11rb::connect(display).is_ok()
 }
 
+/// Sets `window`'s WM_CLASS to `class` (instance and class alike), on `display` (`None` =
+/// `$DISPLAY`). For toolkits that derive it from the title (GLFW), so window managers, desktop
+/// entries (StartupWMClass) and GNOME's XWayland grab rules can match a stable name.
+pub fn set_wm_class(display: Option<&str>, window: u32, class: &str) -> Result<()> {
+    let (conn, _) = x11rb::connect(display)?;
+    let mut value = Vec::with_capacity(class.len() * 2 + 2);
+    for _ in 0..2 {
+        value.extend_from_slice(class.as_bytes());
+        value.push(0);
+    }
+    conn.change_property8(
+        PropMode::REPLACE,
+        window,
+        AtomEnum::WM_CLASS,
+        AtomEnum::STRING,
+        &value,
+    )?
+    .check()?;
+    Ok(())
+}
+
 /// The app's top-level X11 window (from raw-window-handle's Xlib/Xcb handle).
 pub struct Embedder {
     display: Option<String>,

@@ -20,8 +20,20 @@ use rg_core::AppDir;
 use rg_core::settings::find_reims_qemu;
 use serde::Deserialize;
 
-/// The Ubuntu releases packages and builds exist for.
+/// The Ubuntu releases packages and Docker builds exist for.
 pub const RELEASES: [&str; 2] = ["24.04", "26.04"];
+/// Other hosts with a prebuilt package (installed, not built here): Debian 13 and Rocky Linux 10
+/// (the RHEL 10 family). These keys name their packages and build folders.
+pub const OTHER_PLATFORMS: [&str; 2] = ["debian13", "rocky10"];
+
+/// A platform key's build-folder suffix: `-ubuntu24.04` for Ubuntu, `-debian13`, `-rocky10`.
+pub fn platform_suffix(key: &str) -> String {
+    if RELEASES.contains(&key) {
+        format!("-ubuntu{key}")
+    } else {
+        format!("-{key}")
+    }
+}
 
 /// The Dockerfile that builds upstream's QEMU at a pinned commit.
 pub const DOCKERFILE: &str = include_str!("../reims/Dockerfile");
@@ -141,8 +153,9 @@ impl Reims {
         &self.dir
     }
 
-    /// The host's Ubuntu release when it is one of [`RELEASES`].
-    pub fn host_ubuntu_release(&self) -> Result<String> {
+    /// The host's platform key: its Ubuntu release when one of [`RELEASES`], else `debian13`
+    /// for Debian 13 or `rocky10` for Rocky Linux, RHEL or AlmaLinux 10 ([`OTHER_PLATFORMS`]).
+    pub fn host_platform(&self) -> Result<String> {
         let data = fs::read_to_string(&self.os_release)?;
         let kv: std::collections::HashMap<&str, &str> = data
             .lines()
@@ -150,15 +163,26 @@ impl Reims {
             .map(|(k, v)| (k, v.trim_matches(['"', '\''])))
             .collect();
         let version = kv.get("VERSION_ID").copied().unwrap_or_default();
-        if kv.get("ID") == Some(&"ubuntu") && RELEASES.contains(&version) {
+        let id = kv.get("ID").copied().unwrap_or_default();
+        let rhel = ["rocky", "rhel", "almalinux"].contains(&id)
+            || kv
+                .get("ID_LIKE")
+                .is_some_and(|l| l.split_whitespace().any(|w| w == "rhel"));
+        if id == "ubuntu" && RELEASES.contains(&version) {
             return Ok(version.to_string());
+        }
+        if id == "debian" && version == "13" {
+            return Ok("debian13".into());
+        }
+        if rhel && version.split('.').next() == Some("10") {
+            return Ok("rocky10".into());
         }
         let name = match kv.get("PRETTY_NAME") {
             Some(n) if !n.is_empty() => n.to_string(),
             _ => format!("not identified by {}", self.os_release.display()),
         };
         Err(msg(format!(
-            "Reims vGPU supports Ubuntu {} hosts, and this one is {name}",
+            "Reims vGPU supports Ubuntu {}, Debian 13 and Rocky Linux 10 (RHEL 10 family) hosts, and this one is {name}",
             RELEASES.join(" and ")
         )))
     }
@@ -259,13 +283,15 @@ fn remove_all(p: &Path) -> io::Result<()> {
     }
 }
 
-/// Upstream's commit from a build name: `<tag or date-time>-<commit>`, with `-ubuntu<release>`
-/// after it for the app's builds.
+/// Upstream's commit from a build name: `<tag or date-time>-<commit>`, with the platform suffix
+/// (`-ubuntu<release>`, `-debian13`, `-rocky10`) after it for the app's builds.
 pub fn reims_commit(build: &str) -> &str {
-    let build = match build.rfind("-ubuntu") {
-        Some(i) if i > 0 => &build[..i],
-        _ => build,
-    };
+    let cut = ["-ubuntu", "-debian", "-rocky"]
+        .iter()
+        .filter_map(|s| build.rfind(s))
+        .filter(|&i| i > 0)
+        .max();
+    let build = cut.map_or(build, |i| &build[..i]);
     build.rsplit('-').next().unwrap_or(build)
 }
 
@@ -278,7 +304,7 @@ mod tests {
     use crate::testutil::*;
 
     #[test]
-    fn host_ubuntu_release_accepts_only_supported_ubuntu() -> TestResult {
+    fn host_platform_accepts_supported_ubuntu_debian_and_rhel() -> TestResult {
         let cases = [
             (
                 "NAME=\"Ubuntu\"\nID=ubuntu\nVERSION_ID=\"24.04\"\n",
@@ -291,13 +317,33 @@ mod tests {
             ),
             (
                 "ID=debian\nVERSION_ID=\"13\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"",
+                "debian13",
+            ),
+            (
+                "ID=debian\nVERSION_ID=\"12\"\nPRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"",
+                "",
+            ),
+            (
+                "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"10.2\"\n",
+                "rocky10",
+            ),
+            (
+                "ID=\"almalinux\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"10.0\"\n",
+                "rocky10",
+            ),
+            (
+                "ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"9.6\"\nPRETTY_NAME=\"Rocky Linux 9.6\"",
+                "",
+            ),
+            (
+                "ID=fedora\nVERSION_ID=42\nPRETTY_NAME=\"Fedora Linux 42\"",
                 "",
             ),
         ];
         for (body, want) in cases {
             let t = TempDir::new()?;
             let r = reims_in(&t, body)?;
-            match r.host_ubuntu_release() {
+            match r.host_platform() {
                 Ok(got) => assert_eq!(got, want, "{body}"),
                 Err(e) => {
                     assert_eq!(want, "", "{body}: {e}");
@@ -318,11 +364,15 @@ mod tests {
         assert_eq!(pinned, m.commit);
         assert!(m.commit.len() == 40 && m.commit.bytes().all(|b| b.is_ascii_hexdigit()));
         assert_eq!(m.tag, format!("reims-{}", &m.commit[..7]));
-        for rel in RELEASES {
-            let p = m.packages.get(rel).ok_or(rel)?;
+        for rel in RELEASES.iter().chain(&OTHER_PLATFORMS) {
+            let p = m.packages.get(*rel).ok_or(*rel)?;
             assert_eq!(
                 p.file,
-                format!("reims-qemu-{}-ubuntu{rel}-x86_64.tar.gz", &m.commit[..7])
+                format!(
+                    "reims-qemu-{}{}-x86_64.tar.gz",
+                    &m.commit[..7],
+                    platform_suffix(rel)
+                )
             );
             assert!(is_sha256(&p.sha256), "{rel}: {p:?}");
         }
@@ -334,6 +384,8 @@ mod tests {
         for (name, want) in [
             ("20261016-212623-c099dd5a-ubuntu24.04", "c099dd5a"),
             ("reims-c099dd5-ubuntu26.04", "c099dd5"),
+            ("reims-c099dd5-debian13", "c099dd5"),
+            ("reims-c099dd5-rocky10", "c099dd5"),
             ("20261016-212623-c099dd5a", "c099dd5a"), // upstream's own install
         ] {
             assert_eq!(reims_commit(name), want);

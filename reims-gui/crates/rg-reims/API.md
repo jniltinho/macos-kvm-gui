@@ -19,7 +19,7 @@ line, possibly from another thread.
 | `rg_core::config::reims_dir(workspace_root) -> Result<PathBuf>` | `ReimsDir` |
 | `Reims::new(reims_dir)`, `Reims::for_app(reims_dir, Option<&AppDir>)` (the `reims_qemu` setting of that config folder; `new` uses the user's) | (globals) |
 | `Reims::dir()` | |
-| `Reims::host_ubuntu_release() -> Result<String>` | `HostUbuntuRelease` |
+| `Reims::host_platform() -> Result<String>` (`24.04`, `26.04`, `debian13`, `rocky10`) | `HostPlatform` |
 | `Reims::qemu() -> Result<PathBuf>` | `ReimsQEMU` |
 | `Reims::installed() -> Result<Info>` (`qemu`, `build`, `commit`, `apple_gfx: Result<()>`) | `ReimsInstalled` / `ReimsInfo` |
 | `Reims::install(cancel, log) -> Result<()>` | `InstallReims` |

@@ -96,7 +96,7 @@ func parentOf(t *testing.T, display string, w uint32) string {
 // found by PID, embedded, moved, hidden, shown and released back to the root.
 func TestEmbedReimsWindow(t *testing.T) {
 	helper := sdlWindow(t)
-	for _, tool := range []string{"xdotool", "xwininfo"} {
+	for _, tool := range []string{"xdotool", "xwininfo", "xprop"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("no %s", tool)
 		}
@@ -106,6 +106,15 @@ func TestEmbedReimsWindow(t *testing.T) {
 	guest := window(t, helper, d, "Reims vGPU (port 2)")
 	app := windowID(t, d, "Fake app")
 	rootParent := parentOf(t, d, app)
+
+	if err := SetWMClass(d, app, "io.test.embed"); err != nil {
+		t.Fatal(err)
+	}
+	c := exec.Command("xprop", "-id", fmt.Sprint(app), "WM_CLASS")
+	c.Env = append(os.Environ(), "DISPLAY="+d)
+	if out, err := c.Output(); err != nil || !strings.Contains(string(out), `"io.test.embed", "io.test.embed"`) {
+		t.Fatalf("WM_CLASS: %s %v", out, err)
+	}
 
 	em, err := NewEmbedder(d, app)
 	if err != nil {

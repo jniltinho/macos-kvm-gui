@@ -88,6 +88,34 @@ pub unsafe extern "C" fn rgx_probe(display: *const c_char) -> c_int {
     .unwrap_or(0)
 }
 
+/// Sets `window`'s WM_CLASS (instance and class) to `class` on `display` (null = `$DISPLAY`).
+///
+/// # Safety
+/// `display` as in [`rgx_probe`]; `class` a valid NUL-terminated string; `err` as in the module
+/// docs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn rgx_set_wm_class(
+    display: *const c_char,
+    window: u32,
+    class: *const c_char,
+    err: *mut c_char,
+    errlen: usize,
+) -> c_int {
+    if class.is_null() {
+        return NULL;
+    }
+    // SAFETY: the closure only touches arguments the caller vouched for.
+    unsafe {
+        guard(err, errlen, || {
+            let d = opt_str(display)?;
+            let c = CStr::from_ptr(class)
+                .to_str()
+                .map_err(|_| "class is not UTF-8".to_owned())?;
+            rg_x11::set_wm_class(d.as_deref(), window, c).map_err(|e| e.to_string())
+        })
+    }
+}
+
 /// Connects to `display` (null = `$DISPLAY`) with `parent` (the app's top-level X11 window).
 ///
 /// # Safety

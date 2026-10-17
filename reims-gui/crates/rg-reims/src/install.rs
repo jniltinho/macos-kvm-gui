@@ -14,9 +14,9 @@ use tar::EntryType;
 use crate::{Error, Log, MAX_ENTRIES, MAX_PACKAGE, Reims, Result, activate, is_sha256, msg};
 
 pub(crate) fn install(r: &Reims, cancel: &AtomicBool, log: Log<'_>) -> Result<()> {
-    let rel = r.host_ubuntu_release().map_err(|e| {
+    let rel = r.host_platform().map_err(|e| {
         msg(format!(
-            "{e}: there is no package for it (`reims-gui reims build --release 24.04|26.04` builds one in Docker)"
+            "{e}: there is no package for it (`reims-gui reims build --release 24.04|26.04` builds an Ubuntu one in Docker)"
         ))
     })?;
     let m = r.manifest()?;
@@ -24,12 +24,12 @@ pub(crate) fn install(r: &Reims, cancel: &AtomicBool, log: Log<'_>) -> Result<()
         Some(p) if is_sha256(&p.sha256) => p,
         _ => {
             return Err(msg(format!(
-                "the app has no Reims vGPU package for Ubuntu {rel}: build it with `reims-gui reims build`"
+                "the app has no Reims vGPU package for {rel}: build it with `reims-gui reims build` (Ubuntu)"
             )));
         }
     };
     let (qdir, _lock) = r.lock(cancel)?;
-    let name = format!("{}-ubuntu{rel}", m.tag);
+    let name = format!("{}{}", m.tag, crate::platform_suffix(&rel));
     let final_dir = qdir.join(&name);
     if fs::metadata(&final_dir).is_ok() {
         log(&format!("{name} is already unpacked"));
@@ -355,7 +355,7 @@ mod tests {
         )]))?;
         let mut r = reims_in(
             &t,
-            "ID=debian\nVERSION_ID=\"13\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n",
+            "ID=debian\nVERSION_ID=\"12\"\nPRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\n",
         )?;
         r.roots = Some(vec![srv.root.clone()]);
         r.release_url = format!("{}/", srv.url);
@@ -371,7 +371,7 @@ mod tests {
         let err = r
             .install(&no, &log)
             .err()
-            .ok_or("installed on Debian")?
+            .ok_or("installed on Debian 12")?
             .to_string();
         assert!(
             err.contains("24.04 and 26.04") && err.contains("reims build"),
@@ -417,7 +417,7 @@ mod tests {
         let _procs = QEMU_PROCS.lock();
         let t = TempDir::new()?;
         let mut r = reims_in(&t, &fs::read_to_string("/etc/os-release")?)?;
-        let Ok(rel) = r.host_ubuntu_release() else {
+        let Ok(rel) = r.host_platform() else {
             return Ok(());
         };
         let m = crate::manifest()?;

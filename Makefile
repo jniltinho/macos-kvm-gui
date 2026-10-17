@@ -68,7 +68,7 @@ package-go: build-prod
 package-rust:
 	mkdir -p dist
 	reims-gui/scripts/build.sh
-	cp reims-gui/dist/reims-gui_$(RG_VERSION)_amd64.deb* reims-gui/dist/reims-gui-$(RG_VERSION)-x86_64.tar.gz* dist/
+	cp reims-gui/dist/reims-gui_$(RG_VERSION)_amd64.deb* reims-gui/dist/reims-gui-$(RG_VERSION)-x86_64.tar.gz* reims-gui/dist/reims-gui-$(RG_VERSION)-1.x86_64.rpm* dist/
 
 run: build-go
 	./$(BIN)

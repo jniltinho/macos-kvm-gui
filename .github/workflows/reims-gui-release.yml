@@ -40,6 +40,11 @@ jobs:
           reims-gui/scripts/check-package.sh 24.04
           reims-gui/scripts/check-package.sh 26.04
 
+      - name: Install the .rpm and run it in clean rockylinux:10 and fedora:42
+        run: |
+          reims-gui/scripts/check-rpm.sh rocky10
+          reims-gui/scripts/check-rpm.sh fedora42
+
       - name: Under GNOME's compositor (Mutter, Wayland + XWayland) in ubuntu:24.04 and ubuntu:26.04
         run: |
           sudo chmod 666 /dev/kvm
@@ -93,7 +98,7 @@ jobs:
 
             **This is the Rust app (`reims-gui`), the recommended version.** The older `macos-kvm-gui` in Go has its own `v*` releases; both read the same VMs and settings.
 
-            reims-gui, the Rust rewrite of macos-kvm-gui (x86_64): one `.deb` for Ubuntu 24.04 and 26.04 and Debian 13, and one `.tar.gz` that also runs on Rocky Linux 10, each with a `.sha256`.
+            reims-gui, the Rust rewrite of macos-kvm-gui (x86_64): one `.deb` for Ubuntu 24.04, 26.04 and Debian 13, one `.rpm` for Rocky Linux 10 (RHEL 10 family) and Fedora 40+, and one `.tar.gz`, each with a `.sha256`.
 
             The binaries are distributed under GPL-3.0-or-later (the source is GPL-2.0-or-later OR LGPL-3.0-or-later). `THIRD_PARTY_LICENSES` holds the license text of every crate compiled in; `reims-gui-*-source.tar.gz` is the corresponding source, with vendored crates and the build Dockerfile.
           files: dist/*

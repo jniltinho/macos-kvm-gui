@@ -58,7 +58,7 @@
 - [x] 4.3 Keyboard hand-back (design D3): `rg-x11` `Embedded::return_focus_on_app_click()` with its C ABI and Go method, called every tick. — done: `a_click_on_the_app_returns_the_keyboard` in rg-x11 (XTEST) and by hand; confirmed by the user.
 
   Verify: an Xvfb test in `rg-x11` (guest focused, a button held over the app's window outside the guest, focus moves to the app; with the pointer over the guest, it stays), and by hand: click the guest and type, then click the VM list, and the arrow keys move in the list.
-- [ ] 4.6 In GUI mode with embedding built in, `$DISPLAY` set and `FYNE_PLATFORM` unset, set `FYNE_PLATFORM=x11` before the app starts (design D4).
+- [x] 4.6 In GUI mode with embedding built in, `$DISPLAY` set and `FYNE_PLATFORM` unset, set `FYNE_PLATFORM=x11` before the app starts (design D4). — 2026-10-17, GNOME Shell 46 headless (rg-live-img:24.04): without FYNE_PLATFORM the window is on XWayland (`xwininfo -root -tree` lists it); TestForceX11 covers the decision. With FYNE_PLATFORM=wayland the Go app crashes in glfwPollEvents on the first pointer motion, also without the embed tag (a GLFW/Fyne Wayland issue in that container, not this change).
 
   Verify: a unit test of the decision function (each combination of the three inputs), and on KDE Plasma Wayland (`echo $XDG_SESSION_TYPE` = wayland) `xprop` finds the app's window.
 - [x] 4.4 App-owned menu bar (design D6): while embedding is available, File, Machine and Help become buttons that open `widget.PopUpMenu` overlays with the same items and Alt shortcuts; otherwise the native `SetMainMenu` stays. — done: File menu over the embedded guest fully visible (guest hidden), dialogs too; confirmed by the user.
@@ -86,6 +86,6 @@
   - a new screenshot in `docs/screenshots`.
 
   Verify: links resolve and `openspec validate embed-reims-window-go --strict` passes.
-- [ ] 6.3 Live check on GNOME (the `rg-live-img:24.04` container with GNOME Shell and XWayland): the Go app embeds the Reims window and Super stays in the guest once `xwayland-allow-grabs` and the app's WM_CLASS rule are set.
+- [x] 6.3 Live check on GNOME (the `rg-live-img:24.04` container with GNOME Shell and XWayland): the Go app embeds the Reims window and Super stays in the guest once `xwayland-allow-grabs` and the app's WM_CLASS rule are set. — embedding passes under GNOME Shell 46: Reims window → container → app window, the login in the Screen tab, hidden on Details and shown on Screen, pointer entry gives the guest the keyboard, Mutter logs "XWayland window … has a grab granted" for the app's window. The Go app's WM_CLASS is now fixed to io.github.jniltinho.macos-kvm-gui (GLFW used the title). NOT met: Super still opened the overview, in reims-gui 0.1.4 as well: when the X focus moves to QEMU's child, Mutter's focus window becomes NULL and the granted grab stops blocking shortcuts. Follow-up outside this change (rg-x11 focus hand-off on Mutter).
 
   Verify: Mutter logs "has a grab granted" for the app's window.

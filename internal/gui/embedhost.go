@@ -35,6 +35,10 @@ type reimsEmbed struct {
 
 const embedTimeout = 30 * time.Second
 
+// appClass is the app window's X11 WM_CLASS (its Fyne app id), also the desktop entry's
+// StartupWMClass.
+const appClass = "io.github.jniltinho.macos-kvm-gui"
+
 // forceX11 reports whether the GUI should set FYNE_PLATFORM=x11 before starting (design D4):
 // with embedding built in and an X server to reach, unless the user chose a platform.
 func forceX11(available bool, display, platform string) bool {
@@ -79,6 +83,13 @@ func (e *reimsEmbed) enabled() bool {
 	}
 	if e.parent == 0 {
 		e.parent = x11Parent(e.u.win)
+		if e.parent != 0 {
+			// GLFW names the class after the title ("macOS KVM v0.11.0"): give window managers,
+			// the desktop entry and GNOME's grab rules a stable one.
+			if err := embed.SetWMClass("", e.parent, appClass); err != nil {
+				e.u.appendLog("[VM] WM_CLASS: " + err.Error())
+			}
+		}
 	}
 	return e.parent != 0
 }

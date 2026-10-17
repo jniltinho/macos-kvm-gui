@@ -2,11 +2,11 @@
 
 [Documentation index](README.md)
 
-**Preview.** `reims-gui` is the Rust rewrite of this app, focused on [Reims vGPU](reims-vgpu.md) and on Ubuntu 24.04 and 26.04. It has the same features, reads the same data and has the same command line and MCP server as `macos-kvm-gui`, in one binary. Its main addition is **the Reims vGPU display inside the app's window**. Some GUI pieces are still being finished; [reims-gui/PARITY.md](../reims-gui/PARITY.md) lists every feature and its state. Install, build and license: [reims-gui/README.md](../reims-gui/README.md).
+**Preview.** `reims-gui` is the Rust rewrite of this app, focused on [Reims vGPU](reims-vgpu.md) and on Ubuntu 24.04 and 26.04, Debian 13 and Rocky Linux 10. It has the same features, reads the same data and has the same command line and MCP server as `macos-kvm-gui`, in one binary. Its main addition is **the Reims vGPU display inside the app's window**. Some GUI pieces are still being finished; [reims-gui/PARITY.md](../reims-gui/PARITY.md) lists every feature and its state. Install, build and license: [reims-gui/README.md](../reims-gui/README.md).
 
 ## Install
 
-Take the package from the [Releases](https://github.com/jniltinho/macos-kvm-gui/releases) tagged `reims-gui-v*`, one for Ubuntu 24.04 and 26.04:
+Take the package from the [Releases](https://github.com/jniltinho/macos-kvm-gui/releases) tagged `reims-gui-v*`: the `.deb` for Ubuntu 24.04, 26.04 and Debian 13, the `.rpm` for Rocky Linux 10 (RHEL 10 family) and Fedora 40+:
 
 ```sh
 sudo apt install ./reims-gui_<version>_amd64.deb
@@ -49,7 +49,7 @@ VMs on VMware SVGA with **Display: In the app** embed QEMU's own GTK window (`-d
 | New Sequoia and Tahoe VMs | Reims vGPU when installed and the host checks pass | The same |
 | MCP input | Over the VM's VNC socket | Over the VM's QMP control socket, so a VM in QEMU's own window can be driven too |
 | Switching VMs | Blocked while the current VM runs | Allowed: other VMs can be selected while one runs |
-| Packages | `.deb`, `.rpm`, `.tar.gz` | one `.deb` and one `.tar.gz` for Ubuntu 24.04 and 26.04 |
+| Packages | `.deb`, `.rpm`, `.tar.gz` | one `.deb` (Ubuntu 24.04, 26.04, Debian 13), one `.rpm` (Rocky Linux 10, Fedora 40+) and one `.tar.gz` |
 | Build | Go toolchain | Docker only |
 | License | BSD-3-Clause | Source GPL-2.0-or-later OR LGPL-3.0-or-later; binaries GPL-3.0-or-later |
 | Command name | `macos-kvm-gui` | `reims-gui` (same commands, flags and output) |
@@ -108,7 +108,7 @@ Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop 
 
 ### Packages
 
-- `apt` cannot resolve dependencies: the package targets Ubuntu 24.04 and 26.04 only; on another release, build from source.
+- `apt` or `dnf` cannot resolve dependencies: the packages target Ubuntu 24.04 and 26.04, Debian 13, Rocky Linux 10 and Fedora 40+ (glibc 2.39 or newer); on another release, build from source.
 - The window does not open on a machine without a GPU driver: install `mesa-vulkan-drivers` (software Vulkan); `reims-gui --self-test` draws a few frames and exits 0 when the window works.
 - `scripts/check-package.sh <release>` installs the built `.deb` in a clean `ubuntu:<release>` container and runs `--self-test` under Xvfb; run it for 24.04 and 26.04 before publishing.
 - `scripts/check-gnome.sh <release>` runs GNOME's compositor (Mutter, headless, Wayland + XWayland) in a clean container with the `.deb` and `/dev/kvm`: self-tests on XWayland and Wayland, a VMware SVGA VM's QEMU window embedded in the Screen tab, and SIGTERM releasing it with Xwayland still up.

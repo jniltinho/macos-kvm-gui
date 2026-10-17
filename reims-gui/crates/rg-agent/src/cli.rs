@@ -295,7 +295,7 @@ pub enum SettingsCmd {
 
 #[derive(Subcommand, Debug)]
 pub enum ReimsCmd {
-    /// Download the prebuilt Reims vGPU QEMU for this Ubuntu release and activate it
+    /// Download the prebuilt Reims vGPU QEMU for this host (Ubuntu 24.04/26.04, Debian 13, Rocky Linux 10) and activate it
     Install,
     /// Build Reims vGPU's QEMU from source in Docker and activate it
     #[command(

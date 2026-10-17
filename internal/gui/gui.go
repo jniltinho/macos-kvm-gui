@@ -191,6 +191,7 @@ func Run(appVersion, configPath string) {
 	}
 	u.win.SetContent(container.NewBorder(top, u.statusBar(), nil, nil, split))
 	releaseOnSignals(a, u)
+	a.Lifecycle().SetOnStarted(func() { u.emb.enabled() }) // the stable WM_CLASS, once the window exists
 	a.Settings().AddListener(func(fyne.Settings) {
 		recolorThemed()
 		u.refresh() // cards take their colors when they are marked
@@ -392,7 +393,7 @@ func (u *ui) reimsSection() fyne.CanvasObject {
 		}, u.win)
 	})
 	about := caption("Reims vGPU is an experimental paravirtual GPU: Metal in macOS through the host's Vulkan driver, without passing a GPU through. " +
-		"It runs on its own QEMU build, installed in <Workspace>/.reims from a prebuilt package (Ubuntu 24.04 and 26.04) or built in Docker. " +
+		"It runs on its own QEMU build, installed in <Workspace>/.reims from a prebuilt package (Ubuntu 24.04 and 26.04, Debian 13, Rocky Linux 10) or built in Docker (Ubuntu). " +
 		"Choose it per VM in Settings › Display. The checks below are warnings unless the selected VM uses it.")
 	about.Wrapping = fyne.TextWrapWord
 	u.refreshReimsInfo()

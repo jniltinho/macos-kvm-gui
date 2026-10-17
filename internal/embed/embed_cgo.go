@@ -51,6 +51,17 @@ func Probe(display string) bool {
 	return C.rgx_probe(d) == 1
 }
 
+// SetWMClass sets window's WM_CLASS (instance and class) to class on display ("" = $DISPLAY).
+func SetWMClass(display string, window uint32, class string) error {
+	d, free := cstr(display)
+	defer free()
+	c := C.CString(class)
+	defer C.free(unsafe.Pointer(c))
+	return call(func(e *C.char, n C.size_t) C.int {
+		return C.rgx_set_wm_class(d, C.uint32_t(window), c, e, n)
+	})
+}
+
 // Embedder is a connection to the X server with the app's top-level window as the parent.
 type Embedder struct{ p *C.RgxEmbedder }
 

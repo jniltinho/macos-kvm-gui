@@ -39,7 +39,7 @@ scripts/check-package.sh 24.04   # and 26.04: apt install + --self-test in a cle
 scripts/check-gnome.sh 24.04     # and 26.04: under Mutter (Wayland + XWayland), SVGA embed, SIGTERM release
 ```
 
-- **One package for every release.** It is built on Ubuntu 24.04, the oldest supported glibc (2.39). It installs on Ubuntu 24.04, 26.04 and Debian 13; the `.tar.gz` runs on Rocky Linux 10.
+- **One build for every distribution.** Built on Ubuntu 24.04 (glibc 2.39): the `.deb` installs on Ubuntu 24.04, 26.04 and Debian 13, the `.rpm` on Rocky Linux 10 (RHEL 10 family) and Fedora 40+ (`scripts/check-rpm.sh rocky10|fedora42`).
 - **No plain binary in releases.** The `.deb` depends on `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA VMs). Without it, the app falls back to its VNC screen.
 - **`unsafe` is forbidden** in the workspace, except in `crates/rg-x11-ffi` (the C ABI for the Go app).
 
@@ -63,7 +63,7 @@ make test-integration  # real QEMU/KVM boot of the embedded OpenCore
 - **Ubuntu and Debian:** `docker build --build-arg UBUNTU=24.04|26.04` (or `--build-arg BASE=debian:13`) `-t reims-build:<rel> - < internal/core/reims/Dockerfile`, then `docker run ... -v <dir>:/build reims-build:<rel>`.
 - **Rocky Linux 10:** `internal/core/reims/Dockerfile.rocky`.
 - An Ubuntu build does not run on Debian (`libjpeg.so.8`); each distribution needs its own.
-- **What the apps install:** "Install Reims vGPU" and `reims install` fetch only the Ubuntu packages that the manifest pins; the `reims-c099dd5` release also carries debian13 and rocky10 packages (added to the same tag, unpacked by hand) (`internal/core/reims/manifest.json`, `reims-gui/crates/rg-reims/reims/manifest.json`).
+- **What the apps install:** "Install Reims vGPU" and `reims install` pick the host's platform from `/etc/os-release` (`24.04`, `26.04`, `debian13`, `rocky10` for Rocky/RHEL/AlmaLinux 10) and fetch the package the manifest pins (`HostPlatform` in Go, `Reims::host_platform` in Rust); the Docker build is Ubuntu-only (`internal/core/reims/manifest.json`, `reims-gui/crates/rg-reims/reims/manifest.json`).
 - **Nothing installs it on its own:** starting a Reims VM does not download QEMU. macOS Tahoe's `ReimsVgpu.kext` is the only part fetched automatically.
 
 ## Workflows (`.github/workflows/`)

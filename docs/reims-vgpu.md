@@ -44,7 +44,7 @@ Reims vGPU and GPU passthrough are mutually exclusive per VM. Other VMs keep VMw
 | `ReimsVgpu.kext` (macOS Tahoe guests) | **Yes**: downloaded at the first start and injected by OpenCore | nothing to do |
 | `METAL_ERROR_MODE` inside macOS | **No**: once per macOS install | the commands under [First boot in macOS](#first-boot-in-macos) (also shown in Settings › Display) |
 
-Starting a Reims vGPU VM on a host without its QEMU does not download anything: Start stops with *"Reims vGPU is not installed (looked for …): install it in the Host tab or with `macos-kvm-gui reims install`"*. The prebuilt package exists for Ubuntu 24.04 and 26.04. On Debian 13 and Rocky Linux 10, download its package from the `reims-c099dd5` release (or build it as below) and point `reims_qemu` at it. On any release, **Build from source (Docker)** builds the Ubuntu ones.
+Starting a Reims vGPU VM on a host without its QEMU does not download anything: Start stops with *"Reims vGPU is not installed (looked for …): install it in the Host tab or with `macos-kvm-gui reims install`"*. Prebuilt packages exist for Ubuntu 24.04 and 26.04, Debian 13 and Rocky Linux 10 (also RHEL and AlmaLinux 10); **Install Reims vGPU** picks the one for the host from `/etc/os-release` (reims-gui 0.1.5 and macos-kvm-gui 0.12.0 on; older versions knew only Ubuntu). **Build from source (Docker)** builds the Ubuntu ones only; on Debian and Rocky, install the package or build as below.
 
 The app does not embed Reims vGPU. It installs a separate QEMU build into `<Workspace>/.reims/qemu/<build>` and points `<Workspace>/.reims/qemu/current` at it, next to `.kexts` and `.installers`. Nothing else on the host changes.
 
@@ -231,7 +231,7 @@ The audio backend is PipeWire when its socket is in `$XDG_RUNTIME_DIR`, then Pul
 - **Measured upstream on macOS 26 only.** Other versions are offered with a note; this app's reference host validated Sequoia 15.8.1.
 - **Sleep** is reduced to a dark wake: S3 is off.
 - **AMD GPUs** need `/dev/udmabuf` (see [requirements](#requirements)).
-- **Ubuntu 24.04 and 26.04 only** for packages and builds; x86-64 hosts only.
+- Packages for Ubuntu 24.04 and 26.04, Debian 13 and Rocky Linux 10 (RHEL 10 family); Docker builds from the app for Ubuntu only; x86-64 hosts only.
 - **Upstream is beta** and changes fast; the app pins one commit and updates it with its own releases.
 - `usb-audio` and `conditional-intr-mapping` follow upstream's macOS 26 command and are unmeasured on earlier versions.
 

@@ -19,7 +19,7 @@ pub(crate) fn activate(r: &Reims, qdir: &Path, name: &str, rel: &str, log: Log<'
 
 fn switch(r: &Reims, qdir: &Path, name: &str, rel: &str, log: Log<'_>) -> Result<()> {
     let dir = qdir.join(name);
-    if r.host_ubuntu_release().ok().as_deref() != Some(rel) {
+    if r.host_platform().ok().as_deref() != Some(rel) {
         log(&format!(
             "{} is for Ubuntu {rel}, not this host: it stays staged, not activated",
             dir.display()
@@ -166,7 +166,7 @@ fn missing_libs_error(missing: &[&str]) -> crate::Error {
 fn prune(r: &Reims, qdir: &Path, rel: &str, keep: &str, log: Log<'_>) {
     let cur = fs::read_link(qdir.join("current")).unwrap_or_default();
     let Ok(ents) = fs::read_dir(qdir) else { return };
-    let suffix = format!("-ubuntu{rel}");
+    let suffix = crate::platform_suffix(rel);
     for e in ents.flatten() {
         let n = e.file_name();
         let name = n.to_string_lossy();

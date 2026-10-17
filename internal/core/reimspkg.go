@@ -36,8 +36,20 @@ var (
 	reimsManifestJSON []byte
 )
 
-// ReimsReleases are the Ubuntu releases packages and builds exist for.
+// ReimsReleases are the Ubuntu releases packages and Docker builds exist for.
 var ReimsReleases = []string{"24.04", "26.04"}
+
+// ReimsOtherPlatforms are other hosts with a prebuilt package (installed, not built here):
+// Debian 13 and Rocky Linux 10 (the RHEL 10 family). These keys name their packages and folders.
+var ReimsOtherPlatforms = []string{"debian13", "rocky10"}
+
+// reimsSuffix is a platform key's build-folder suffix: -ubuntu24.04, -debian13, -rocky10.
+func reimsSuffix(key string) string {
+	if slices.Contains(ReimsReleases, key) {
+		return "-ubuntu" + key
+	}
+	return "-" + key
+}
 
 // reimsReleaseURL is where the manifest's tag is published (a var for tests).
 var reimsReleaseURL = "https://github.com/jniltinho/macos-kvm-gui/releases/download/"
@@ -71,8 +83,9 @@ func loadReimsManifest() (m reimsManifest, err error) {
 	return m, err
 }
 
-// HostUbuntuRelease returns the host's Ubuntu release when it is one of ReimsReleases.
-func HostUbuntuRelease() (string, error) {
+// HostPlatform returns the host's platform key: its Ubuntu release when one of ReimsReleases,
+// else "debian13" for Debian 13 or "rocky10" for Rocky Linux, RHEL or AlmaLinux 10.
+func HostPlatform() (string, error) {
 	data, err := os.ReadFile(osReleaseFile)
 	if err != nil {
 		return "", err
@@ -83,22 +96,29 @@ func HostUbuntuRelease() (string, error) {
 			kv[k] = strings.Trim(v, `"'`)
 		}
 	}
-	if kv["ID"] == "ubuntu" && slices.Contains(ReimsReleases, kv["VERSION_ID"]) {
-		return kv["VERSION_ID"], nil
+	id, version := kv["ID"], kv["VERSION_ID"]
+	rhel := slices.Contains([]string{"rocky", "rhel", "almalinux"}, id) || slices.Contains(strings.Fields(kv["ID_LIKE"]), "rhel")
+	switch {
+	case id == "ubuntu" && slices.Contains(ReimsReleases, version):
+		return version, nil
+	case id == "debian" && version == "13":
+		return "debian13", nil
+	case rhel && strings.SplitN(version, ".", 2)[0] == "10":
+		return "rocky10", nil
 	}
 	name := kv["PRETTY_NAME"]
 	if name == "" {
 		name = "not identified by " + osReleaseFile
 	}
-	return "", fmt.Errorf("Reims vGPU supports Ubuntu %s hosts, and this one is %s", strings.Join(ReimsReleases, " and "), name)
+	return "", fmt.Errorf("Reims vGPU supports Ubuntu %s, Debian 13 and Rocky Linux 10 (RHEL 10 family) hosts, and this one is %s", strings.Join(ReimsReleases, " and "), name)
 }
 
 // InstallReims downloads the package for the host's release, checks it against the manifest,
 // unpacks it and activates it.
 func InstallReims(ctx context.Context, log func(string)) error {
-	rel, err := HostUbuntuRelease()
+	rel, err := HostPlatform()
 	if err != nil {
-		return fmt.Errorf("%w: there is no package for it (`macos-kvm-gui reims build --release 24.04|26.04` builds one in Docker)", err)
+		return fmt.Errorf("%w: there is no package for it (`macos-kvm-gui reims build --release 24.04|26.04` builds an Ubuntu one in Docker)", err)
 	}
 	m, err := loadReimsManifest()
 	if err != nil {
@@ -106,14 +126,14 @@ func InstallReims(ctx context.Context, log func(string)) error {
 	}
 	pkg, ok := m.Packages[rel]
 	if !ok || !sha256Re.MatchString(pkg.SHA256) {
-		return fmt.Errorf("the app has no Reims vGPU package for Ubuntu %s: build it with `macos-kvm-gui reims build`", rel)
+		return fmt.Errorf("the app has no Reims vGPU package for %s: build it with `macos-kvm-gui reims build` (Ubuntu)", rel)
 	}
 	qdir, unlock, err := lockReims(ctx)
 	if err != nil {
 		return err
 	}
 	defer unlock()
-	name := m.Tag + "-ubuntu" + rel
+	name := m.Tag + reimsSuffix(rel)
 	if _, err := os.Stat(filepath.Join(qdir, name)); err == nil {
 		log(name + " is already unpacked")
 	} else if err := fetchReimsPackage(ctx, reimsReleaseURL+m.Tag+"/"+pkg.File, pkg.SHA256, filepath.Join(qdir, name), log); err != nil {
@@ -316,8 +336,8 @@ func writeFileFrom(file string, r io.Reader, perm os.FileMode) error {
 func activateReims(qdir, name, rel string, log func(string)) error {
 	dir := filepath.Join(qdir, name)
 	defer pruneReims(qdir, rel, name, log)
-	if host, err := HostUbuntuRelease(); err != nil || host != rel {
-		log(fmt.Sprintf("%s is for Ubuntu %s, not this host: it stays staged, not activated", dir, rel))
+	if host, err := HostPlatform(); err != nil || host != rel {
+		log(fmt.Sprintf("%s is for %s, not this host: it stays staged, not activated", dir, rel))
 		return nil
 	}
 	if err := checkReimsBuild(dir); err != nil {
@@ -429,7 +449,7 @@ func pruneReims(qdir, rel, keep string, log func(string)) {
 	ents, _ := os.ReadDir(qdir)
 	for _, e := range ents {
 		n := e.Name()
-		if !e.IsDir() || n == keep || n == cur || !strings.HasSuffix(n, "-ubuntu"+rel) {
+		if !e.IsDir() || n == keep || n == cur || !strings.HasSuffix(n, reimsSuffix(rel)) {
 			continue
 		}
 		if d := filepath.Join(qdir, n); reimsInUse(d) {
@@ -474,9 +494,12 @@ func reimsInUseIn(proc, dir string) bool {
 // activates it as InstallReims does.
 func BuildReims(ctx context.Context, release string, log func(string)) error {
 	if release == "" {
-		r, err := HostUbuntuRelease()
+		r, err := HostPlatform()
 		if err != nil {
 			return fmt.Errorf("%w: build for one of them with --release", err)
+		}
+		if !slices.Contains(ReimsReleases, r) {
+			return fmt.Errorf("Reims vGPU builds from source for Ubuntu %s only; this host is %s: install its prebuilt package instead (Install Reims vGPU, or `macos-kvm-gui reims install`), or build an Ubuntu one with --release", strings.Join(ReimsReleases, " and "), r)
 		}
 		release = r
 	} else if !slices.Contains(ReimsReleases, release) {
@@ -578,11 +601,17 @@ func ReimsInstalled() (ReimsInfo, error) {
 	return info, nil
 }
 
-// reimsCommit reads upstream's commit from a build name: <tag or date-time>-<commit>, with
-// "-ubuntu<release>" after it for the app's builds.
+// reimsCommit reads upstream's commit from a build name: <tag or date-time>-<commit>, with the
+// platform suffix (-ubuntu<release>, -debian13, -rocky10) after it for the app's builds.
 func reimsCommit(build string) string {
-	if i := strings.LastIndex(build, "-ubuntu"); i > 0 {
-		build = build[:i]
+	cut := -1
+	for _, s := range []string{"-ubuntu", "-debian", "-rocky"} {
+		if i := strings.LastIndex(build, s); i > cut {
+			cut = i
+		}
+	}
+	if cut > 0 {
+		build = build[:cut]
 	}
 	return build[strings.LastIndex(build, "-")+1:]
 }

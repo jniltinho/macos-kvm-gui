@@ -9,6 +9,14 @@
     "26.04": {
       "file": "reims-qemu-c099dd5-ubuntu26.04-x86_64.tar.gz",
       "sha256": "9464592313dfdc01024617bdc0d45d132d40fd4eab024205a5d85114ab0f73bb"
+    },
+    "debian13": {
+      "file": "reims-qemu-c099dd5-debian13-x86_64.tar.gz",
+      "sha256": "59778c01103d5c426d548446a52062c20011f605608b855983bb50736c7452a3"
+    },
+    "rocky10": {
+      "file": "reims-qemu-c099dd5-rocky10-x86_64.tar.gz",
+      "sha256": "c20dbe748f683c86eb51324cece68f5b545221a3571c016480876b0e01d26650"
     }
   }
 }

@@ -14,6 +14,7 @@ typedef struct RgxEmbedder RgxEmbedder;
 typedef struct RgxEmbedded RgxEmbedded;
 
 int rgx_probe(const char *display);
+int rgx_set_wm_class(const char *display, uint32_t window, const char *class_name, char *err, size_t errlen);
 int rgx_embedder_new(const char *display, uint32_t parent, RgxEmbedder **out, char *err, size_t errlen);
 void rgx_embedder_free(RgxEmbedder *e);
 int rgx_find_window(const RgxEmbedder *e, uint32_t pid, int kind, uint32_t timeout_ms, uint32_t *out,

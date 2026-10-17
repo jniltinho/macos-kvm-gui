@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -24,15 +25,20 @@ func osRelease(t *testing.T, body string) {
 	t.Cleanup(func() { osReleaseFile = old })
 }
 
-func TestHostUbuntuRelease(t *testing.T) {
+func TestHostPlatform(t *testing.T) {
 	for body, want := range map[string]string{
-		"NAME=\"Ubuntu\"\nID=ubuntu\nVERSION_ID=\"24.04\"\n":                         "24.04",
-		"ID=ubuntu\nVERSION_ID=\"26.04\"\n":                                          "26.04",
-		"ID=ubuntu\nVERSION_ID=\"22.04\"\nPRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\n":      "",
-		"ID=debian\nVERSION_ID=\"13\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"": "",
+		"NAME=\"Ubuntu\"\nID=ubuntu\nVERSION_ID=\"24.04\"\n":                                                "24.04",
+		"ID=ubuntu\nVERSION_ID=\"26.04\"\n":                                                                 "26.04",
+		"ID=ubuntu\nVERSION_ID=\"22.04\"\nPRETTY_NAME=\"Ubuntu 22.04.5 LTS\"\n":                             "",
+		"ID=debian\nVERSION_ID=\"13\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"":                        "debian13",
+		"ID=debian\nVERSION_ID=\"12\"\nPRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"":                      "",
+		"ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"10.2\"\n":                               "rocky10",
+		"ID=\"almalinux\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"10.0\"\n":                           "rocky10",
+		"ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\nVERSION_ID=\"9.6\"\nPRETTY_NAME=\"Rocky Linux 9.6\"": "",
+		"ID=fedora\nVERSION_ID=42\nPRETTY_NAME=\"Fedora Linux 42\"":                                         "",
 	} {
 		osRelease(t, body)
-		got, err := HostUbuntuRelease()
+		got, err := HostPlatform()
 		if got != want || (want == "") != (err != nil) {
 			t.Errorf("%q: %q %v", body, got, err)
 		}
@@ -54,9 +60,9 @@ func TestReimsManifest(t *testing.T) {
 	if m.Tag != "reims-"+m.Commit[:7] {
 		t.Errorf("tag %s", m.Tag)
 	}
-	for _, rel := range ReimsReleases {
+	for _, rel := range append(slices.Clone(ReimsReleases), ReimsOtherPlatforms...) {
 		p := m.Packages[rel]
-		if p.File != "reims-qemu-"+m.Commit[:7]+"-ubuntu"+rel+"-x86_64.tar.gz" || !sha256Re.MatchString(p.SHA256) {
+		if p.File != "reims-qemu-"+m.Commit[:7]+reimsSuffix(rel)+"-x86_64.tar.gz" || !sha256Re.MatchString(p.SHA256) {
 			t.Errorf("%s: %+v", rel, p)
 		}
 	}
@@ -78,6 +84,8 @@ func TestReimsCommit(t *testing.T) {
 	for name, want := range map[string]string{
 		"20261016-212623-c099dd5a-ubuntu24.04": "c099dd5a",
 		"reims-c099dd5-ubuntu26.04":            "c099dd5",
+		"reims-c099dd5-debian13":               "c099dd5",
+		"reims-c099dd5-rocky10":                "c099dd5",
 		"20261016-212623-c099dd5a":             "c099dd5a", // upstream's own install
 	} {
 		if got := reimsCommit(name); got != want {
@@ -227,7 +235,7 @@ func TestInstallReims(t *testing.T) {
 	var log []string
 	logf := func(s string) { log = append(log, s) }
 
-	osRelease(t, "ID=debian\nVERSION_ID=\"13\"\nPRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\n")
+	osRelease(t, "ID=debian\nVERSION_ID=\"12\"\nPRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\n")
 	if err := InstallReims(context.Background(), logf); err == nil || !strings.Contains(err.Error(), "24.04 and 26.04") || !strings.Contains(err.Error(), "reims build") {
 		t.Fatalf("an unsupported release names the releases and the Docker build: %v", err)
 	}
@@ -262,7 +270,7 @@ func TestInstallReimsPackage(t *testing.T) {
 	if dir == "" {
 		t.Skip("MKG_REIMS_PACKAGES is not set")
 	}
-	rel, err := HostUbuntuRelease()
+	rel, err := HostPlatform()
 	if err != nil {
 		t.Skip(err)
 	}

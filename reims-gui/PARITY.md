@@ -324,3 +324,7 @@ and Reims vGPU installed from the Host tab. Record date, release, GPU and result
 - [ ] 24.04 / [ ] 26.04 **Monitor move.** With two monitors of different scale, drag the app from one to the other. Expect: the guest follows and keeps the tab size.
 - [ ] 24.04 / [ ] 26.04 **Fallback.** Log in with `DISPLAY` unset for the app (`env -u DISPLAY reims-gui`). Expect: the app runs on Wayland, the Reims window opens on its own and the Screen tab says so.
 - [ ] 24.04 / [ ] 26.04 **Frame rate.** As in section 6, ≥ 90% of the standalone window.
+
+### GNOME recheck (2026-10-17, GNOME Shell 46 headless, rg-live-img:24.04)
+
+- [ ] **Super in the guest, retested: fails in both apps.** With `xwayland-allow-grabs` and the app's class in the rules, Mutter logs "has a grab granted" for the app's window, but once rg-x11 moves the X focus to QEMU's child Mutter's focus window becomes NULL ("Focus change has no effect, because there is no matching wayland surface") and Super opens the overview. reims-gui 0.1.4 and the Go app behave the same. This contradicts the earlier "6 of 6 captures kept Alt+F2" result above: the harness differed (here a single long-lived RemoteDesktop session, with Mutter VERBOSE logging), so the two need reconciling on a logged-in GNOME session before the shortcut behavior is claimed. Direction: keep Mutter's focus on the app window (focus the container's parent and forward keys, or XEmbed-like focus) instead of focusing QEMU's child.

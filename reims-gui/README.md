@@ -4,7 +4,7 @@
 [Reims vGPU](../docs/reims-vgpu.md) first: macOS's Metal rendered by the host's own GPU, and the
 guest display shown **inside the app's window**. It is the Rust rewrite of
 [macos-kvm-gui](../README.md) (Go/Fyne): the same features, the same data, the GUI, the command
-line and the MCP server in one binary. It targets **Ubuntu 24.04 and 26.04** on x86-64.
+line and the MCP server in one binary. It targets **Ubuntu 24.04 and 26.04, Debian 13 and Rocky Linux 10** (RHEL 10 family, Fedora 40+) on x86-64.
 
 **For home lab use.** Check [Apple's macOS license terms](https://www.apple.com/legal/sla/). This
 project is not affiliated with Apple. `reims-gui` is new: what it does and does not do yet is
@@ -41,11 +41,12 @@ More in [docs/screenshots](../docs/screenshots/README.md).
 ## Install
 
 Download from the project's [GitHub Releases](https://github.com/jniltinho/macos-kvm-gui/releases)
-(tags `reims-gui-v*`) the package, one for Ubuntu 24.04 and 26.04, and check it against its `.sha256`:
+(tags `reims-gui-v*`) the package for your system, and check it against its `.sha256`:
 
 ```sh
-sha256sum -c reims-gui_0.1.4_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.4_amd64.deb
+sha256sum -c reims-gui_0.1.5_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.5_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
+sudo dnf install ./reims-gui-0.1.5-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
 ```
 
 The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
@@ -55,9 +56,9 @@ Or the `.tar.gz`, which holds the binary, the license texts and notices, a short
 desktop entry:
 
 ```sh
-tar xf reims-gui-0.1.4-x86_64.tar.gz
+tar xf reims-gui-0.1.5-x86_64.tar.gz
 sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
-./reims-gui-0.1.4-x86_64/reims-gui
+./reims-gui-0.1.5-x86_64/reims-gui
 ```
 
 The package is built against Ubuntu 24.04's libraries, the older of the two, so the same files install and run on 26.04 (the release checks run both).

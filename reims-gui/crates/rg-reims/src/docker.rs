@@ -18,9 +18,16 @@ pub(crate) fn build(
     log: Log<'_>,
 ) -> Result<()> {
     let release = match release {
-        None | Some("") => r
-            .host_ubuntu_release()
-            .map_err(|e| msg(format!("{e}: build for one of them with --release")))?,
+        None | Some("") => match r.host_platform() {
+            Ok(rel) if RELEASES.contains(&rel.as_str()) => rel,
+            Ok(rel) => {
+                return Err(msg(format!(
+                    "Reims vGPU builds from source for Ubuntu {} only; this host is {rel}: install its prebuilt package instead (Install Reims vGPU, or `reims install`), or build an Ubuntu one with --release",
+                    RELEASES.join(" and ")
+                )));
+            }
+            Err(e) => return Err(msg(format!("{e}: build for one of them with --release"))),
+        },
         Some(rel) if RELEASES.contains(&rel) => rel.to_string(),
         Some(rel) => {
             return Err(msg(format!(
