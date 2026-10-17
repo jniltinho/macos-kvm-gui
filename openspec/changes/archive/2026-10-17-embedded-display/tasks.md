@@ -18,4 +18,4 @@
 ## 3. Documentation and integration
 
 - [x] 3.1 Document the embedded display, its keyboard limits and the fallback in docs/ and the README; verify links
-- [ ] 3.2 Run `make test`, the integration test and `openspec validate --all --strict`
+- [x] 3.2 Run `make test`, the integration test and `openspec validate --all --strict` — 2026-10-17: `make test`, `make test-integration` (TestRealQEMULifecycle got a 1280x800 VNC frame) and `openspec validate --all --strict` (13/13) pass.

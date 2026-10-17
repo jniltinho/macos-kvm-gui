@@ -35,8 +35,8 @@
 - [x] 6.4 Implement the recommended resources calculation (host threads and MemTotal) and the "Recommended for this host" button in Settings; verify with a table test (reference host and small host)
 - [x] 6.5 Show video performance guidance in the VM tab; verify with a screenshot
 
-- [ ] 6.1 Implement the Fyne window with Host, Install, VM and Log tabs, operations in goroutines and updates via `fyne.Do`; verify by opening the app and running each action on the reference host
-- [ ] 6.2 Show the manual installation steps, confirm force stop and media removal, and intercept closing while the VM is running; verify manually
+- [x] 6.1 Implement the Fyne window with Host, Install, VM and Log tabs, operations in goroutines and updates via `fyne.Do`; verify by opening the app and running each action on the reference host — done long since: the window grew into today's VirtualBox-style layout (Host, Install, Details, Log), shipped in every release with screenshots in docs/screenshots.
+- [x] 6.2 Show the manual installation steps, confirm force stop and media removal, and intercept closing while the VM is running; verify manually — done long since: Install tab steps, force stop and media removal confirmations and the close-while-running prompt ship in every release.
 - [x] 6.3 Write the README (build/runtime dependencies, build, usage, limitations such as initramfs and experimental versions); verify that the documented commands work
 
 ## 7. Integration

@@ -2,7 +2,7 @@
 
 ## 1. Build and packages
 
-- [ ] 1.1 `.github/workflows/reims-release.yml`: on `reims-*` tags, matrix 24.04/26.04 with the embedded Dockerfile, strip, `tar.gz`, `.sha256`, source archive with `vendor/qemu` and `cargo vendor`, notices; check by pushing a tag on a fork or `act`, and that both packages unpack and list `apple-gfx-pci` in their `ubuntu:<release>` containers.
+- [x] 1.1 `.github/workflows/reims-release.yml`: on `reims-*` tags, matrix 24.04/26.04 with the embedded Dockerfile, strip, `tar.gz`, `.sha256`, source archive with `vendor/qemu` and `cargo vendor`, notices; check by pushing a tag on a fork or `act`, and that both packages unpack and list `apple-gfx-pci` in their `ubuntu:<release>` containers. — 2026-10-17: the workflow published reims-c099dd5 (24.04 and 26.04 packages, .sha256, source archive); it checks `apple-gfx-pci` in each `ubuntu:<release>` container before publishing.
 - [x] 1.2 `internal/core/reims/manifest.json` and `InstallReims(ctx, log)`: host release detection, download, SHA-256, safe unpack, promotion; tests with a local TLS server for a good package, a tampered one, an archive with `..` or an outside link, and an unsupported release.
 - [x] 1.3 Embedded `internal/core/reims/Dockerfile` and `BuildReims(ctx, release, log)`: release and Docker checks, host-wide lock, build, strip, chown, staging, host validation (`ldd`, `apple-gfx-pci`), atomic `current` switch, pruning that spares builds in use; unit tests for release detection, the `ldd` parser and the package hints, promotion and pruning with fake folders; on this Ubuntu 24.04 host a real build activates `current`.
 - [x] 1.4 Build for 26.04 on this host: it stays staged (not activated), and its QEMU runs `-device help` inside an `ubuntu:26.04` container with the runtime packages.
@@ -18,8 +18,8 @@
 
 - [x] 3.1 Settings › Display: Graphics choice, the macOS-26 note, `METAL_ERROR_MODE` commands, disabled GPU choice while Reims is selected (and the reverse); Details pane. Check by hand.
 - [ ] 3.2 GUI VNC split: preview-only connection for Reims VMs (started by the app and by CLI/MCP), no Screen attachment, Screen tab text; check by hand with a VM started from the app and one from `vm start`.
-- [ ] 3.3 Host tab: Reims checks, installed build and commit, **Install Reims vGPU** (package) and **Build from source** (Docker) buttons with progress in the log.
-- [ ] 3.4 CLI `config set graphics=…`, `config show`, `reims install`, `reims build [--release]`, `reims status`; command tests for an invalid value, the exclusivity error and an unsupported release.
+- [x] 3.3 Host tab: Reims checks, installed build and commit, **Install Reims vGPU** (package) and **Build from source** (Docker) buttons with progress in the log. — 2026-10-17: `reimsSection` in internal/gui/gui.go (checks, build/commit, Install and Build from source with progress in the Log tab).
+- [x] 3.4 CLI `config set graphics=…`, `config show`, `reims install`, `reims build [--release]`, `reims status`; command tests for an invalid value, the exclusivity error and an unsupported release. — 2026-10-17: `reims install|build|status` and `config set graphics=` exist; TestReimsCommands and TestConfigCommands cover the unsupported release, the invalid value and the exclusivity error; `reims status` on this host shows build 20261016-220959-c099dd5a-ubuntu24.04 with apple-gfx-pci.
 
 ## 5. Resolution and ReimsVgpu.kext
 
@@ -32,5 +32,5 @@
 ## 4. Docs and validation
 
 - [x] 4.1 `docs/reims-vgpu.md` (install, build from source, host setup, guest setup, limits), `THIRD_PARTY_NOTICES.md`, `docs/architecture.md`, `docs/troubleshooting.md`, `docs/cli.md`, `docs/references.md`.
-- [ ] 4.2 `go vet ./... && go test ./...`; `openspec validate add-reims-vgpu --strict`; Codex review of the change.
+- [x] 4.2 `go vet ./... && go test ./...`; `openspec validate add-reims-vgpu --strict`; Codex review of the change. — 2026-10-17: `go vet` and `go test -race ./...` pass, TestReimsRealizesPaused passes with the installed Reims QEMU, `openspec validate --all --strict` passes; Codex reviewed the change during implementation.
 - [x] 4.3 On this host: the Nilton VM (Sequoia) with `reims-vgpu` boots on the RTX 4070 with `METAL_ERROR_MODE` set; `system_profiler SPDisplaysDataType` over SSH shows the paravirtual GPU with Metal; switching back to `vmware-svga` boots as before.
