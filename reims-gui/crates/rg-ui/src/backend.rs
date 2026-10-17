@@ -334,6 +334,18 @@ pub trait Backend {
     fn create_vm(&self, config: &Config) -> Result<VmId, String>;
     /// Defaults recommended for this host (memory, processors).
     fn recommended(&self) -> Config;
+    /// The first SSH port from 2222 up that no VM but `except_id` uses (rg-core
+    /// `Registry::next_ssh_port`, which also skips ports busy on 127.0.0.1). This default
+    /// looks at [`Backend::vms`] only.
+    fn next_ssh_port(&self, except_id: &str) -> Option<u16> {
+        let used: Vec<u16> = self
+            .vms()
+            .iter()
+            .filter(|v| v.id != except_id)
+            .map(|v| v.config.ssh_port)
+            .collect();
+        rg_core::registry::next_free_port(&used, |_| true).ok()
+    }
     fn host_info(&self) -> HostInfo;
     fn random_mac(&self) -> String;
 

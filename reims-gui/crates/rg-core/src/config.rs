@@ -102,6 +102,8 @@ pub const RESOLUTIONS: [&str; 7] = [
 ];
 /// The least RAM a VM may have.
 pub const MIN_RAM_MIB: u32 = 4096;
+/// The first SSH port a new VM may get (Go `FirstSSHPort`).
+pub const FIRST_SSH_PORT: u16 = 2222;
 
 /// A VM's settings. Field names and omission rules match the Go JSON exactly; a field missing
 /// from the JSON takes its [`Config::defaults`] value, as Go's `LoadConfig` does.
@@ -245,7 +247,8 @@ impl Config {
             ram_mib: 8192,
             cores: 4,
             vcpus: 8,
-            ssh_port: 2222,
+            // Automatic: `Registry::create` gives the VM the next free port.
+            ssh_port: 0,
             ..Self::default()
         }
     }
@@ -409,12 +412,17 @@ pub fn clean(p: &Path) -> PathBuf {
 
 /// Reads a standalone settings file (`--config`, a legacy `config.json`); defaults when missing.
 pub fn load_config(path: &Path) -> Result<Config> {
-    match std::fs::read(path) {
+    let mut c: Config = match std::fs::read(path) {
         Ok(data) => serde_json::from_slice(&data)
-            .map_err(|e| msg(format!("invalid config in {}: {e}", path.display()))),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Config::defaults()),
-        Err(e) => Err(e.into()),
+            .map_err(|e| msg(format!("invalid config in {}: {e}", path.display())))?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Config::defaults(),
+        Err(e) => return Err(e.into()),
+    };
+    // A standalone file is not in the VM list, so "automatic" is simply the first port.
+    if c.ssh_port == 0 {
+        c.ssh_port = FIRST_SSH_PORT;
     }
+    Ok(c)
 }
 
 /// Validates and writes a standalone settings file atomically.
@@ -432,6 +440,14 @@ mod tests {
     use super::*;
 
     type Case = (&'static str, fn(&mut Config));
+
+    /// The defaults with a port: valid as they are.
+    fn valid() -> Config {
+        Config {
+            ssh_port: FIRST_SSH_PORT,
+            ..Config::defaults()
+        }
+    }
 
     fn field_of(c: &Config) -> Option<String> {
         match c.validate() {
@@ -485,10 +501,14 @@ mod tests {
     fn config_round_trip_and_defaults() -> Result<()> {
         let tmp = tempfile::tempdir()?;
         let path = tmp.path().join("sub/config.json");
-        assert_eq!(load_config(&path)?, Config::defaults());
+        assert_eq!(
+            load_config(&path)?,
+            valid(),
+            "a missing file gets port 2222"
+        );
         let c = Config {
             ram_mib: 16384,
-            ..Config::defaults()
+            ..valid()
         };
         save_config(&path, &c)?;
         assert_eq!(load_config(&path)?.ram_mib, 16384);
@@ -508,11 +528,11 @@ mod tests {
             ("version", |c| c.version = "lion".into()),
         ];
         for (field, mutate) in cases {
-            let mut c = Config::defaults();
+            let mut c = valid();
             mutate(&mut c);
             assert_eq!(field_of(&c).as_deref(), Some(field));
         }
-        assert!(Config::defaults().validate().is_ok());
+        assert!(valid().validate().is_ok());
     }
 
     #[test]
@@ -530,14 +550,14 @@ mod tests {
             }),
         ];
         for (field, mutate) in cases {
-            let mut c = Config::defaults();
+            let mut c = valid();
             mutate(&mut c);
             assert_eq!(field_of(&c).as_deref(), Some(field), "{c:?}");
         }
         let ok = Config {
             gpu: "0000:03:00.0".into(),
             root_patch: true,
-            ..Config::defaults()
+            ..valid()
         };
         assert!(ok.validate().is_ok());
     }
@@ -550,7 +570,7 @@ mod tests {
             (64, 512 * 1024, 16, 8, 16384),
             (6, 24 * 1024, 2, 1, 6144),
         ] {
-            let c = Config::defaults().recommended(threads, mem);
+            let c = valid().recommended(threads, mem);
             assert_eq!(
                 (c.vcpus, c.cores, c.ram_mib),
                 (vcpus, cores, ram),
@@ -587,7 +607,7 @@ mod tests {
 
     #[test]
     fn cores_must_be_a_power_of_two() {
-        let mut c = Config::defaults();
+        let mut c = valid();
         for cores in [1, 2, 4, 8, 16] {
             (c.cores, c.vcpus) = (cores, cores * 2);
             assert!(c.validate().is_ok(), "{cores}");

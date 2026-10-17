@@ -21,7 +21,10 @@ fn env(audio: &str) -> ArgsEnv {
 
 #[test]
 fn svga_matches_go() -> std::io::Result<()> {
-    let mut c = Config::defaults();
+    let mut c = Config {
+        ssh_port: 2222,
+        ..Config::defaults()
+    };
     let app = build_args(&c, &env("none")).join("\n");
     c.graphics = GRAPHICS_SVGA.into();
     c.display = DISPLAY_WINDOW.into();
@@ -37,7 +40,10 @@ fn svga_matches_go() -> std::io::Result<()> {
 
 #[test]
 fn reims_matches_go() -> std::io::Result<()> {
-    let mut c = Config::defaults();
+    let mut c = Config {
+        ssh_port: 2222,
+        ..Config::defaults()
+    };
     c.graphics = GRAPHICS_REIMS.into();
     let mut e = env("pipewire");
     e.with_media = true;

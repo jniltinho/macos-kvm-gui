@@ -6,6 +6,7 @@
 
 mod cli;
 mod mcp;
+pub mod ssh;
 #[cfg(test)]
 mod testutil;
 
@@ -14,7 +15,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::Result;
-use rg_core::{AppDir, Config, Registry};
+use rg_core::{AppDir, Config, Registry, VmEntry};
 use rg_qemu::VmEvent;
 
 pub use cli::{Cli, execute, main};
@@ -48,6 +49,16 @@ pub trait Ops: Send + Sync {
         progress: &mut dyn FnMut(rg_macos::Progress),
         log: &mut dyn FnMut(&str),
     ) -> Result<()>;
+
+    /// rg-ops `Ops::create_vm` without downloads (`vm create`, MCP `vm_create`): default
+    /// adapters, the VM added with a free SSH port (port 0) and selected, its folder prepared
+    /// and, with `disk_gib`, its disk created. Returns the entry and the port notice.
+    fn create_vm(
+        &self,
+        reg: &Registry,
+        c: Config,
+        disk_gib: Option<u64>,
+    ) -> Result<(VmEntry, Option<String>)>;
 
     /// Go `VM.Start`: the whole start (validation, Workspace lock, boot files with
     /// `c.extras`, host and GPU checks, installer disc, QEMU). Returns once QEMU runs; state
@@ -86,7 +97,11 @@ impl Ctx {
     }
 
     fn registry(&self) -> Result<Registry> {
-        Ok(Registry::open(&self.app)?)
+        let reg = Registry::open(&self.app)?;
+        // Tests must not depend on the ports in use on the host (design D2).
+        #[cfg(test)]
+        let reg = reg.with_port_probe(|_| true);
+        Ok(reg)
     }
 
     /// The Workspace folder, `~` expanded.

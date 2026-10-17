@@ -293,7 +293,10 @@ mod tests {
 
     #[test]
     fn build_args_per_version() {
-        let mut c = Config::defaults();
+        let mut c = Config {
+            ssh_port: 2222,
+            ..Config::defaults()
+        };
         for (name, version, media, cpu, nic) in [
             (
                 "sonoma with media",
@@ -426,7 +429,10 @@ mod tests {
 
     #[test]
     fn net_args_place_and_forward() {
-        let mut c = Config::defaults();
+        let mut c = Config {
+            ssh_port: 2222,
+            ..Config::defaults()
+        };
         c.networks = Some(vec![
             nic(true, "nat", "", "virtio-net-pci", "52:54:00:00:00:01"),
             nic(true, "bridged", "br0", "vmxnet3", "52:54:00:00:00:02"),

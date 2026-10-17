@@ -3589,6 +3589,7 @@ dependencies = [
  "rg-ops",
  "rg-qemu",
  "rg-ui",
+ "serde_json",
  "tempfile",
  "tokio",
 ]
@@ -3628,6 +3629,7 @@ dependencies = [
  "rg-qemu",
  "rg-reims",
  "rmcp",
+ "rustix 1.1.5",
  "serde",
  "serde_json",
  "tempfile",

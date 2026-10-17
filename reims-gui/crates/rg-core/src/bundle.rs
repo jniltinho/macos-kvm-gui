@@ -166,14 +166,15 @@ pub fn check_standalone_disk(path: &Path) -> Result<()> {
 
 impl Registry {
     /// Unpacks a bundle into `workspace` (absolute; missing or empty) and adds the VM, without
-    /// its GPU. A name in use gets " (imported)" appended. On any error nothing is left behind.
+    /// its GPU. A name in use gets " (imported)" appended, a port another VM uses the next free
+    /// one (with a notice). On any error nothing is left behind.
     pub fn import_bundle(
         &self,
         src: &Path,
         workspace: &Path,
         cancel: &AtomicBool,
         mut progress: impl FnMut(u64, u64),
-    ) -> Result<VmEntry> {
+    ) -> Result<(VmEntry, Option<String>)> {
         if !workspace.is_absolute() {
             return Err(field_err("workspace", "must be an absolute path"));
         }
@@ -201,7 +202,7 @@ impl Registry {
         workspace: &Path,
         cancel: &AtomicBool,
         progress: &mut impl FnMut(u64, u64),
-    ) -> Result<VmEntry> {
+    ) -> Result<(VmEntry, Option<String>)> {
         let file = File::open(src)?;
         let total = file.metadata()?.len();
         let mut ar = tar::Archive::new(file);
@@ -314,8 +315,10 @@ mod tests {
         assert!(calls > 0, "export reports progress");
 
         let ws2 = tmp.path().join("copy");
-        let got = reg.import_bundle(&dst, &ws2, &AtomicBool::new(false), |_, _| {})?;
+        let (got, note) = reg.import_bundle(&dst, &ws2, &AtomicBool::new(false), |_, _| {})?;
         assert_eq!(got.config.name, "Lab (imported)");
+        assert!(note.is_some_and(|n| n.contains("belongs to Lab")));
+        assert_ne!(got.config.ssh_port, e.config.ssh_port);
         assert_eq!(Path::new(&got.config.workspace), ws2);
         assert!(got.config.gpu.is_empty());
         for f in [DISK_FILE, VARS_FILE, IDENTITY_FILE, MEDIA_FILE] {
@@ -410,7 +413,7 @@ mod tests {
             tw.append(&h, data)?;
         }
         tw.into_inner()?;
-        let e = reg.import_bundle(
+        let (e, _) = reg.import_bundle(
             &tarp,
             &tmp.path().join("ws"),
             &AtomicBool::new(false),
@@ -418,6 +421,24 @@ mod tests {
         )?;
         assert_eq!(e.config.version, "tahoe");
         assert_eq!(e.config.networks, Some(vec![]));
+        Ok(())
+    }
+
+    #[test]
+    fn bundle_import_without_a_free_port_leaves_nothing() -> Result<()> {
+        let (tmp, reg) = setup()?;
+        let e = vm_with_disk(&reg, &tmp.path().join("src"), "Lab", false)?;
+        let dst = tmp.path().join("lab.tar");
+        export_bundle(&e, &dst, &AtomicBool::new(false), |_, _| {})?;
+        let full = reg.with_port_probe(|_| false);
+        let ws = tmp.path().join("imported");
+        let err = full
+            .import_bundle(&dst, &ws, &AtomicBool::new(false), |_, _| {})
+            .err()
+            .map(|e| e.to_string());
+        assert_eq!(err.as_deref(), Some("no free SSH port from 2222 to 65535"));
+        assert!(!ws.exists(), "the unpacked folder is removed");
+        assert_eq!(full.list()?.len(), 1);
         Ok(())
     }
 }

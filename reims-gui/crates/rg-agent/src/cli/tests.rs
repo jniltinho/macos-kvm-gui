@@ -266,3 +266,65 @@ fn table_pads_every_cell_but_the_last() {
     ];
     assert_eq!(table(&rows), "   NAME  X\n*  Lab   y\n");
 }
+
+/// Design D1 through the CLI: no flag (automatic), an unused explicit port, another VM's port
+/// (notice), 80 (refused, no VM); then an import, `config set` and `vm status` warnings.
+#[test]
+fn vm_create_and_import_pick_free_ssh_ports() -> Result<()> {
+    let env = Env::new()?;
+    let out = ok(&env, &["vm", "create", "Nilton"])?;
+    ensure!(
+        out.contains("SSH port 2222") && !out.contains("belongs"),
+        "{out}"
+    );
+    let out = ok(&env, &["vm", "create", "B", "--ssh-port", "2300"])?;
+    ensure!(
+        out.contains("SSH port 2300") && !out.contains("belongs"),
+        "{out}"
+    );
+    let out = ok(&env, &["vm", "create", "C", "--ssh-port", "2222"])?;
+    ensure!(
+        out.contains("SSH port 2222 belongs to Nilton; using 2223\n")
+            && out.contains("SSH port 2223"),
+        "{out}"
+    );
+    fails(
+        &env,
+        &["vm", "create", "Low", "--ssh-port", "80"],
+        "use a port between 1024 and 65535",
+    )?;
+    ensure!(
+        !ok(&env, &["vm", "list"])?.contains("Low"),
+        "no VM is added"
+    );
+
+    let file = env.path("nilton.json").display().to_string();
+    ok(&env, &["vm", "export", "Nilton", &file])?;
+    let out = ok(&env, &["vm", "import", &file])?;
+    ensure!(
+        out.contains("SSH port 2222 belongs to Nilton; using 2224")
+            && out.contains("imported Nilton (imported)"),
+        "{out}"
+    );
+
+    // A shared port is saved with a warning on stderr.
+    let (mut o, mut e) = (Vec::new(), Vec::new());
+    execute(
+        &["--vm", "B", "config", "set", "ssh-port=2222"],
+        &env.ctx,
+        &mut o,
+        &mut e,
+    )?;
+    let e = String::from_utf8_lossy(&e);
+    ensure!(
+        e == "warning: Also used by Nilton: they cannot run at the same time\n",
+        "{e:?}"
+    );
+    let out = ok(&env, &["vm", "status", "Nilton"])?;
+    ensure!(
+        out.contains("warning:   Also used by B: they cannot run at the same time"),
+        "{out}"
+    );
+    ensure!(!ok(&env, &["vm", "status", "C"])?.contains("warning"));
+    Ok(())
+}

@@ -87,7 +87,13 @@ fn creates_lists_saves_and_removes_vms() -> TestResult {
     assert_eq!(b.selected(), Some(id.clone()));
     let nilton = b.vms().into_iter().find(|v| v.id == id).ok_or("no VM")?;
     assert!(nilton.config.networks.is_some(), "default adapters added");
+    assert_ne!(
+        nilton.config.ssh_port, vms[0].config.ssh_port,
+        "a free SSH port of its own"
+    );
+    assert_eq!(b.next_ssh_port(&id), Some(vms[0].config.ssh_port + 1));
 
+    c.ssh_port = nilton.config.ssh_port;
     c.name = "Renamed".into();
     b.save_config(&id, &c)?;
     assert!(b.vms().iter().any(|v| v.config.name == "Renamed"));
@@ -229,6 +235,7 @@ fn a_config_file_is_the_only_vm() -> TestResult {
     let c = rg_core::Config {
         name: "File VM".into(),
         workspace: t.path().join("vm").to_string_lossy().into_owned(),
+        ssh_port: 2222,
         ..rg_core::Config::defaults()
     };
     rg_core::config::save_config(&file, &c)?;

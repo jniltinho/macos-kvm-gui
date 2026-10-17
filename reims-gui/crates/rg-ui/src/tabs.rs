@@ -40,6 +40,13 @@ impl App {
             return;
         };
         let c = &v.config;
+        let sharing: Vec<String> = self
+            .vms
+            .iter()
+            .filter(|o| o.id != v.id && o.config.ssh_port == c.ssh_port)
+            .map(|o| o.display_name().to_owned())
+            .collect();
+        let port_warning = rg_core::registry::port_warning(&sharing).unwrap_or_default();
         let disk = self
             .cache
             .install
@@ -208,6 +215,7 @@ impl App {
                             "Port Forwarding",
                             format!("SSH 127.0.0.1:{} to guest port 22", c.ssh_port),
                         ),
+                        ("Warning", port_warning),
                     ],
                 ),
                 (

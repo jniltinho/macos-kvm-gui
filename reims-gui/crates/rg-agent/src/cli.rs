@@ -14,7 +14,7 @@ use anyhow::{Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use rg_core::config::{GRAPHICS_SVGA, load_config, save_config, wide_resolution};
 use rg_core::network::{MAX_NICS, new_networks, random_mac};
-use rg_core::registry::{export_vm, find_vm};
+use rg_core::registry::{export_vm, find_vm, port_warning};
 use rg_core::workspace::MEDIA_FILE;
 use rg_core::{Config, Registry, VmEntry, Workspace};
 use rg_qemu::{VmEvent, VmState, find_running};
@@ -133,6 +133,13 @@ enables ignore_msrs, through pkexec. The libvirt and input groups are not needed
     Version,
     /// Open the desktop app (the default without a command)
     Gui,
+    /// MCP vm_ssh's password helper: ssh runs it as SSH_ASKPASS (design D6)
+    #[command(hide = true)]
+    SshAskpass {
+        /// ssh's prompt (not used)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        prompt: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -209,6 +216,10 @@ pub enum VmCmd {
         /// VM folder (default <Workspace>/<name>)
         #[arg(long)]
         folder: Option<String>,
+        /// SSH port on 127.0.0.1 (default: the first free one from 2222; another VM's port
+        /// gives the next free one)
+        #[arg(long)]
+        ssh_port: Option<u16>,
     },
     /// Select the VM that commands (and the app) act on
     Select { name: String },
@@ -370,7 +381,7 @@ fn run(cli: Cli, ctx: &Ctx, out: Out<'_>, err: Out<'_>) -> Result<()> {
             ConfigCmd::Set {
                 pairs,
                 root_patch_reverted,
-            } => c.config_set(&pairs, root_patch_reverted, out),
+            } => c.config_set(&pairs, root_patch_reverted, out, err),
             ConfigCmd::Recommend => c.config_recommend(out),
         },
         Cmd::Workspace { cmd } => match cmd {
@@ -429,6 +440,7 @@ fn run(cli: Cli, ctx: &Ctx, out: Out<'_>, err: Out<'_>) -> Result<()> {
             )?)
         }
         Cmd::Gui => bail!("gui is handled by the binary"),
+        Cmd::SshAskpass { .. } => crate::ssh::askpass(out),
     }
 }
 
@@ -486,7 +498,7 @@ fn parse_num<T: std::str::FromStr>(v: &str) -> Result<T, String> {
 }
 
 /// Applies one `config set` key; `None` for an unknown key.
-fn set_key(c: &mut Config, k: &str, v: &str) -> Option<Result<(), String>> {
+pub(crate) fn set_key(c: &mut Config, k: &str, v: &str) -> Option<Result<(), String>> {
     let s = v.to_string();
     Some(match k {
         "workspace" => {
@@ -644,7 +656,13 @@ impl Command<'_> {
         )?)
     }
 
-    fn config_set(&self, pairs: &[String], reverted: bool, out: Out<'_>) -> Result<()> {
+    fn config_set(
+        &self,
+        pairs: &[String],
+        reverted: bool,
+        out: Out<'_>,
+        err: Out<'_>,
+    ) -> Result<()> {
         let e = self.current_vm()?;
         let mut c = e.config.clone();
         for a in pairs {
@@ -679,7 +697,17 @@ remaining root patches can prevent macOS from booting once its protections are r
             );
         }
         let warn = c.reims() && wide_resolution(c.reims_resolution()) && !c.reims_kext();
+        let port = pairs
+            .iter()
+            .any(|a| a.starts_with("ssh-port="))
+            .then_some(c.ssh_port);
         self.save_vm(&e, c)?;
+        if let Some(port) = port
+            && e.path.is_none()
+            && let Some(w) = port_warning(&self.ctx.registry()?.ssh_port_users(port, &e.id)?)
+        {
+            writeln!(err, "warning: {w}")?;
+        }
         if warn {
             writeln!(
                 out,
@@ -848,6 +876,12 @@ remaining root patches can prevent macOS from booting once its protections are r
                 writeln!(out, "folder: {}", c.workspace)?;
                 if c.ssh_forwarded() {
                     writeln!(out, "ssh:       ssh -p {} user@127.0.0.1", c.ssh_port)?;
+                    if e.path.is_none()
+                        && let Some(w) =
+                            port_warning(&ctx.registry()?.ssh_port_users(c.ssh_port, &e.id)?)
+                    {
+                        writeln!(out, "warning:   {w}")?;
+                    }
                 } else {
                     writeln!(
                         out,
@@ -863,6 +897,7 @@ remaining root patches can prevent macOS from booting once its protections are r
                 name,
                 version,
                 folder,
+                ssh_port,
             } => {
                 let reg = ctx.registry()?;
                 let mut c = Config::defaults().recommended(threads(), ctx.host().mem_total_mib());
@@ -871,18 +906,20 @@ remaining root patches can prevent macOS from booting once its protections are r
                     .unwrap_or_else(|| reg.vm_folder(&name));
                 c.name = name;
                 c.version = version;
+                c.ssh_port = ssh_port.unwrap_or(0);
                 c.networks = Some(new_networks(&c.version));
-                c.validate()?;
-                let e = reg.create(c)?;
-                reg.select(&e.id)?;
-                ctx.ops.prepare_workspace(&e.config)?;
+                let (e, notice) = ctx.ops.create_vm(&reg, c, None)?;
+                if let Some(n) = notice {
+                    writeln!(out, "{n}")?;
+                }
                 let dir = e.config.workspace_dir()?;
                 Ok(writeln!(
                     out,
-                    "created and selected {} ({}), folder {}",
+                    "created and selected {} ({}), folder {}, SSH port {}",
                     e.display_name(),
                     e.id,
-                    dir.display()
+                    dir.display(),
+                    e.config.ssh_port
                 )?)
             }
             VmCmd::Select { name } => {
@@ -938,7 +975,7 @@ remaining root patches can prevent macOS from booting once its protections are r
                 let is_tar = file
                     .extension()
                     .is_some_and(|x| x.eq_ignore_ascii_case("tar"));
-                let e = if is_tar {
+                let (e, notice) = if is_tar {
                     let ws = folder.filter(|f| !f.is_empty()).unwrap_or_else(|| {
                         reg.vm_folder(
                             &file
@@ -965,12 +1002,16 @@ remaining root patches can prevent macOS from booting once its protections are r
                 } else {
                     reg.import_settings(&file)?
                 };
+                if let Some(n) = notice {
+                    writeln!(out, "{n}")?;
+                }
                 Ok(writeln!(
                     out,
-                    "imported {} ({}), folder {}",
+                    "imported {} ({}), folder {}, SSH port {}",
                     e.display_name(),
                     e.id,
-                    e.config.workspace
+                    e.config.workspace,
+                    e.config.ssh_port
                 )?)
             }
             VmCmd::Move { name, folder } => {
@@ -1197,7 +1238,7 @@ remaining root patches can prevent macOS from booting once its protections are r
 }
 
 /// The host's threads (Go's `runtime.NumCPU`).
-fn threads() -> u32 {
+pub(crate) fn threads() -> u32 {
     std::thread::available_parallelism().map_or(1, |n| u32::try_from(n.get()).unwrap_or(u32::MAX))
 }
 

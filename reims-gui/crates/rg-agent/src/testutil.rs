@@ -5,18 +5,41 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::{Result, bail};
-use rg_core::{AppDir, Config, Registry};
+use rg_core::{AppDir, Config, Registry, VmEntry};
 use rg_qemu::VmEvent;
 
 use crate::{Ctx, Ops, RunningVm};
 
-/// `prepare_workspace` creates the folder and its boot folder; nothing else is supported.
+/// `prepare_workspace` creates the folder and its boot folder, `create_vm` an empty disk;
+/// nothing else is supported.
 pub struct FakeOps;
 
 impl Ops for FakeOps {
     fn prepare_workspace(&self, c: &Config) -> Result<()> {
         std::fs::create_dir_all(c.workspace_dir()?.join(rg_core::workspace::BOOT_DIR))?;
         Ok(())
+    }
+
+    fn create_vm(
+        &self,
+        reg: &Registry,
+        mut c: Config,
+        disk_gib: Option<u64>,
+    ) -> Result<(VmEntry, Option<String>)> {
+        if c.networks.is_none() {
+            c.networks = Some(rg_core::network::new_networks(&c.version));
+        }
+        let (e, notice) = reg.create_noted(c)?;
+        reg.select(&e.id)?;
+        self.prepare_workspace(&e.config)?;
+        if disk_gib.is_some() {
+            let disk = e
+                .config
+                .workspace_dir()?
+                .join(rg_core::workspace::DISK_FILE);
+            std::fs::write(disk, "")?;
+        }
+        Ok((e, notice))
     }
 
     fn download_media(

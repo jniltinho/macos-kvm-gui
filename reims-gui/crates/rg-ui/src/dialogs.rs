@@ -84,6 +84,13 @@ impl Modal {
         s.disk = i.disk.clone().unwrap_or_else(|| "not created yet".into());
         s.media = i.recovery.clone();
         s.can_remove_media = app.busy.is_none();
+        s.others = app
+            .vms
+            .iter()
+            .filter(|o| o.id != v.id)
+            .map(|o| (o.display_name().to_owned(), o.config.ssh_port))
+            .collect();
+        s.free_port = app.backend.next_ssh_port(&v.id);
         Some(Self::Settings(Box::new(s)))
     }
     pub fn new_vm(app: &App) -> Self {
@@ -95,6 +102,9 @@ impl Modal {
             app.backend.workspace_root(),
             reims_ok,
             app.backend.random_mac(),
+            app.backend
+                .next_ssh_port("")
+                .unwrap_or(config::FIRST_SSH_PORT),
         )))
     }
     pub fn preferences(app: &App) -> Self {
@@ -392,6 +402,10 @@ pub struct Settings {
     remove_media: bool,
     /// General "Move…" was clicked.
     move_vm: bool,
+    /// The other VMs' names and SSH ports, for the shared-port warning.
+    pub(crate) others: Vec<(String, u16)>,
+    /// What "Use a free port" fills in (rg-core `Registry::next_ssh_port`).
+    pub(crate) free_port: Option<u16>,
 }
 
 const LABEL_W: f32 = 150.0;
@@ -466,7 +480,20 @@ impl Settings {
             can_remove_media: false,
             remove_media: false,
             move_vm: false,
+            others: Vec::new(),
+            free_port: None,
         }
+    }
+
+    /// "Also used by …" when another VM has the SSH port in the field.
+    pub(crate) fn port_warning(&self) -> Option<String> {
+        let users: Vec<String> = self
+            .others
+            .iter()
+            .filter(|o| o.1 == self.c.ssh_port)
+            .map(|o| o.0.clone())
+            .collect();
+        rg_core::registry::port_warning(&users)
     }
 
     /// The config to save, or what is wrong.
@@ -771,8 +798,20 @@ impl Settings {
         }
         ui.add_space(6.0);
         form_row(ui, LABEL_W, "SSH port on 127.0.0.1", |ui| {
-            ui.add(egui::DragValue::new(&mut self.c.ssh_port).range(1..=65535))
+            ui.add(egui::DragValue::new(&mut self.c.ssh_port).range(1..=65535));
+            if let Some(p) = self.free_port
+                && widgets::button(ui, "rotate-cw", "Use a free port", false, true)
+                    .on_hover_text(format!(
+                        "{p}: the first port from 2222 that no other VM uses and that is free on this host"
+                    ))
+                    .clicked()
+            {
+                self.c.ssh_port = p;
+            }
         });
+        if let Some(w) = self.port_warning() {
+            warning(ui, &w);
+        }
         caption(
             ui,
             "The SSH port forward (127.0.0.1 to guest port 22) goes on the first enabled NAT adapter. Changing the first adapter's MAC or type can make macOS see a new network interface.",
@@ -881,11 +920,20 @@ pub struct Wizard {
     model_picked: bool,
     pub disk_gib: u32,
     pub download: bool,
+    /// Pre-filled with the first free port (rg-core `Registry::next_ssh_port`).
+    pub ssh_port: u16,
     host: HostInfo,
 }
 
 impl Wizard {
-    pub fn new(rec: Config, host: HostInfo, root: String, reims_ok: bool, mac: String) -> Self {
+    pub fn new(
+        rec: Config,
+        host: HostInfo,
+        root: String,
+        reims_ok: bool,
+        mac: String,
+        ssh_port: u16,
+    ) -> Self {
         let mut w = Self {
             open: 0,
             name: String::new(),
@@ -909,6 +957,7 @@ impl Wizard {
             model_picked: false,
             disk_gib: 80,
             download: true,
+            ssh_port,
             host,
         };
         w.on_version();
@@ -955,7 +1004,7 @@ impl Wizard {
             ram_mib: self.ram,
             cores,
             vcpus: self.cpus,
-            ssh_port: 2222,
+            ssh_port: self.ssh_port,
             display: if self.window && !self.reims {
                 config::DISPLAY_WINDOW.into()
             } else {
@@ -1145,6 +1194,9 @@ impl Wizard {
                 ),
             );
         }
+        form_row(ui, 110.0, "SSH port on 127.0.0.1", |ui| {
+            ui.add(egui::DragValue::new(&mut self.ssh_port).range(1024..=65535))
+        });
         note(
             ui,
             "This is Adapter 1. Add more adapters later in Settings › Network. NAT also forwards SSH from 127.0.0.1.",
