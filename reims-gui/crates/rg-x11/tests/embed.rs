@@ -383,6 +383,29 @@ fn enter_gives_focus_only_while_the_app_is_active() {
     set_focus(other);
     reenter(&mut e);
     assert_eq!(focus(), other, "focus stolen from the active application");
+
+    // A click on the guest that the window manager answers by focusing the app's window
+    // (Mutter's click-to-focus): the keyboard goes on to QEMU.
+    set_active(app);
+    let wm_focuses_app = |e: &mut rg_x11::Embedded| {
+        set_focus(app);
+        let until = Instant::now() + Duration::from_millis(400);
+        while Instant::now() < until {
+            e.pump().unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+    conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, 100, 100)
+        .unwrap();
+    conn.sync().unwrap();
+    wm_focuses_app(&mut e);
+    assert_eq!(focus(), win, "a click on the guest types into it");
+    // The same with the pointer on the app, outside the guest: the app keeps the keyboard.
+    conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, 900, 600)
+        .unwrap();
+    conn.sync().unwrap();
+    wm_focuses_app(&mut e);
+    assert_eq!(focus(), app, "a click on the app keeps the keyboard there");
 }
 
 #[test]

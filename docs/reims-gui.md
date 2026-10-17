@@ -91,7 +91,7 @@ Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop 
 ### Keyboard or focus
 
 - Keys do nothing: click inside the guest first; the app gives QEMU's window the input focus on click.
-- GNOME's shortcuts (Super, Alt+Tab) act on the desktop instead of macOS: release and recapture with Ctrl+Alt+Super, then click the guest.
+- GNOME's shortcuts (Super, Alt+Tab, Alt+F2) act on the desktop even while the guest has the keyboard: GNOME on Wayland does not let XWayland applications grab the keyboard unless allowed (`gsettings set org.gnome.mutter.wayland xwayland-allow-grabs true`, plus an entry in `xwayland-grab-access-rules`), and it applies to Reims vGPU's own window too. Measured in a headless GNOME Shell 46 and 50; a logged-in session, where GNOME may ask to let the app inhibit its shortcuts, is still to be checked.
 - A dialog is open: the guest is hidden and gets no input until it closes.
 - Brazilian ABNT2: the `/?` key next to right Shift types nothing in macOS's Brazilian ABNT2 layout (the key reaches the guest; macOS gives it nothing, as with an ABNT2 USB keyboard on a Mac). Type `/` with Option+Q (AltGr+Q) and `?` with Option+W.
 

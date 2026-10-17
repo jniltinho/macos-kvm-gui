@@ -285,6 +285,24 @@ Reims window is stood in by an SDL3 window titled like it.
 - [x] Both releases, same date: an SDL3 window titled `Reims vGPU (port 2)` found by PID and embedded into another X11 window under Mutter, alive for 10 s (`rg-x11` examples `sdl_window` and `find_window`).
 - Found and fixed by these runs: Mutter (XWayland) lets go of a framed window asynchronously and took QEMU's window back out of the container; `embed` now waits for the window to return to the root before reparenting. Xwayland 24.1.10 crashes (SIGSEGV) when a client dies with a foreign window in its save-set inside a Mutter frame; the app now releases embedded windows on SIGTERM, SIGINT and SIGHUP. A SIGKILL or crash of the app with a VM on screen still hits that Xwayland bug on 26.04 (upstream).
 
+### Live: GNOME Shell with the GPU and the VM (2026-10-17)
+
+A real GNOME Shell (`gnome-shell --headless --wayland`, a 1920x1080 virtual monitor, XWayland,
+systemd/logind and PipeWire) in an `ubuntu:24.04` (GNOME Shell 46.0) and an `ubuntu:26.04` (GNOME
+Shell 50.1) container with `/dev/kvm`, `/dev/dri` and `/dev/udmabuf`, the 0.1.1 `.deb` (plus the
+fixes below), Reims vGPU installed from the release package (`reims-gui reims install`), all host
+checks OK, and the Nilton VM booting from a qcow2 overlay over this host's disk (read-only). Input
+came through Mutter's RemoteDesktop API, as a real mouse and keyboard; screenshots through its
+ScreenCast API. Reims vGPU rendered on the RX 6700 XT (radv).
+
+- [x] 24.04 / [x] 26.04 **Session, embedding.** The app runs on XWayland in GNOME's frame; Start puts the Reims window inside the Screen tab (window tree: app › container › Reims vGPU), none on the desktop.
+- [x] 24.04 / [x] 26.04 **Typing in the guest.** Click on the guest, type the password, Enter: logged in (`who` shows the console session); text typed into TextEdit read back (`abC 1!`, `AbC Xy`). Found and fixed: Mutter answers a click on the embedded window by focusing the app's toplevel, which took the keyboard back from QEMU (keys went to egui); `rg-x11` now watches FocusIn on the app's window and hands the keyboard to QEMU when the pointer is over it (test `enter_gives_focus_only_while_the_app_is_active`).
+- [x] 24.04 **Overlay hiding.** Help menu: the guest window unmapped ("hidden while a dialog or menu is open"), back on close.
+- [x] 24.04 **Guest mode change.** 1920x1080 → 1024x768 → 1920x1080 in macOS: the embedded window stayed 952x652.
+- [ ] 24.04 / [ ] 26.04 **Keyboard capture and release.** Capture works (title "input captured", Ctrl+Alt+Super releases, the X keyboard grab is held), but GNOME's own shortcuts (Super, Alt+F2) still act while captured: Mutter does not honor XWayland keyboard grabs by default (`org.gnome.mutter.wayland xwayland-allow-grabs`), and with it and an access rule set it did not in this headless session either. The same with Reims vGPU's own window on native Wayland (`vm start --display window`), so it is the compositor's policy, not the embedding. Open: re-check in a logged-in GNOME session, where GNOME asks to inhibit shortcuts.
+- [ ] 24.04 / [ ] 26.04 **Frame rate.** On the RX 6700 XT (radv) the guest itself presents about 6 frames a second with the aerial screensaver (5.3/s embedded, 6.4/s in its own window on 24.04, one 60 s sample each): Reims vGPU's rendering on radv is the limit (guest presents = window presents in both). The ≥ 90% gate is met on the RTX 4070 host (section 6: 73.7 vs 73.7). Safari did not respond in the guest on radv.
+- Found: SDL's XWayland pointer lock crashed Xwayland 24.1.10 (26.04) once ("lock_pointer: null value passed for arg 2"), on an XTEST click into the captured guest; not reproduced with real (RemoteDesktop) input. Reims vGPU/SDL3 upstream.
+
 ### Manual: real GNOME sessions
 
 Run on a fresh install of **Ubuntu 24.04** and again on **Ubuntu 26.04**, logged in to the default
