@@ -35,6 +35,13 @@ compare with `docs/screenshots/*.png` and `tests/snapshots/*.png`.
 - [ ] The rectangle sent to the backend matches the tab in physical pixels at 100% and 200%.
 - [ ] `overlay_open` turns on with any dialog, menu or combo popup and off when it closes.
 - [ ] Switching to another tab sends no rectangle (the embedded window unmaps).
+- [ ] Live (X11 and XWayland): a Reims VM and an SVGA VM start inside the tab with no window left on the desktop; the guest follows tab resizes and guest mode changes; a menu, combo or dialog over the tab hides it and clicks never reach the guest; the pointer entering the guest gives it the keyboard, a click on the app takes it back; ABNT2, keypad Enter and keypad Divide reach macOS; restart re-embeds; quitting the app leaves an outside VM's window on the desktop.
+- [ ] Window puts QEMU's window back on the desktop and "Show it here" brings it back; Full screen slides the shell away and Exit full screen (or F11) restores it.
+- [ ] Wayland without X server: Reims says its window is on the desktop; SVGA shows the VNC screen, Ctrl+Alt releases the keyboard.
+
+## File dialogs
+- [ ] Browse… opens the portal's chooser in front of the app; without a portal the dialog says so and the path can be typed.
+- [ ] Export (full) and Import (.tar) show the progress dialog; Hide keeps the task running in the status bar.
 
 ## Contrast
 - [ ] `theme::tests::text_reaches_aa_contrast_on_every_surface` passes (4.5:1 for text, captions and state colors on every surface, both themes).

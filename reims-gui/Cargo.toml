@@ -66,6 +66,12 @@ zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate
 include_dir = "=0.7.4"
 x11rb = "=0.13.2"
 sdl3 = { version = "=0.20.0", features = ["build-from-source-static"] }
+# rg-ui: the XDG desktop portal's file chooser (rustXterm's pin).
+ashpd = { version = "=0.13.13", default-features = false, features = ["tokio", "file_chooser"] }
+# rg-ui: the app's X11 window id (eframe::Frame's handle) and winit's EventLoopBuilderExtX11,
+# which eframe does not re-export. Already in Cargo.lock through eframe; pinned to it.
+raw-window-handle = "=0.6.2"
+winit = { version = "=0.30.13", default-features = false, features = ["x11"] }
 
 [profile.release]
 lto = "thin"

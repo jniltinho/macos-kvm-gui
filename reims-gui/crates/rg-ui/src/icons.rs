@@ -27,7 +27,7 @@ const VERSIONS: &[(&str, &[u8])] = table!("versions":
 
 const LUCIDE: &[(&str, &[u8])] = table!("lucide":
     "check", "chevron-down", "chevron-right", "circle-x", "copy", "download", "folder-open", "house", "info",
-    "list", "monitor", "pause", "play", "rotate-cw", "settings", "square", "trash", "triangle-alert", "x");
+    "list", "minimize-2", "monitor", "package", "pause", "play", "rotate-cw", "settings", "square", "trash", "triangle-alert", "x");
 
 /// The GPU tab's monochrome card (the Go app's `gpu-tab.svg`), tinted like Lucide.
 const GPU_TAB: &[u8] = include_bytes!("../assets/icons/gpu-tab.svg");

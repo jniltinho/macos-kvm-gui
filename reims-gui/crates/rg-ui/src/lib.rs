@@ -9,9 +9,11 @@ mod app;
 pub mod backend;
 mod dialogs;
 mod fake;
+mod files;
 mod icons;
 mod real;
 mod run;
+pub mod screen;
 mod tabs;
 pub mod theme;
 mod widgets;
@@ -23,8 +25,10 @@ pub use app::{App, Tab};
 pub use backend::Backend;
 pub use dialogs::{Modal, Page};
 pub use fake::FakeBackend;
+pub use files::FileDialog;
 pub use real::RealBackend;
 pub use run::{RunOptions, run};
+pub use screen::backend_choice::{native_options, x11_available};
 
 /// `reims-gui --demo`: the window on [`FakeBackend`].
 pub fn run_demo() -> anyhow::Result<()> {

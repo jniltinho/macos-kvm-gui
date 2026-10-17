@@ -22,17 +22,11 @@ const SELF_TEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Opens the main window on `backend` and blocks until it closes.
 pub fn run(backend: Box<dyn Backend>, opts: RunOptions) -> anyhow::Result<()> {
-    // ponytail: $DISPLAY stands in for the X11 probe and event-loop choice of design D3.
-    let x11_embed = opts.x11_embed && std::env::var_os("DISPLAY").is_some();
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("reims-gui")
-            .with_app_id("io.github.jniltinho.reims-gui")
-            .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([960.0, 600.0]),
-        persist_window: !opts.self_test,
-        ..Default::default()
-    };
+    // Design D3: X11 (XWayland on Wayland desktops) when an X server answers, so the app has an
+    // X11 window to embed QEMU's into; otherwise winit's choice and standalone QEMU windows.
+    let x11_embed = opts.x11_embed && crate::x11_available();
+    let mut options = crate::native_options(x11_embed);
+    options.persist_window = !opts.self_test;
     let frames = Arc::new(AtomicU32::new(0));
     if opts.self_test {
         std::thread::spawn(|| {
@@ -73,7 +67,8 @@ struct Window {
 }
 
 impl eframe::App for Window {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        self.app.screen.attach(frame);
         self.app.show(ui);
         let n = self.frames.fetch_add(1, Ordering::Relaxed) + 1;
         if self.self_test {

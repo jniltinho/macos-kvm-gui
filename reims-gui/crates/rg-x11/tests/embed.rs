@@ -1,10 +1,11 @@
-//! Real windows under Xvfb: an SDL3 window (Reims vGPU's toolkit) and a GTK3 window (QEMU's
-//! -display gtk) are found by pid, embedded, resized, fought over, hidden and killed.
-//! Needs Xvfb, the sdl_window example (built by `cargo test`) and python3-gi (see the Dockerfile).
+//! Real windows under Xvfb: SDL3 windows titled like Reims vGPU's and like QEMU's `-display sdl`
+//! window are found by pid, embedded, resized, fought over, focused, hidden and killed.
+//! Needs Xvfb and the sdl_window example (built by `cargo test`).
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use rg_x11::{Embedder, WindowKind, probe};
@@ -23,8 +24,29 @@ impl Drop for Kill {
     }
 }
 
-/// Starts Xvfb on a free display; returns it and ":N".
-fn xvfb() -> (Kill, String) {
+/// One X test at a time: parallel Xvfb starts on a slow runner drop the first connections.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+/// A running Xvfb; the test lock is released after the server is killed.
+struct Xvfb {
+    _server: Kill,
+    _serial: MutexGuard<'static, ()>,
+}
+
+/// Connects, retrying while the server finishes starting (up to 5 s).
+fn connect(display: &str) -> (RustConnection, usize) {
+    for _ in 0..50 {
+        if let Ok(c) = x11rb::connect(Some(display)) {
+            return c;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    x11rb::connect(Some(display)).expect("X server")
+}
+
+/// Starts Xvfb on a free display and waits until it accepts connections; returns it and ":N".
+fn xvfb() -> (Xvfb, String) {
+    let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let mut c = Command::new("Xvfb")
         .args([
             "-displayfd",
@@ -43,12 +65,20 @@ fn xvfb() -> (Kill, String) {
     BufReader::new(c.stdout.take().unwrap())
         .read_line(&mut line)
         .unwrap();
-    (Kill(c), format!(":{}", line.trim()))
+    let display = format!(":{}", line.trim());
+    drop(connect(&display));
+    (
+        Xvfb {
+            _server: Kill(c),
+            _serial: serial,
+        },
+        display,
+    )
 }
 
 /// The app's top-level window.
 fn app_window(display: &str) -> (RustConnection, u32) {
-    let (conn, screen) = x11rb::connect(Some(display)).unwrap();
+    let (conn, screen) = connect(display);
     let root = conn.setup().roots[screen].root;
     let w = conn.generate_id().unwrap();
     conn.create_window(
@@ -88,18 +118,6 @@ fn sdl_window(display: &str, title: &str) -> Kill {
     Kill(c)
 }
 
-fn gtk_window(display: &str, title: &str) -> Kill {
-    let script = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/gtk_window.py");
-    let c = Command::new("python3")
-        .args([script, title])
-        .env("DISPLAY", display)
-        .env("GDK_BACKEND", "x11")
-        .env("NO_AT_BRIDGE", "1")
-        .spawn()
-        .expect("python3");
-    Kill(c)
-}
-
 /// Window geometry relative to its parent, and the parent.
 fn geometry(conn: &RustConnection, w: u32) -> ((i32, i32, u32, u32), u32) {
     let g = conn.get_geometry(w).unwrap().reply().unwrap();
@@ -130,7 +148,7 @@ fn scenario(kind: WindowKind, spawn: fn(&str, &str) -> Kill, title: &str) {
         .find_window(child.0.id(), kind, Duration::from_secs(30))
         .unwrap();
     let other = if kind == WindowKind::Reims {
-        WindowKind::QemuGtk
+        WindowKind::QemuSdl
     } else {
         WindowKind::Reims
     };
@@ -184,8 +202,19 @@ fn scenario(kind: WindowKind, spawn: fn(&str, &str) -> Kill, title: &str) {
     wait("hidden", || state(win) == MapState::UNVIEWABLE);
     e.show().unwrap();
     wait("shown", || state(win) == MapState::VIEWABLE);
+    let focus = || conn.get_input_focus().unwrap().reply().unwrap().focus;
     e.focus().unwrap();
-    assert_eq!(conn.get_input_focus().unwrap().reply().unwrap().focus, win);
+    assert_eq!(focus(), win);
+    e.unfocus().unwrap();
+    assert_eq!(focus(), app);
+    // The pointer entering QEMU's window gives it the keyboard.
+    conn.warp_pointer(x11rb::NONE, app, 0, 0, 0, 0, 100, 100)
+        .unwrap();
+    conn.sync().unwrap();
+    wait("focused on enter", || {
+        e.pump().unwrap();
+        focus() == win
+    });
 
     // QEMU exits: its window goes with it.
     drop(std::mem::replace(
@@ -205,8 +234,8 @@ fn sdl3_reims_window() {
 }
 
 #[test]
-fn gtk_qemu_window() {
-    scenario(WindowKind::QemuGtk, gtk_window, "QEMU (mac-test)");
+fn sdl_qemu_window() {
+    scenario(WindowKind::QemuSdl, sdl_window, "QEMU (mac-test)");
 }
 
 #[test]

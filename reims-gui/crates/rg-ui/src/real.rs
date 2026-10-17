@@ -83,6 +83,10 @@ struct Seen {
     vnc: Option<PathBuf>,
     /// The control socket of a VM started by another app instance (shut down through it).
     control: bool,
+    /// QEMU's pid, and what shows its screen (the Screen tab's [`ScreenSource`]).
+    pid: u32,
+    reims: bool,
+    in_app: bool,
 }
 
 /// The slow host facts, refreshed in the background.
@@ -372,6 +376,9 @@ impl Inner {
                 Seen {
                     state: vm_state(o.vm.state()),
                     vnc: o.vnc.clone(),
+                    pid: o.vm.pid().unwrap_or(0),
+                    reims: e.config.reims(),
+                    in_app: e.config.in_app(),
                     ..Seen::default()
                 }
             } else if let Some(r) = ops.find_running(&e.config) {
@@ -380,6 +387,9 @@ impl Inner {
                     outside: true,
                     control: r.control.is_some(),
                     vnc: r.vnc_socket,
+                    pid: r.pid,
+                    reims: r.reims,
+                    in_app: e.config.in_app(),
                 }
             } else {
                 Seen::default()
@@ -468,6 +478,22 @@ impl Inner {
             busy: false,
         };
         self.emit(Event::VmsChanged); // the UI rereads the host tabs
+    }
+
+    /// A byte copy's progress (bundle export and import), at most one event per 0.5 %.
+    fn bytes(&self, last: &mut u64, stage: &str, done: u64, total: u64) {
+        let total = total.max(1);
+        let tick = done.saturating_mul(200) / total;
+        if std::mem::replace(last, tick) != tick {
+            self.emit(Event::Progress {
+                stage: format!(
+                    "{stage}: {:.1} of {:.1} GB",
+                    done as f64 / 1e9,
+                    total as f64 / 1e9
+                ),
+                fraction: Some(done as f32 / total as f32),
+            });
+        }
     }
 
     fn invalidate_checks(&self) {
@@ -598,6 +624,71 @@ impl Inner {
                 r.map_err(err)?;
                 Ok("Reims vGPU built".into())
             }
+            Task::Import { path, folder } => {
+                if self.single.is_some() {
+                    return Err("importing needs the VM list (not with --config)".into());
+                }
+                let e = if folder.is_empty() {
+                    self.reg
+                        .lock()
+                        .import_settings(Path::new(path))
+                        .map_err(err)?
+                } else {
+                    let dir = rg_core::Config {
+                        workspace: folder.clone(),
+                        ..rg_core::Config::default()
+                    }
+                    .workspace_dir()
+                    .map_err(err)?;
+                    // Its own connection: the copy takes minutes and the UI reads the list.
+                    let reg = Registry::open(&self.app).map_err(err)?;
+                    let mut last = u64::MAX;
+                    reg.import_bundle(Path::new(path), &dir, cancel, |done, total| {
+                        self.bytes(&mut last, "Importing", done, total)
+                    })
+                    .map_err(err)?
+                };
+                let _ = self.reg.lock().select(&e.id);
+                self.emit(Event::VmsChanged);
+                Ok(format!(
+                    "{} imported into {}",
+                    e.display_name(),
+                    e.config.workspace
+                ))
+            }
+            Task::Export { path, full } => {
+                let e = vm()?;
+                if *full {
+                    let mut last = u64::MAX;
+                    ops.export_bundle(&e, Path::new(path), cancel, |done, total| {
+                        self.bytes(&mut last, "Exporting", done, total)
+                    })
+                    .map_err(err)?;
+                } else {
+                    let json = rg_core::registry::export_vm(&e).map_err(err)?;
+                    std::fs::write(path, json + "\n").map_err(err)?;
+                }
+                Ok(format!("{} exported to {path}", e.display_name()))
+            }
+            Task::Move { folder } => {
+                let e = vm()?;
+                let moved = match &self.single {
+                    Some(_) => return Err("moving needs the VM list (not with --config)".into()),
+                    None => ops
+                        .move_vm(&Registry::open(&self.app).map_err(err)?, &e, folder)
+                        .map_err(err)?,
+                };
+                self.emit(Event::VmsChanged);
+                Ok(format!(
+                    "{} moved to {}",
+                    moved.display_name(),
+                    moved.config.workspace
+                ))
+            }
+            Task::RemoveInstaller { build } => {
+                rg_macos::remove_installer(&ops.installers_dir(), build).map_err(err)?;
+                Ok(format!("Deleted the offline installer {build}"))
+            }
         }
     }
 
@@ -610,6 +701,7 @@ impl Inner {
             let id = e.id.clone();
             let mut c = e.config;
             c.verbose_boot = verbose;
+            let (reims, in_app) = (c.reims(), c.in_app());
             let ops = inner.ops();
             let res = ops.start_vm(
                 inner.rt.clone(),
@@ -655,6 +747,9 @@ impl Inner {
                 Seen {
                     state: VmState::Running,
                     vnc: vnc.clone(),
+                    pid: started.pid,
+                    reims,
+                    in_app,
                     ..Seen::default()
                 },
             );
@@ -665,6 +760,7 @@ impl Inner {
                 message: None,
             });
             let fwd = inner.clone();
+            let pid = started.pid;
             inner.rt.spawn(async move {
                 while let Some(ev) = events.recv().await {
                     match ev {
@@ -680,6 +776,9 @@ impl Inner {
                                     Seen {
                                         state,
                                         vnc: vnc.clone(),
+                                        pid,
+                                        reims,
+                                        in_app,
                                         ..Seen::default()
                                     },
                                 );
@@ -1033,13 +1132,27 @@ impl Backend for RealBackend {
     }
 
     fn installers(&self) -> Vec<Installer> {
-        rg_macos::cached_installers(&self.inner.ops().installers_dir())
+        let dir = self.inner.ops().installers_dir();
+        let vms = self.inner.entries().unwrap_or_default();
+        rg_macos::cached_installers(&dir)
             .into_iter()
-            .map(|ci| Installer {
-                version: ci.product.version,
-                build: ci.product.build,
-                size_gb: (ci.product.size as f64 / 1e9) as f32,
-                cached: true,
+            .map(|ci| {
+                // The VMs whose version installs from this build (the Go app's dialog).
+                let used_by = vms
+                    .iter()
+                    .filter(|e| {
+                        rg_macos::cached_installer_for(&dir, &e.config.version)
+                            .is_some_and(|c| c.product.build == ci.product.build)
+                    })
+                    .map(|e| e.display_name().to_owned())
+                    .collect();
+                Installer {
+                    version: ci.product.version,
+                    build: ci.product.build,
+                    size_gb: (ci.product.size as f64 / 1e9) as f32,
+                    cached: true,
+                    used_by,
+                }
             })
             .collect()
     }
@@ -1074,6 +1187,36 @@ impl Backend for RealBackend {
 
     fn set_screen_area(&self, area: ScreenArea) {
         *self.inner.screen.lock() = area;
+    }
+
+    fn screen_source(&self, id: &str) -> Option<ScreenSource> {
+        let s = self.inner.seen(id);
+        if s.state == VmState::Stopped {
+            return None;
+        }
+        let x11 = self.inner.x11_embed.load(Ordering::Relaxed);
+        Some(if !s.in_app {
+            ScreenSource::Standalone
+        } else if s.reims {
+            // Reims vGPU's window is on X11 when this app (or an X11 session) started it.
+            if x11 && s.pid != 0 {
+                ScreenSource::Window {
+                    pid: s.pid,
+                    reims: true,
+                }
+            } else {
+                ScreenSource::Standalone
+            }
+        } else if x11 && !s.outside && s.pid != 0 {
+            // Started here with `-display sdl` (rg-ops `start_vm` with x11_embed).
+            ScreenSource::Window {
+                pid: s.pid,
+                reims: false,
+            }
+        } else {
+            // Without X11, or started by the CLI/MCP (no SDL window): QEMU's VNC socket.
+            s.vnc.map_or(ScreenSource::Standalone, ScreenSource::Vnc)
+        })
     }
 
     fn workspace_root(&self) -> String {

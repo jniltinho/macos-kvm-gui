@@ -145,6 +145,8 @@ pub struct Installer {
     pub build: String,
     pub size_gb: f32,
     pub cached: bool,
+    /// The VMs whose macOS version installs from it (the Go app's `CachedInstallerFor`).
+    pub used_by: Vec<String>,
 }
 
 /// Host facts the dialogs need.
@@ -181,6 +183,28 @@ pub enum Task {
     ReleaseGpu,
     InstallReims,
     BuildReims,
+    /// File › Import: a settings file (`.json`, `folder` empty) or a full bundle (`.tar`)
+    /// unpacked into `folder` (rg-core `Registry::import_settings` / `import_bundle`). The new
+    /// VM is selected and [`Event::VmsChanged`] sent.
+    Import {
+        path: String,
+        folder: String,
+    },
+    /// File › Export of the VM: its settings as JSON, or the full `.tar` bundle with progress
+    /// events (rg-ops `export_bundle`, refused while it runs).
+    Export {
+        path: String,
+        full: bool,
+    },
+    /// Machine › Move: the VM's files into `folder` (rg-ops `move_vm`, refused while it runs).
+    Move {
+        folder: String,
+    },
+    /// File › Offline installers › Delete: the cached installer `build` (rg-macos
+    /// `remove_installer`, refused while a VM uses its disc).
+    RemoveInstaller {
+        build: String,
+    },
 }
 
 impl Task {
@@ -199,6 +223,11 @@ impl Task {
             Self::ReleaseGpu => "Release GPU".into(),
             Self::InstallReims => "Install Reims vGPU".into(),
             Self::BuildReims => "Build Reims vGPU".into(),
+            Self::Import { .. } => "Import VM".into(),
+            Self::Export { full: true, .. } => "Export VM bundle".into(),
+            Self::Export { .. } => "Export VM settings".into(),
+            Self::Move { .. } => "Move VM".into(),
+            Self::RemoveInstaller { .. } => "Delete offline installer".into(),
         }
     }
 }
@@ -246,7 +275,25 @@ pub struct ScreenArea {
     pub overlay_open: bool,
 }
 
+/// Where a running VM's screen comes from (design D3, D4); the Screen tab follows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ScreenSource {
+    /// QEMU's own X11 window, to embed: Reims vGPU's (`reims`, title "Reims vGPU…") or QEMU's
+    /// `-display sdl` window for VMware SVGA (title "QEMU…"). `pid` is the start result's
+    /// (`rg_qemu::Started::pid`) or, for a VM started by the CLI or MCP, running detection's
+    /// (`rg_qemu::RunInfo::pid`).
+    Window { pid: u32, reims: bool },
+    /// QEMU's VNC socket, drawn by the app (VMware SVGA without X11).
+    Vnc(std::path::PathBuf),
+    /// QEMU shows a window the app cannot embed (Reims vGPU on Wayland, `display=window`).
+    Standalone,
+}
+
 /// The operations the GUI needs. Implementations must not block: anything slow is a [`Task`].
+///
+/// The Screen tab asks [`Backend::screen_source`]; the file dialogs run the [`Task`]s `Import`,
+/// `Export`, `Move` and `RemoveInstaller`; Settings › Storage "Remove…" runs
+/// [`Task::RemoveMedia`].
 pub trait Backend {
     /// Called once the window exists: `ctx` wakes the UI when events arrive, `x11_embed` says
     /// whether the app embeds QEMU's windows over X11 (design D3).
@@ -288,8 +335,15 @@ pub trait Backend {
     fn poll_event(&self) -> Option<Event>;
     /// New Preview pixels for `id` since the last call.
     fn preview(&self, id: &str) -> Option<PreviewUpdate>;
-    /// Where the Screen tab is this frame (design D3).
+    /// Where the Screen tab is this frame (design D3). The UI embeds QEMU's window itself
+    /// (`screen` module); this is informational.
     fn set_screen_area(&self, area: ScreenArea);
+    /// Where the screen of the running VM `id` is shown; None when it is not running. Called
+    /// every frame while the Screen tab shows a running VM: keep it cheap (cache the start
+    /// result and the running detection).
+    fn screen_source(&self, _id: &str) -> Option<ScreenSource> {
+        None
+    }
 
     fn workspace_root(&self) -> String;
     fn set_workspace_root(&self, path: &str) -> Result<(), String>;

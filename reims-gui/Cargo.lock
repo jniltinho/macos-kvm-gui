@@ -290,6 +290,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ashpd"
+version = "0.13.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fb8421aaa9644a5faf26735f258b669b15f063313ef8f8e2bdb28912a1a6f111"
+dependencies = [
+ "enumflags2",
+ "futures-util",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_repr",
+ "tokio",
+ "zbus",
+]
+
+[[package]]
 name = "asn1-rs"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3730,11 +3745,13 @@ name = "rg-ui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ashpd",
  "eframe",
  "egui",
  "egui_extras",
  "egui_kittest",
  "parking_lot",
+ "raw-window-handle",
  "rg-assets",
  "rg-core",
  "rg-host",
@@ -3742,8 +3759,11 @@ dependencies = [
  "rg-ops",
  "rg-qemu",
  "rg-reims",
+ "rg-x11",
  "tempfile",
  "tokio",
+ "winit",
+ "x11rb",
 ]
 
 [[package]]
@@ -4680,6 +4700,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -5808,6 +5829,7 @@ dependencies = [
  "rustix 1.1.5",
  "serde",
  "serde_repr",
+ "tokio",
  "tracing",
  "uds_windows",
  "uuid",
