@@ -670,3 +670,30 @@ fn remove_runs_as_a_task_and_refreshes_the_list() {
     assert!(h.state().busy.is_none());
     assert_eq!(h.state().vms.len(), before - 1);
 }
+
+#[test]
+fn a_vm_running_outside_the_app_says_so() {
+    let mut a = App::new(Box::new(FakeBackend::default()));
+    let _ = a.backend.start("2", false);
+    a.reload_vms();
+    a.vms[1].outside = true;
+    a.cur = Some(a.vms[1].id.clone());
+    assert_eq!(a.state_text().0, "Running (outside the app)");
+}
+
+#[test]
+fn a_short_dialog_after_a_tall_one_keeps_its_own_height() {
+    let mut h = harness(ThemeMode::Light, |_| {});
+    let wizard = Modal::new_vm(h.state());
+    h.state_mut().open(wizard);
+    h.run_steps(5);
+    h.state_mut().modals.clear();
+    h.state_mut().open(Modal::info("Hi", "short"));
+    h.run_steps(5);
+    let title = h.get_by_label("Hi").rect();
+    let ok = h.get_by_label("OK").rect();
+    assert!(
+        ok.top() - title.bottom() < 150.0,
+        "OK at {ok:?}, title at {title:?}: the footer kept the wizard's height"
+    );
+}

@@ -127,7 +127,12 @@ impl App {
                 }
             }
             Some(ScreenSource::Standalone) => {
-                let (title, body) = if reims && v.config.in_app() {
+                let (title, body) = if reims && v.outside {
+                    (
+                        "Reims vGPU's window is on the desktop",
+                        "This VM was started outside the app (command line, AI agent or the other app), so its screen stays in the Reims vGPU window that started with it. Shut it down and start it here to see it in this tab.",
+                    )
+                } else if reims && v.config.in_app() {
                     (
                         "Reims vGPU opened its own window",
                         "No X server is reachable, so the app runs on Wayland and cannot hold the Reims vGPU window: it is on the desktop, drawn by the GPU as usual. Ctrl+Alt+Super releases the keyboard there.",

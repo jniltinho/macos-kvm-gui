@@ -45,8 +45,8 @@ Download from the project's [GitHub Releases](https://github.com/jniltinho/macos
 
 ```sh
 # Ubuntu 24.04 (use ubuntu26.04 on 26.04)
-sha256sum -c reims-gui_0.1.1_ubuntu24.04_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.1_ubuntu24.04_amd64.deb
+sha256sum -c reims-gui_0.1.2_ubuntu24.04_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.2_ubuntu24.04_amd64.deb
 ```
 
 The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
@@ -56,9 +56,9 @@ Or the `.tar.gz`, which holds the binary, the license texts and notices, a short
 desktop entry:
 
 ```sh
-tar xf reims-gui-0.1.1-ubuntu24.04-x86_64.tar.gz
+tar xf reims-gui-0.1.2-ubuntu24.04-x86_64.tar.gz
 sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
-./reims-gui-0.1.1-ubuntu24.04-x86_64/reims-gui
+./reims-gui-0.1.2-ubuntu24.04-x86_64/reims-gui
 ```
 
 Take the package built for your release: each is linked against that release's libraries.

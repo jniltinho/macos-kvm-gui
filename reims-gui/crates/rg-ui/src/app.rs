@@ -775,9 +775,7 @@ impl App {
     pub(crate) fn state_text(&self) -> (String, Color32) {
         let t = &self.t;
         match self.current() {
-            Some(v) if v.outside && v.state == VmState::Stopped => {
-                ("Running (outside the app)".into(), t.success_fg)
-            }
+            Some(v) if v.outside => ("Running (outside the app)".into(), t.success_fg),
             Some(v) => (
                 v.state.text().into(),
                 match v.state {
@@ -854,10 +852,10 @@ impl App {
                 let galley = ui.fonts_mut(|f| f.layout_job(job));
                 p.galley(egui::pos2(x, rect.min.y + 6.0), galley, t.text);
                 let (state_text, state_color) = match (v.state, v.outside) {
-                    (VmState::Stopped, true) => ("Running (outside the app)", t.success_fg),
+                    (_, true) => ("Running (outside the app)", t.success_fg),
                     (VmState::Running, _) => ("Running", t.success_fg),
                     (VmState::Paused, _) => ("Paused", t.warning_fg),
-                    (VmState::Stopped, false) => ("Powered Off", t.text),
+                    (VmState::Stopped, _) => ("Powered Off", t.text),
                 };
                 let state_icon = match v.state {
                     VmState::Running => "state-running",
@@ -989,11 +987,13 @@ impl App {
         let reims = self.current().is_some_and(|v| v.config.reims());
         let in_app = self.current().is_some_and(|v| v.config.in_app());
         let hint = match self.state() {
-            _ if self
-                .current()
-                .is_some_and(|v| v.outside && v.state == VmState::Stopped) =>
-            {
-                "  ·  Started by the command line or an AI agent (MCP). Shut it down in macOS or where it was started."
+            // The Go app's texts. (A VM started here and found again after a restart of the app
+            // is outside too: it was started by another instance.)
+            _ if self.current().is_some_and(|v| v.outside) && reims => {
+                "  ·  Started by the command line, an AI agent (MCP) or the other app, in the Reims vGPU window. Shut it down in macOS or where it was started."
+            }
+            _ if self.current().is_some_and(|v| v.outside) => {
+                "  ·  Started by the command line, an AI agent (MCP) or the other app. Keys and clicks on the screen go to macOS; shut it down in macOS or where it was started."
             }
             VmState::Stopped => "",
             _ if reims => {

@@ -269,3 +269,34 @@ fn preview_rects_are_cut_from_the_frame() {
         Duration::from_nanos(912_384_000)
     );
 }
+
+#[test]
+fn only_vms_started_here_are_embedded() -> TestResult {
+    use std::sync::atomic::Ordering;
+    let t = tempfile::tempdir()?;
+    let b = backend(&t)?;
+    b.inner.x11_embed.store(true, Ordering::Relaxed);
+    let vnc = PathBuf::from("/run/vnc.sock");
+    let source = |reims, outside| {
+        b.inner.set_seen(
+            "v",
+            super::Seen {
+                state: VmState::Running,
+                outside,
+                vnc: Some(vnc.clone()),
+                pid: 42,
+                reims,
+                in_app: true,
+                ..Default::default()
+            },
+        );
+        b.screen_source("v")
+    };
+    let window = |reims| Some(ScreenSource::Window { pid: 42, reims });
+    assert_eq!(source(true, false), window(true));
+    assert_eq!(source(false, false), window(false));
+    // Started by the CLI, MCP or the Go app: their window stays theirs.
+    assert_eq!(source(true, true), Some(ScreenSource::Standalone));
+    assert_eq!(source(false, true), Some(ScreenSource::Vnc(vnc.clone())));
+    Ok(())
+}

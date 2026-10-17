@@ -233,6 +233,13 @@ impl Embedder {
                 .event_mask(EventMask::STRUCTURE_NOTIFY | EventMask::ENTER_WINDOW),
         )?
         .check()?;
+        // FocusChange on the app's window (this connection's own mask; egui's is untouched): a
+        // click on QEMU's window makes Mutter focus the app's toplevel, see `pump`.
+        conn.change_window_attributes(
+            self.parent,
+            &ChangeWindowAttributesAux::new().event_mask(EventMask::FOCUS_CHANGE),
+        )?
+        .check()?;
         // Unmap first so a window manager lets go of it (its frame goes away), and drop any
         // fullscreen/maximized state it set, so a later release does not bring it back.
         let framed = conn.query_tree(child)?.reply()?.parent != self.root;
@@ -369,6 +376,17 @@ impl Embedded {
                         .set_input_focus(InputFocus::PARENT, self.child, CURRENT_TIME);
                     self.conn.flush()?;
                 }
+                // A window manager answers a click on QEMU's window by focusing the app's
+                // toplevel (Mutter calls XSetInputFocus on click-to-focus), taking the keyboard
+                // back from QEMU: with the pointer over QEMU's window, the click was meant for it.
+                Event::FocusIn(e)
+                    if e.event == self.parent && self.alive && self.pointer_on_child() =>
+                {
+                    let _ = self
+                        .conn
+                        .set_input_focus(InputFocus::PARENT, self.child, CURRENT_TIME);
+                    self.conn.flush()?;
+                }
                 // Errors from fire-and-forget requests on a child that just died.
                 _ => {}
             }
@@ -413,6 +431,26 @@ impl Embedded {
             w = t.parent;
         }
         false
+    }
+
+    /// Whether the pointer is over QEMU's window (and it is shown).
+    fn pointer_on_child(&self) -> bool {
+        let (w, h) = self.size;
+        self.conn
+            .query_pointer(self.child)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .is_some_and(|p| {
+                p.same_screen
+                    && (0..i32::try_from(w).unwrap_or(i32::MAX)).contains(&i32::from(p.win_x))
+                    && (0..i32::try_from(h).unwrap_or(i32::MAX)).contains(&i32::from(p.win_y))
+            })
+            && self
+                .conn
+                .get_window_attributes(self.container)
+                .ok()
+                .and_then(|c| c.reply().ok())
+                .is_some_and(|a| a.map_state == MapState::VIEWABLE)
     }
 
     /// Unmaps the container (dialogs over the tab, tab switch); focus reverts to the app.
