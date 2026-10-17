@@ -15,5 +15,5 @@
 - [x] 3.1 Install step 2: "Download the full installer" next to the recovery, cache status and delete
 - [x] 3.2 CLI `download --full`, `installer list|remove`
 - [x] 3.3 Tests: catalog parsing, version pick, integrity check, disc (read back and pieces joined), attach, cache
-- [ ] 3.4 End-to-end test on the reference host: Sequoia 15.8.1 (guided and unattended) and Big Sur 11.7.11 (unattended, through the MCP server) installed from the disc to Setup Assistant; Tahoe still to test
+- [x] 3.4 End-to-end test on the reference host: Sequoia 15.8.1 (guided and unattended) and Big Sur 11.7.11 (unattended, through the MCP server) installed from the disc to Setup Assistant; Tahoe still to test — Tahoe waived by the user on 2026-10-17; Sequoia and Big Sur done as recorded.
 - [x] 3.5 Docs: getting started, troubleshooting, architecture, CLI
