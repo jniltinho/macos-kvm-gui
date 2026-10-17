@@ -24,7 +24,7 @@ pub use installer::{
 };
 pub use recovery::{
     RECOVERY_PRODUCTS, RecoveryProduct, STAGE_CHUNKLIST, STAGE_CONVERT, STAGE_IMAGE, STAGE_VERIFY,
-    download_media, download_recovery, recovery_product,
+    download_media, recovery_product,
 };
 
 /// Progress of a long operation, for the UI and the CLI.

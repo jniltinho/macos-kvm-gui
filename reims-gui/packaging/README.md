@@ -18,6 +18,8 @@ crates licensed Apache-2.0 only, which GPL-2.0 does not allow, so **the binary i
 under GPL-3.0-or-later** (LICENSES/GPL-3.0-or-later.txt).
 
 - THIRD_PARTY_NOTICES.md: code adapted from other projects and their licenses.
+- third-party/: the license texts of the boot assets (OpenCore, Lilu, VirtualSMC, WhateverGreen,
+  OVMF), the icons and the fonts.
 - THIRD_PARTY_LICENSES: the license text of every Rust crate compiled into the binary.
 - The corresponding source (vendored crates and the build Dockerfile included) is
   `reims-gui-<version>-source.tar.gz` on the same GitHub Release.

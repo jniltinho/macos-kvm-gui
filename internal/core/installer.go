@@ -337,7 +337,7 @@ func CachedInstallers() []CachedInstaller {
 			continue
 		}
 		var c CachedInstaller
-		if json.Unmarshal(b, &c) != nil || !bridgeNameRe.MatchString(c.Build) {
+		if json.Unmarshal(b, &c) != nil || !buildRe.MatchString(c.Build) {
 			continue
 		}
 		c.Path = filepath.Join(dir, e.Name(), discFile)
@@ -360,16 +360,24 @@ func CachedInstallerFor(version string) (CachedInstaller, bool) {
 	return CachedInstaller{}, false
 }
 
+// buildRe matches an Apple build id (24H32, 25A5279m): it names a directory under the cache, so it
+// must never be "." or "..".
+var buildRe = regexp.MustCompile(`^[0-9]{2}[A-Z][0-9]{1,5}[a-z]?$`)
+
 // RemoveInstaller deletes a cached installer; one attached to a running VM is kept.
 func RemoveInstaller(build string) error {
 	dir, err := InstallersDir()
 	if err != nil {
 		return err
 	}
-	if !bridgeNameRe.MatchString(build) {
+	if !buildRe.MatchString(build) {
 		return fmt.Errorf("invalid build %q", build)
 	}
 	path := filepath.Join(dir, build)
+	// The build is a single path element; refuse a symlink so the delete never leaves the cache.
+	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s is a symlink, not a cached installer", path)
+	}
 	if discInUse(filepath.Join(path, discFile)) {
 		return errors.New("a running VM is using this installer: shut it down first")
 	}
@@ -401,7 +409,7 @@ func DownloadInstaller(ctx context.Context, version string, progress func(Progre
 		return CachedInstaller{}, err
 	}
 	dir := filepath.Join(root, p.Build)
-	if !bridgeNameRe.MatchString(p.Build) {
+	if !buildRe.MatchString(p.Build) {
 		return CachedInstaller{}, fmt.Errorf("unexpected build %q in Apple's catalog", p.Build)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {

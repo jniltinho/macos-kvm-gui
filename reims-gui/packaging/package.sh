@@ -16,6 +16,13 @@ cargo metadata --format-version 1 --locked --filter-platform x86_64-unknown-linu
 python3 "$here/third-party-licenses.py" "$work/metadata.json" > "$work/THIRD_PARTY_LICENSES"
 cp "$work/THIRD_PARTY_LICENSES" "$dist/THIRD_PARTY_LICENSES"
 
+# License texts THIRD_PARTY_NOTICES.md points to: boot assets, icons, fonts.
+third=$work/third-party
+mkdir -p "$third"
+cp assets/BOOT_ASSETS_NOTICES.md crates/rg-ui/assets/lucide/LICENSE-lucide.txt \
+    crates/rg-ui/assets/fonts/OFL-NotoSans.txt crates/rg-ui/assets/fonts/OFL-JetBrainsMono.txt "$third/"
+cp assets/files/ovmf/copyright "$third/OVMF-copyright"
+
 # Plain binary, named per release so both releases' files sit side by side in dist/.
 base=reims-gui-$version-ubuntu$rel-x86_64
 install -m 0755 "$bin" "$dist/$base"
@@ -24,7 +31,7 @@ install -m 0755 "$bin" "$dist/$base"
 tree=$work/tar/$base
 mkdir -p "$tree"
 cp "$bin" "$tree/reims-gui"
-cp -R LICENSE LICENSES THIRD_PARTY_NOTICES.md "$work/THIRD_PARTY_LICENSES" "$here/README.md" \
+cp -R LICENSE LICENSES THIRD_PARTY_NOTICES.md "$third" "$work/THIRD_PARTY_LICENSES" "$here/README.md" \
     "$here/reims-gui.desktop" "$here/reims-gui.svg" "$tree/"
 tar --sort=name --owner=0 --group=0 --numeric-owner --mtime=@0 -C "$work/tar" -cf - "$base" \
     | gzip -9n > "$dist/$base.tar.gz"
@@ -37,7 +44,8 @@ mkdir -p "$root/DEBIAN" "$root/usr/bin" "$root/usr/share/applications" \
 install -m 0755 "$bin" "$root/usr/bin/reims-gui"
 install -m 0644 "$here/reims-gui.desktop" "$root/usr/share/applications/reims-gui.desktop"
 install -m 0644 "$here/reims-gui.svg" "$root/usr/share/icons/hicolor/scalable/apps/reims-gui.svg"
-cp -R "$here/copyright" LICENSE LICENSES THIRD_PARTY_NOTICES.md "$work/THIRD_PARTY_LICENSES" "$here/README.md" "$doc/"
+cp -R "$here/copyright" LICENSE LICENSES THIRD_PARTY_NOTICES.md "$third" "$work/THIRD_PARTY_LICENSES" \
+    "$here/README.md" "$doc/"
 chmod -R u+rwX,go+rX,go-w "$root/usr"
 
 # dpkg-shlibdeps wants a debian/control next to it.

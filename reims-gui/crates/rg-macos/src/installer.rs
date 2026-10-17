@@ -255,8 +255,7 @@ pub fn cached_installers(dir: &Path) -> Vec<CachedInstaller> {
             let b = fs::read(e.path().join("info.json")).ok()?;
             let product: InstallerProduct = serde_json::from_slice(&b).ok()?;
             let path = e.path().join(DISC_FILE);
-            (rg_core::network::valid_bridge_name(&product.build)
-                && fs::metadata(&path).ok()?.len() > product.size)
+            (valid_build(&product.build) && fs::metadata(&path).ok()?.len() > product.size)
                 .then_some(CachedInstaller { product, path })
         })
         .collect();
@@ -272,12 +271,27 @@ pub fn cached_installer_for(dir: &Path, version: &str) -> Option<CachedInstaller
         .find(|c| major_of(&c.product.version) == major)
 }
 
+/// An Apple build id (`24H32`, `25A5279m`), Go `buildRe`. It names a directory under the cache,
+/// so it must never be `.`, `..` or contain a separator.
+fn valid_build(s: &str) -> bool {
+    static BUILD: LazyLock<Option<Regex>> =
+        LazyLock::new(|| Regex::new(r"^[0-9]{2}[A-Z][0-9]{1,5}[a-z]?$").ok());
+    BUILD.as_ref().is_some_and(|re| re.is_match(s.as_bytes()))
+}
+
 /// Deletes a cached installer; one attached to a running VM is kept.
 pub fn remove_installer(dir: &Path, build: &str) -> Result<()> {
-    if !rg_core::network::valid_bridge_name(build) {
+    if !valid_build(build) {
         return other(format!("invalid build {build:?}"));
     }
     let path = dir.join(build);
+    // The build is a single path element; refuse a symlink so the delete never leaves the cache.
+    if fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink()) {
+        return other(format!(
+            "{} is a symlink, not a cached installer",
+            path.display()
+        ));
+    }
     if disc_in_use(&path.join(DISC_FILE)) {
         return other("a running VM is using this installer: shut it down first");
     }
@@ -315,7 +329,7 @@ pub fn download_installer(
         p.size as f64 / 1e9,
         p.url
     ));
-    if !rg_core::network::valid_bridge_name(&p.build) {
+    if !valid_build(&p.build) {
         return other(format!("unexpected build {:?} in Apple's catalog", p.build));
     }
     let bdir = dir.join(&p.build);
@@ -887,6 +901,39 @@ mod tests {
         remove_installer(&cache, "24H32")?;
         assert!(!dir.exists(), "removed after the VM stops");
         assert!(remove_installer(&cache, "../x").is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn remove_installer_stays_in_the_cache() -> TestResult {
+        let tmp = tempdir()?;
+        let cache = tmp.join("ws/.installers");
+        let outside = tmp.join("outside");
+        fs::create_dir_all(&cache)?;
+        fs::create_dir_all(&outside)?;
+        fs::write(outside.join("keep"), b"")?;
+        std::os::unix::fs::symlink(&outside, cache.join("24H33"))?;
+        let abs = outside.to_string_lossy().into_owned();
+        for b in [
+            "..",
+            ".",
+            "a/../..",
+            "../x",
+            abs.as_str(),
+            "24H33",
+            "",
+            "24H32/..",
+        ] {
+            assert!(
+                remove_installer(&cache, b).is_err(),
+                "{b:?} must be refused"
+            );
+        }
+        assert!(outside.join("keep").exists() && cache.exists());
+
+        fs::create_dir_all(cache.join("25A5279m"))?;
+        remove_installer(&cache, "25A5279m")?;
+        assert!(!cache.join("25A5279m").exists());
         Ok(())
     }
 
