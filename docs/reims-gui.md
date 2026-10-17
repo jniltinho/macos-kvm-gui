@@ -93,6 +93,11 @@ Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop 
 - Keys do nothing: click inside the guest first; the app gives QEMU's window the input focus on click.
 - GNOME's shortcuts (Super, Alt+Tab) act on the desktop instead of macOS: release and recapture with Ctrl+Alt+Super, then click the guest.
 - A dialog is open: the guest is hidden and gets no input until it closes.
+- Brazilian ABNT2: the `/?` key next to right Shift types nothing in macOS's Brazilian ABNT2 layout (the key reaches the guest; macOS gives it nothing, as with an ABNT2 USB keyboard on a Mac). Type `/` with Option+Q (AltGr+Q) and `?` with Option+W.
+
+### Diagnostics
+
+`RG_DEBUG=1 reims-gui` traces the embedding (`[embed]`, `[rg-x11]`) and echoes QEMU's output (`[vm]`) on stderr; with `REIMS_VGPU_STATS=1` that includes Reims vGPU's frame statistics once a second.
 
 ### Docker build
 

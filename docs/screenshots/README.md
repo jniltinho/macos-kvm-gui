@@ -105,3 +105,19 @@ Settings › Display: Graphics Controller, Resolution and the one-time `METAL_ER
 ![reims-gui: a dialog hides the guest](reims-gui-dialog-hides-screen.png)
 
 While a dialog covers the Screen tab, the embedded guest is hidden, so clicks never reach macOS.
+
+![reims-gui: Install](reims-gui-install.png)
+
+The Install tab's steps, as in the Go app.
+
+![reims-gui: Host](reims-gui-host.png)
+
+![reims-gui: Host, dark theme](reims-gui-host-dark.png)
+
+![reims-gui: GPU](reims-gui-gpu.png)
+
+The GPU tab on a host with an RTX 4070 and an RX 6700 XT: neither is eligible for passthrough (no macOS driver; the 6700 XT needs a patch kext listed in settings.yaml).
+
+![reims-gui: New Virtual Machine](reims-gui-new-vm.png)
+
+![reims-gui: New Virtual Machine, dark theme](reims-gui-new-vm-dark.png)

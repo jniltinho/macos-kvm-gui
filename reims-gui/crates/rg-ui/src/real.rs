@@ -842,10 +842,17 @@ impl Inner {
             });
             let fwd = inner.clone();
             let pid = started.pid;
+            // `RG_DEBUG=1`: QEMU's output on stderr too (e.g. `REIMS_VGPU_STATS=1` frame rates).
+            let echo = std::env::var_os("RG_DEBUG").is_some();
             inner.rt.spawn(async move {
                 while let Some(ev) = events.recv().await {
                     match ev {
-                        VmEvent::Log(l) => fwd.log(l),
+                        VmEvent::Log(l) => {
+                            if echo {
+                                eprintln!("[vm] {l}");
+                            }
+                            fwd.log(l)
+                        }
                         VmEvent::State(s, m) => {
                             let state = vm_state(s);
                             if state == VmState::Stopped {
@@ -1259,8 +1266,9 @@ impl Backend for RealBackend {
         Some(if !s.in_app {
             ScreenSource::Standalone
         } else if s.reims {
-            // Reims vGPU's window is on X11 when this app (or an X11 session) started it.
-            if x11 && s.pid != 0 {
+            // Only a VM this app started: it put Reims vGPU's window on X11 for the tab. Others
+            // (CLI, MCP, the Go app, `--display window`) keep the window they opened.
+            if x11 && !s.outside && s.pid != 0 {
                 ScreenSource::Window {
                     pid: s.pid,
                     reims: true,

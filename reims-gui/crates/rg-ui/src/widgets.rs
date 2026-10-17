@@ -291,7 +291,7 @@ pub fn button(ui: &mut Ui, icon: &str, label: &str, primary: bool, enabled: bool
     ui.add_enabled(enabled, b)
 }
 
-/// Accent-colored link-like text button (tab strips, pages).
+/// A combo box of `options` (value, label) that sets `value`; true when the user changed it.
 pub fn combo<T: PartialEq + Clone>(
     ui: &mut Ui,
     id: &str,
@@ -304,7 +304,7 @@ pub fn combo<T: PartialEq + Clone>(
         .find(|(v, _)| v == value)
         .map_or("", |(_, l)| *l);
     let mut changed = false;
-    egui::ComboBox::from_id_salt(id)
+    let r = egui::ComboBox::from_id_salt(id)
         .selected_text(current)
         .width(width)
         .show_ui(ui, |ui| {
@@ -315,6 +315,22 @@ pub fn combo<T: PartialEq + Clone>(
                 }
             }
         });
+    if r.inner.is_some() {
+        // In a modal, a click whose press and release land in one frame (an idle window, a
+        // touchpad tap) opens the popup and then raises the modal over it at the end of that
+        // frame: raise the popup (egui's `ComboBox::widget_to_popup_id`) and draw once more.
+        let layer = egui::LayerId::new(egui::Order::Foreground, r.response.id.with("popup"));
+        let ctx = ui.ctx();
+        let top = ctx.memory(|m| {
+            m.layer_ids()
+                .filter(|l| l.order == egui::Order::Foreground)
+                .last()
+        });
+        if top != Some(layer) {
+            ctx.move_to_top(layer);
+            ctx.request_repaint();
+        }
+    }
     changed
 }
 
@@ -455,21 +471,26 @@ pub fn modal(
             ui.add_space(6.0);
             ui.separator();
             let mut out = Footer::None;
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if let Some(c) = cancel
-                    && button(ui, "x", c, false, true)
-                        .on_hover_text("Esc")
-                        .clicked()
-                {
-                    out = Footer::Cancel;
-                }
-                if let Some(o) = ok
-                    && button(ui, "check", o, true, true)
-                        .on_hover_text("Enter")
-                        .clicked()
-                {
-                    out = Footer::Ok;
-                }
+            // A row as tall as its buttons: a bare right-to-left layout would take the height
+            // left in the modal, which keeps the size of the last (taller) dialog shown under
+            // the same id, and float the buttons in the middle of the gap.
+            ui.horizontal(|ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if let Some(c) = cancel
+                        && button(ui, "x", c, false, true)
+                            .on_hover_text("Esc")
+                            .clicked()
+                    {
+                        out = Footer::Cancel;
+                    }
+                    if let Some(o) = ok
+                        && button(ui, "check", o, true, true)
+                            .on_hover_text("Enter")
+                            .clicked()
+                    {
+                        out = Footer::Ok;
+                    }
+                });
             });
             out
         });
