@@ -39,10 +39,10 @@
 
   Verify: rg-agent MCP tests mirroring 4.2, and both apps' `tools/list` include the three tools with input schemas.
 
-- [ ] 4.4 Go MCP `vm_ssh` (design D6): the system `ssh` with the app's known_hosts; a password through the `ssh-askpass` helper mode and a per-call 0700 Unix socket checked with SO_PEERCRED; output caps; timeout with a process-group kill; `confirm` required; the port from the running QEMU's `hostfwd`.
+- [x] 4.4 Go MCP `vm_ssh` (design D6): the system `ssh` with the app's known_hosts; a password through the `ssh-askpass` helper mode and a per-call 0700 Unix socket checked with SO_PEERCRED; output caps; timeout with a process-group kill; `confirm` required; the port from the running QEMU's `hostfwd`. — done: unit tests (argv, askpass socket, guards, cap, timeout); real chain vs an alpine sshd (MKG_TEST_SSHD=1); live 2026-10-17 through `macos-kvm-gui mcp` on the Nilton VM: vm_config_set moved it to 2223 (the "Also used by sonoma-test" warning went away), vm_start, vm_ssh without a password → 255 at once, with the password → stdout "15.8.1\nnilton", exit 0.
 
   Verify: unit tests for argv (no password in it), the socket answering only its ssh's child and only once, and the guards (stopped VM, no confirm); the real `ssh → askpass` chain against a local test sshd in a container; live against the Nilton VM: `sw_vers -productVersion` returns 15.8.1 with the password.
-- [ ] 4.5 Rust MCP `vm_ssh`, mirroring 4.4.
+- [x] 4.5 Rust MCP `vm_ssh`, mirroring 4.4. — done: unit tests and the ssh_e2e test vs an ubuntu sshd; live through `reims-gui mcp` on the Nilton VM: vm_ssh → "15.8.1\nnilton", exit 0; vm_config_set refused while running; vm_ssh on the stopped sonoma-test → "is not running".
 
   Verify: rg-agent tests mirroring 4.4, and the same live check through reims-gui's MCP.
 
