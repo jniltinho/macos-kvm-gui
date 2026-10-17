@@ -21,6 +21,7 @@ The app owns one QEMU child process per instance; it is not a libvirt frontend a
 | `internal/core/host.go`, `gpu.go` | Host checks, sysfs PCI/DRM/IOMMU discovery, GPU guards and constant privileged scripts. |
 | `internal/core/rootpatch.go` | Root-patch mode for NVIDIA Kepler: OCLP 2.5.1's Kepler ID list, the four kexts downloaded from OCLP's pinned commit (SHA-256), and the config.plist parts (SIP 0x803, kexts, boot-args, `revblock`); a marker in the VM folder makes the first boot with the mode off delete the lowered NVRAM values. |
 | `internal/core/reims.go`, `reimshost.go`, `reimspkg.go`, `reimskext.go`, `reims/` | [Reims vGPU](reims-vgpu.md): finding its QEMU, downloading ReimsVgpu.kext for Tahoe VMs, the host checks (`apple-gfx-pci`, Vulkan, `vm.max_map_count`, `/dev/udmabuf`), the QEMU arguments, and installing a prebuilt package or building one in Docker from the embedded `reims/Dockerfile` and `reims/manifest.json`. |
+| `internal/embed/` | Reims vGPU's window in the Screen tab: cgo over reims-gui's `rg-x11` C ABI (`reims_embed` tag) or a stub; the GUI side is `internal/gui/embedhost.go`. See [development](development.md#embedding-reims-vgpus-window). |
 | `internal/core/workspace.go` | Workspace lock, staging, disk creation and media removal. |
 | `internal/core/recovery.go`, `chunklist.go` | Apple recovery protocol and signed chunklist/image verification. |
 | `internal/core/boot.go` | Asset extraction, SMBIOS identity and OpenCore template rendering. |

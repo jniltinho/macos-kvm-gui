@@ -14,5 +14,7 @@ thiserror.workspace = true
 x11rb.workspace = true
 
 [dev-dependencies]
+# XTEST presses the pointer buttons in the focus tests.
+x11rb = { workspace = true, features = ["xtest"] }
 # Test helper only (examples/sdl_window.rs): a real SDL3 X11 window; Ubuntu 24.04 has no libsdl3.
 sdl3.workspace = true

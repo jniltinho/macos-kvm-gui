@@ -3776,6 +3776,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rg-x11-ffi"
+version = "0.1.4"
+dependencies = [
+ "rg-x11",
+ "x11rb",
+]
+
+[[package]]
 name = "rgb"
 version = "0.8.53"
 source = "registry+https://github.com/rust-lang/crates.io-index"

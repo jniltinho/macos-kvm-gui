@@ -14,7 +14,7 @@
 | Metal | No: macOS has no driver, it draws on the CPU into a framebuffer | Yes, through the host's Vulkan driver | Yes, on the real card |
 | GPU needed | None | The host's own GPU, shared with the desktop | A second, macOS-supported card, reserved for the VM |
 | Host changes | None | A separate QEMU build in the Workspace, `vm.max_map_count` | `vfio-pci` reservation and a reboot |
-| Screen | In the app or a QEMU window | Reims vGPU's own window | A monitor on the passed-through card |
+| Screen | In the app or a QEMU window | Reims vGPU's window, inside the Screen tab when the app started the VM on X11 | A monitor on the passed-through card |
 | Status | Validated (Sonoma) | Experimental | Untested on real hardware |
 
 Reims vGPU and GPU passthrough are mutually exclusive per VM. Other VMs keep VMware SVGA and the system QEMU.
@@ -160,10 +160,27 @@ To check it, run `system_profiler SPDisplaysDataType` in the guest: it shows **A
 
 ## The screen
 
-A Reims VM's screen is Reims vGPU's own accelerated window, opened by the library through SDL3 and Vulkan, whatever the VM's Display setting. Keyboard and mouse go to that window. The app still serves its private VNC socket, so:
+A Reims VM's screen is Reims vGPU's own accelerated window, opened by the library through SDL3 and Vulkan, whatever the VM's Display setting.
+
+**Inside the Screen tab.** When the app starts the VM and its window is on X11 (directly, or through XWayland on a Wayland desktop), that window is moved into the **Screen** tab, the way [reims-gui](reims-gui.md) does it, with the same code (`reims-gui/crates/rg-x11` through a C ABI; see [development](development.md#embedding-reims-vgpus-window)):
+- It opens on the desktop for an instant and then joins the tab.
+- It follows the tab when the app window moves or resizes, at any HiDPI scale.
+- It hides while a dialog or a menu is open over it, or another tab is selected.
+- Click it to type in macOS; Ctrl+Alt+Super releases the capture, and a click on the app's own controls gives them the keyboard back.
+- On SIGTERM, SIGINT or SIGHUP the app puts the window back on the desktop before it exits. QEMU still stops with the app.
+
+![macOS on Reims vGPU inside the Go app's Screen tab](screenshots/reims-embedded.png)
+
+**In its own window** otherwise. The window stays on the desktop and keyboard and mouse go there when:
+- the VM was started by `vm start` or the MCP server;
+- the window could not be found within 30 seconds (the Log tab says why);
+- there is no X server;
+- the app was built without embedding (plain `go build`, without `-tags reims_embed`).
+
+Either way the app still serves its private VNC socket, so:
 
 - the **Preview** in Details keeps updating;
-- the **Screen** tab does not attach; it says that the screen is in the Reims vGPU window;
+- when the window is not embedded, the **Screen** tab does not attach; it says that the screen is in the Reims vGPU window;
 - the [MCP server](mcp.md)'s `screen_capture`, `send_keys`, `type_text` and `pointer` keep working, for VMs started by the app, by `vm start` or by the MCP server.
 
 VNC is not used as the screen because reading frames from the paravirtual GPU through QEMU's console is slow (upstream measured about 1.7 s per 1080p frame), fine for a preview but not to work in.

@@ -268,9 +268,14 @@ func TestReimsQEMUSearch(t *testing.T) {
 }
 
 func TestReimsEnvAndExit(t *testing.T) {
-	env := reimsEnv([]string{"HOME=/h", "REIMS_VGPU_WINDOW=0", "PATH=/bin"})
-	if strings.Join(env, " ") != "HOME=/h PATH=/bin" {
+	env := reimsEnv([]string{"HOME=/h", "REIMS_VGPU_WINDOW=0", "SDL_VIDEO_DRIVER=wayland", "PATH=/bin"}, false)
+	if strings.Join(env, " ") != "HOME=/h SDL_VIDEO_DRIVER=wayland PATH=/bin" {
 		t.Errorf("env: %v", env)
+	}
+	// Embedding: the window must be on X11, whatever the user's SDL driver.
+	env = reimsEnv([]string{"HOME=/h", "REIMS_VGPU_WINDOW=0", "SDL_VIDEO_DRIVER=wayland"}, true)
+	if strings.Join(env, " ") != "HOME=/h SDL_VIDEO_DRIVER=x11" {
+		t.Errorf("embed env: %v", env)
 	}
 	m := explainExit(errors.New("exit status 1"), []string{"reims-vgpu: fatal: cannot open /dev/udmabuf: Permission denied"})
 	if !strings.Contains(m, "usermod -aG") {
@@ -310,7 +315,7 @@ func TestReimsRealizesPaused(t *testing.T) {
 	args := append(BuildArgs(c, w, filepath.Join(run, "qmp.sock"), false, nil), "-S")
 	cmd := exec.Command(qemu, args...)
 	cmd.Dir = w.Dir
-	cmd.Env = append(reimsEnv(os.Environ()), "REIMS_VGPU_WINDOW=0") // no window in tests
+	cmd.Env = append(reimsEnv(os.Environ(), false), "REIMS_VGPU_WINDOW=0") // no window in tests
 	var out strings.Builder
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := cmd.Start(); err != nil {

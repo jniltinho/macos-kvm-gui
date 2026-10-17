@@ -121,6 +121,10 @@ Keep personal paths and data out of the captures: run a separate instance with `
 
 ## Reims vGPU
 
+![Reims vGPU inside the Screen tab](reims-embedded.png)
+
+The Go app with a Sequoia VM on Reims vGPU embedded in the Screen tab (RTX 4070, KDE Plasma on X11), through reims-gui's rg-x11.
+
 ![Settings › Display with Reims vGPU](reims-settings.png)
 
 Settings › Display with **Reims vGPU (experimental)** as the graphics controller: the resolution, the notes on what was validated, and the one-time `METAL_ERROR_MODE` commands with Copy buttons. Modals have rounded corners and a stronger shadow.

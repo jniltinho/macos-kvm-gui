@@ -10,7 +10,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
     AtomEnum, ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux,
-    EventMask, InputFocus, MapState, PropMode, SetMode, Window, WindowClass,
+    EventMask, InputFocus, KeyButMask, MapState, PropMode, SetMode, Window, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
@@ -379,8 +379,13 @@ impl Embedded {
                 // A window manager answers a click on QEMU's window by focusing the app's
                 // toplevel (Mutter calls XSetInputFocus on click-to-focus), taking the keyboard
                 // back from QEMU: with the pointer over QEMU's window, the click was meant for it.
+                // Only while the app is still the active one: a FocusIn queued before the user
+                // switched to another application must not pull the keyboard back.
                 Event::FocusIn(e)
-                    if e.event == self.parent && self.alive && self.pointer_on_child() =>
+                    if e.event == self.parent
+                        && self.alive
+                        && self.pointer_on_child()
+                        && self.app_active() =>
                 {
                     let _ = self
                         .conn
@@ -451,6 +456,30 @@ impl Embedded {
                 .ok()
                 .and_then(|c| c.reply().ok())
                 .is_some_and(|a| a.map_state == MapState::VIEWABLE)
+    }
+
+    /// A click on the app's own UI while the guest has the keyboard: if the keyboard is in the
+    /// guest, a pointer button is held, and the pointer is over the app's window but not over the
+    /// guest, gives the keyboard to the app's window. For hosts that cannot see their own clicks
+    /// (the Go app: GLFW holds the window's ButtonPress selection, which X11 grants to one client
+    /// only); call it every frame. Returns whether it moved the keyboard.
+    pub fn return_focus_on_app_click(&self) -> Result<bool> {
+        if !self.alive || self.conn.get_input_focus()?.reply()?.focus != self.child {
+            return Ok(false);
+        }
+        let p = self.conn.query_pointer(self.parent)?.reply()?;
+        let buttons = KeyButMask::BUTTON1 | KeyButMask::BUTTON2 | KeyButMask::BUTTON3;
+        if !p.same_screen || u16::from(p.mask) & u16::from(buttons) == 0 {
+            return Ok(false);
+        }
+        let g = self.conn.get_geometry(self.parent)?.reply()?;
+        let inside = (0..i32::from(g.width)).contains(&i32::from(p.win_x))
+            && (0..i32::from(g.height)).contains(&i32::from(p.win_y));
+        if !inside || self.pointer_on_child() {
+            return Ok(false);
+        }
+        self.unfocus()?;
+        Ok(true)
     }
 
     /// Unmaps the container (dialogs over the tab, tab switch); focus reverts to the app.

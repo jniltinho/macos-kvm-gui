@@ -406,9 +406,83 @@ fn enter_gives_focus_only_while_the_app_is_active() {
     conn.sync().unwrap();
     wm_focuses_app(&mut e);
     assert_eq!(focus(), app, "a click on the app keeps the keyboard there");
+
+    // A FocusIn on the app, still queued when the user switches to another application, must
+    // not pull the keyboard back to the guest on the next pump.
+    // (The focus must leave the app first: focusing the window that has it sends no FocusIn.)
+    set_focus(other);
+    conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, 100, 100)
+        .unwrap();
+    conn.sync().unwrap();
+    let until = Instant::now() + Duration::from_millis(200);
+    while Instant::now() < until {
+        e.pump().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    set_focus(app);
+    set_active(other);
+    set_focus(other);
+    let until = Instant::now() + Duration::from_millis(400);
+    while Instant::now() < until {
+        e.pump().unwrap();
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert_eq!(focus(), other, "a stale FocusIn stole the keyboard");
 }
 
 #[test]
 fn no_x_server() {
     assert!(!probe(Some(":9999")));
+}
+
+/// A click on the app's own UI (a button held over the app's window, outside the guest) gives
+/// the keyboard back to the app; a click on the guest does not.
+#[test]
+fn a_click_on_the_app_returns_the_keyboard() {
+    use x11rb::protocol::xtest::ConnectionExt as _;
+    let (_x, display) = xvfb();
+    let (conn, app) = app_window(&display);
+    let root = conn.setup().roots[0].root;
+    let child = sdl_window(&display, "Reims vGPU");
+    let embedder = Embedder::new(Some(&display), app).unwrap();
+    let win = embedder
+        .find_window(child.0.id(), WindowKind::Reims, Duration::from_secs(30))
+        .unwrap();
+    let mut e = embedder.embed(win).unwrap();
+    e.set_rect(0, 0, 640, 360).unwrap();
+    wait("child configured", || {
+        e.pump().unwrap();
+        e.last_latency().is_some()
+    });
+    let focus = || conn.get_input_focus().unwrap().reply().unwrap().focus;
+    let button = |down: bool| {
+        let t = if down { 4 } else { 5 }; // ButtonPress, ButtonRelease
+        conn.xtest_fake_input(t, 1, x11rb::CURRENT_TIME, root, 0, 0, 0)
+            .unwrap();
+        conn.sync().unwrap();
+    };
+    let warp = |x, y| {
+        conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, x, y)
+            .unwrap();
+        conn.sync().unwrap();
+    };
+    e.focus().unwrap();
+
+    // Held over the guest: the keyboard stays there.
+    warp(100, 100);
+    button(true);
+    assert!(!e.return_focus_on_app_click().unwrap());
+    button(false);
+    assert_eq!(focus(), win);
+
+    // No button held over the app: nothing changes.
+    warp(900, 600);
+    assert!(!e.return_focus_on_app_click().unwrap());
+    assert_eq!(focus(), win);
+
+    // Held over the app's UI: the app gets the keyboard.
+    button(true);
+    assert!(e.return_focus_on_app_click().unwrap());
+    button(false);
+    assert_eq!(focus(), app);
 }

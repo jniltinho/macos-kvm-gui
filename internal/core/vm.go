@@ -163,6 +163,9 @@ func (s VMState) String() string {
 type VM struct {
 	OnState func(VMState, string) // state and message (error or warning)
 	OnLog   func(string)
+	// EmbedX11 (set by the GUI before Start, never by the CLI or MCP): a Reims vGPU VM opens
+	// its window on X11 (SDL_VIDEO_DRIVER=x11) so the app can embed it in the Screen tab.
+	EmbedX11 bool
 
 	mu       sync.Mutex
 	proc     *os.Process
@@ -288,7 +291,7 @@ func (v *VM) Start(c Config) error {
 		cmd := exec.Command(qemu, args...)
 		cmd.Dir = dir
 		if c.Reims() {
-			cmd.Env = reimsEnv(os.Environ())
+			cmd.Env = reimsEnv(os.Environ(), v.EmbedX11)
 		}
 		cmd.SysProcAttr = &syscall.SysProcAttr{Pdeathsig: syscall.SIGTERM, Setpgid: true} // Ctrl+C in a terminal must not reach QEMU
 		pr, pw := io.Pipe()
@@ -409,6 +412,16 @@ func (v *VM) onEvent(e QMPEvent) {
 // Powerdown asks the guest to shut down; the state only changes when QEMU exits.
 // VNCSocket returns the VNC socket of the running VM, or "" when it is stopped or uses
 // QEMU's own window.
+// Pid is QEMU's process id while it runs, else 0.
+func (v *VM) Pid() int {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.proc == nil {
+		return 0
+	}
+	return v.proc.Pid
+}
+
 func (v *VM) VNCSocket() string {
 	v.mu.Lock()
 	defer v.mu.Unlock()

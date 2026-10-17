@@ -363,6 +363,9 @@ func (u *ui) refreshDetails() {
 		map[bool]string{true: "VNC on a private socket", false: "Disabled"}[u.cfg.InApp()]
 	if u.cfg.Reims() {
 		shown, ctrl, remote = "Reims vGPU window", "Reims vGPU (apple-gfx-pci)", "VNC on a private socket (Preview only)"
+		if u.emb.enabled() {
+			shown = "Screen tab (Reims vGPU window, embedded)"
+		}
 	}
 	set("Display/Shown", shown)
 	set("Display/Graphics Controller", ctrl)
@@ -511,6 +514,8 @@ func (u *ui) refreshStatus(s core.VMState, outside bool) {
 		text = "● Running (outside the app)  ·  Started by the command line or an AI agent (MCP). Keys and clicks on the screen go to macOS; shut it down in macOS or where it was started."
 	case outside && u.cfg.Reims():
 		text = "● Running (outside the app)  ·  Started by the command line or an AI agent (MCP), in the Reims vGPU window. Shut it down in macOS or where it was started."
+	case s != core.Stopped && u.cfg.Reims() && u.emb.h != nil:
+		text += "  ·  The Reims vGPU display is in the Screen tab; click it to type, Ctrl+Alt+Super releases the capture."
 	case s != core.Stopped && u.cfg.Reims():
 		text += "  ·  In the Reims vGPU window; the Preview follows it."
 	case s != core.Stopped && u.cfg.InApp():
@@ -630,6 +635,10 @@ func (u *ui) startKexts(verbose bool, ks core.ExtraKexts) {
 	if verbose {
 		u.appendLog("[VM] verbose boot: macOS prints its boot log on screen (boot-args -v debug=0x100)")
 	}
+	u.vm.EmbedX11 = false
+	if c.Reims() {
+		u.emb.prepare(u.vm)
+	}
 	if err := u.vm.Start(c); err != nil {
 		dialog.ShowError(err, u.win)
 		u.refresh()
@@ -637,6 +646,10 @@ func (u *ui) startKexts(verbose bool, ks core.ExtraKexts) {
 	}
 	u.refresh()
 	if c.Reims() { // the screen is Reims vGPU's window; VNC feeds the Preview only
+		if u.vm.EmbedX11 { // ... embedded in the Screen tab
+			u.emb.started(u.vm.Pid())
+			u.tabs.SelectIndex(1)
+		}
 		gen := u.previewGen
 		go func() {
 			v, err := core.DialVNC(u.vm.VNCSocket())

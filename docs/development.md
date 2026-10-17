@@ -10,7 +10,7 @@ Use the Go version declared in [`go.mod`](../go.mod) (**1.27.2**), CGO, Make and
 sudo apt install make gcc pkg-config libgl1-mesa-dev xorg-dev \
   libwayland-dev libxkbcommon-dev wayland-protocols qemu-utils \
   curl unzip
-make build          # dist/macos-kvm-gui (Go) and dist/reims-gui (Rust, built in Docker)
+make build          # dist/macos-kvm-gui (Go, with Reims vGPU window embedding) and dist/reims-gui (Rust, built in Docker)
 make build-go       # only the Go app; make build-rust: only reims-gui
 make run            # build the Go app and launch it
 make build-prod     # stripped, -trimpath, main.version from VERSION
@@ -19,6 +19,21 @@ make build-prod     # stripped, -trimpath, main.version from VERSION
 Boot assets are committed; a normal build does not fetch them. An empty Go module cache may still require network access for dependencies. Running the app also needs `qemu-system-x86` and `pkexec`; see [requirements](getting-started.md#requirements).
 
 `make package VERSION=v0.X.Y` packages both apps into `dist/`: `make package-rust` copies reims-gui's single `.deb` and `.tar.gz` (built in Docker by `reims-gui/scripts/build.sh`, for Ubuntu 24.04 and 26.04), and `make package-go` builds the Go app's production binary and calls `scripts/package.sh`, producing a Linux-amd64 `.tar.gz`, `.deb`, `.rpm` and one `.sha256` per artifact in `dist/`. Packaging needs `dpkg-deb`, `rpmbuild` (the `rpm` package on Ubuntu), `tar` and `sha256sum`. The `.rpm` is built from the same tree as the `.deb` and requires Fedora's `qemu-system-x86`, `qemu-img` and `polkit`. The tarball includes the binary, README and licenses; the `.deb` installs the binary, desktop entry and SVG icon. It declares glibc 2.38+, desktop runtime libraries and QEMU/pkexec dependencies. This is not a cross-platform package target. `make clean` removes `dist/`.
+
+## Embedding Reims vGPU's window
+
+The Go app puts Reims vGPU's window inside its Screen tab through reims-gui's X11 code, `reims-gui/crates/rg-x11`, rather than a second implementation. The pieces:
+
+- **The C ABI.** `reims-gui/crates/rg-x11-ffi` exposes it as a static library, with the hand-written header `rg_x11.h` next to it. A test keeps the header and the exported `rgx_*` functions in step. It is the only crate in the reims-gui workspace with `unsafe`.
+- **The Go side.** `internal/embed` wraps it with cgo under the `reims_embed` build tag; without the tag, a stub reports `ErrUnavailable` and the window stays standalone.
+- **Make targets:**
+  - `make embed-lib` builds `reims-gui/target/rg-x11-ffi/release/librg_x11_ffi.a` in the Ubuntu 24.04 Docker image, the one path cgo links.
+  - `make build-go`, `make build-prod` and `make package-go` depend on it and pass `-tags reims_embed`.
+  - Plain `go build .` and `make test` need neither Docker nor Rust.
+- **Tests:** `make test-embed` builds rg-x11's `sdl_window` test helper and runs `internal/embed`'s cgo test under Xvfb (it needs `Xvfb`, `xdotool` and `xwininfo`).
+- **In the GUI (`internal/gui/embedhost.go`):**
+  - When embedding is built in, the app sets `FYNE_PLATFORM=x11` unless you set it, so its window has an X11 id on Wayland desktops too.
+  - It draws its own File / Machine / Help buttons instead of Fyne's native menu bar: their menus are overlays it can hide the guest under.
 
 ## Tests and validation
 

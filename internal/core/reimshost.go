@@ -53,13 +53,17 @@ var reimsAudio = func() string {
 	return "none"
 }
 
-// reimsEnv is QEMU's environment without REIMS_VGPU_WINDOW, so the library opens its window.
-func reimsEnv(env []string) []string {
-	out := make([]string, 0, len(env))
+// reimsEnv is QEMU's environment without REIMS_VGPU_WINDOW, so the library opens its window;
+// with x11 the window is on X11 (SDL_VIDEO_DRIVER=x11) for the app to embed it.
+func reimsEnv(env []string, x11 bool) []string {
+	out := make([]string, 0, len(env)+1)
 	for _, e := range env {
-		if !strings.HasPrefix(e, "REIMS_VGPU_WINDOW=") {
+		if !strings.HasPrefix(e, "REIMS_VGPU_WINDOW=") && !(x11 && strings.HasPrefix(e, "SDL_VIDEO_DRIVER=")) {
 			out = append(out, e)
 		}
+	}
+	if x11 {
+		out = append(out, "SDL_VIDEO_DRIVER=x11")
 	}
 	return out
 }

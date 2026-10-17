@@ -9,9 +9,18 @@ RG_TARGET  := target/release-24.04
 # `make build` leaves both apps there: dist/macos-kvm-gui (Go) and dist/reims-gui (Rust).
 build: build-go build-rust
 
-build-go:
+# The Go app embeds Reims vGPU's window through reims-gui's rg-x11 (C ABI, crates/rg-x11-ffi),
+# built in Docker (Ubuntu 24.04 image) into the one path internal/embed links. Plain `go build`
+# without -tags reims_embed needs none of it and keeps the window standalone.
+EMBED_LIB := reims-gui/target/rg-x11-ffi/release/librg_x11_ffi.a
+GO_TAGS   := -tags reims_embed
+
+embed-lib:
+	cd reims-gui && CARGO_TARGET_DIR=target/rg-x11-ffi scripts/cargo-docker.sh 24.04 cargo build --release --locked -p rg-x11-ffi
+
+build-go: embed-lib
 	mkdir -p dist
-	go build -o $(BIN) .
+	go build $(GO_TAGS) -o $(BIN) .
 
 build-rust:
 	mkdir -p dist
@@ -19,9 +28,9 @@ build-rust:
 	cp reims-gui/$(RG_TARGET)/release/reims-gui dist/reims-gui
 
 # Stripped, reproducible-path binary with the version baked in (used by releases).
-build-prod:
+build-prod: embed-lib
 	mkdir -p dist
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) .
+	go build $(GO_TAGS) -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) .
 
 # OpenCore's validator for the config.plist tests; downloaded once, never committed.
 internal/core/testdata/ocvalidate:
@@ -31,6 +40,11 @@ test: internal/core/testdata/ocvalidate
 	test -z "$$(gofmt -l .)" || { gofmt -l .; echo "run gofmt -w ."; exit 1; }
 	go vet ./...
 	go test -race ./...
+
+# internal/embed's cgo wrapper against the real library, under Xvfb.
+test-embed: embed-lib
+	cd reims-gui && scripts/cargo-docker.sh 24.04 cargo build --locked -p rg-x11 --example sdl_window
+	go test $(GO_TAGS) -count=1 -v -run . ./internal/embed
 
 # Real QEMU/KVM boot of the embedded OpenCore in a temporary workspace.
 test-integration:
@@ -55,4 +69,4 @@ run: build-go
 clean:
 	rm -rf dist
 
-.PHONY: build build-go build-rust build-prod test test-integration package package-go package-rust run clean
+.PHONY: build build-go build-rust build-prod embed-lib test-embed test test-integration package package-go package-rust run clean

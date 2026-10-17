@@ -46,6 +46,9 @@ const (
 	screenIdle  = "The VM screen appears here while it runs. Click it to type."
 	screenReims = "The screen is in the Reims vGPU window.\n\nThis VM runs on Reims vGPU, which draws macOS in its own window on the host's GPU:\n" +
 		"type and click there. The Preview in Details follows it."
+	screenReimsEmbedding = "Bringing Reims vGPU's window into this tab…"
+	screenReimsIdle      = "The VM screen appears here while it runs: Reims vGPU draws macOS on the host's GPU,\n" +
+		"right in this tab. Click it to type; Ctrl+Alt+Super releases the capture."
 )
 
 func newScreen() *screen {

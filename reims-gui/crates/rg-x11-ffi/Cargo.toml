@@ -1,0 +1,29 @@
+[package]
+name = "rg-x11-ffi"
+description = "C ABI over rg-x11, for the Go app (internal/embed)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+# Not the workspace lints: this is the one crate that needs unsafe (the C ABI). The rest of
+# the workspace keeps `unsafe_code = "forbid"`.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+
+[dependencies]
+rg-x11.workspace = true
+
+[dev-dependencies]
+x11rb.workspace = true

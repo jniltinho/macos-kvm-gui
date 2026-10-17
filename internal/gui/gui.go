@@ -23,6 +23,7 @@ import (
 
 	"github.com/jniltinho/macos-kvm-gui/internal/assets"
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
+	"github.com/jniltinho/macos-kvm-gui/internal/embed"
 )
 
 var logo = fyne.NewStaticResource("logo.svg", assets.Logo)
@@ -119,6 +120,7 @@ type ui struct {
 	screen                         *screen
 	screenHolder                   *fyne.Container
 	screenWin                      fyne.Window
+	emb                            *reimsEmbed
 	btnDetach, btnFull             *toolButton
 	btnNew, btnEdit, btnDelete     *toolButton
 	vms                            []core.VMEntry
@@ -146,16 +148,21 @@ func Run(appVersion, configPath string) {
 	// The whole interface is in English, including Fyne's own dialogs (file pickers, buttons),
 	// which otherwise follow the desktop's language. LANGUAGE only selects translations.
 	os.Setenv("LANGUAGE", "en")
+	preferX11()                                       // before the app starts: Fyne picks the platform at init
 	lang.AddTranslationsForLocale([]byte("{}"), "en") // re-reads the language set above
 	a := app.NewWithID("io.github.jniltinho.macos-kvm-gui")
 	a.Settings().SetTheme(appTheme{Theme: theme.DefaultTheme(), mode: themeMode()})
 	a.SetIcon(logo)
 	u := &ui{win: a.NewWindow("macOS KVM " + version), host: core.SystemHost(), vm: &core.VM{}}
+	u.emb = &reimsEmbed{u: u}
 	err := u.loadVMs(configPath)
 
 	u.vm.OnLog = func(s string) { fyne.Do(func() { u.appendLog(s) }) }
 	u.vm.OnState = func(s core.VMState, msg string) {
 		fyne.Do(func() {
+			if s == core.Stopped {
+				u.emb.release()
+			}
 			u.refresh()
 			if msg != "" {
 				u.appendLog("[VM] " + msg)
@@ -177,8 +184,13 @@ func Run(appVersion, configPath string) {
 	)
 	split := container.NewHSplit(u.vmList(), u.tabs)
 	split.Offset = listWidth()
-	u.win.SetMainMenu(u.mainMenu())
+	if embed.Available() { // menus that the embedded guest window can hide under (design D6)
+		top = container.NewVBox(menuBar(u.win, u.mainMenu()), top)
+	} else {
+		u.win.SetMainMenu(u.mainMenu())
+	}
 	u.win.SetContent(container.NewBorder(top, u.statusBar(), nil, nil, split))
+	releaseOnSignals(a, u)
 	a.Settings().AddListener(func(fyne.Settings) {
 		recolorThemed()
 		u.refresh() // cards take their colors when they are marked
@@ -629,7 +641,12 @@ func (u *ui) refresh() {
 	}
 	u.header.Refresh()
 	idle := screenIdle
-	if u.cfg.Reims() {
+	switch {
+	case u.cfg.Reims() && u.emb.h != nil, u.cfg.Reims() && u.emb.pending():
+		idle = u.screen.hint.Text // the embedding sets it
+	case u.cfg.Reims() && !running && u.emb.enabled():
+		idle = screenReimsIdle
+	case u.cfg.Reims():
 		idle = screenReims
 	}
 	if u.screen.hint.Text != idle {
