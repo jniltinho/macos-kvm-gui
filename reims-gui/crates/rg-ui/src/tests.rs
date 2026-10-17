@@ -450,3 +450,120 @@ fn installers_delete_asks_first() {
             .any(|l| l.contains("Delete offline installer"))
     );
 }
+
+// ---- Go parity: close guard, disk size, offline install, root-patch confirmations ----
+
+#[test]
+fn closing_is_refused_while_a_vm_runs() {
+    let mut a = App::new(Box::new(FakeBackend::default()));
+    assert!(!a.refuse_close(), "nothing runs: the window closes");
+    let _ = a.backend.start("2", false);
+    a.reload_vms();
+    a.vms[1].outside = true;
+    assert!(
+        !a.refuse_close(),
+        "a VM started elsewhere keeps running without the app"
+    );
+    a.vms[1].outside = false;
+    assert!(a.refuse_close() && a.refuse_close());
+    assert_eq!(
+        a.modals.len(),
+        1,
+        "one dialog however often the user clicks close"
+    );
+}
+
+#[test]
+fn disk_size_must_be_a_whole_number() {
+    use crate::tabs::disk_task;
+    assert_eq!(disk_task(" 120 "), Ok(Task::CreateDisk { gib: 120 }));
+    assert!(disk_task("80.5").is_err() && disk_task("").is_err());
+}
+
+#[test]
+fn offline_install_box_types_the_line_and_shows_the_screen() {
+    let mut h = harness(ThemeMode::Light, |a| {
+        running_on_screen(a, "1", true);
+        a.set_tab(Tab::Install);
+    });
+    h.get_by_label("Unattended: erase the VM's empty disk and accept Apple's macOS license for me")
+        .click();
+    h.run_steps(3);
+    h.get_by_label("Type it in the VM").click();
+    h.run_steps(5);
+    let a = h.state();
+    assert_eq!(a.tab, Tab::Screen);
+    assert!(a.unattended);
+    assert!(
+        a.log
+            .iter()
+            .any(|l| l == "InstallOffline { unattended: true }")
+    );
+    assert!(
+        a.log
+            .iter()
+            .any(|l| l == "ok: Type the install line in the VM")
+    );
+}
+
+#[test]
+fn offline_install_box_is_hidden_without_the_disc() {
+    let h = harness(ThemeMode::Light, |a| {
+        running_on_screen(a, "2", true);
+        a.set_tab(Tab::Install);
+    });
+    assert!(h.query_by_label("Type it in the VM").is_none());
+}
+
+#[test]
+fn root_patch_mode_changes_only_once_confirmed() {
+    const BOX: &str = "Root-patch mode for an NVIDIA Kepler GPU (OpenCore Legacy Patcher)";
+    let mut h = harness(ThemeMode::Light, |a| a.set_tab(Tab::Gpu));
+    let on = |h: &Harness<'static, App>| h.state().backend.vms()[0].config.root_patch;
+    h.get_by_label(BOX).click();
+    h.run_steps(5);
+    assert!(!on(&h), "not saved before the confirmation");
+    assert!(
+        matches!(&h.state().modals[..], [Modal::Confirm { title, .. }] if title == "Turn on root-patch mode")
+    );
+    h.get_by_label("OK").click();
+    h.run_steps(5);
+    assert!(on(&h));
+    h.get_by_label(BOX).click();
+    h.run_steps(5);
+    assert!(
+        matches!(&h.state().modals[..], [Modal::Confirm { title, .. }] if title == "Turn off root-patch mode")
+    );
+    h.get_by_label("Cancel").click();
+    h.run_steps(5);
+    assert!(on(&h), "Cancel keeps it on");
+}
+
+#[test]
+fn removing_install_media_says_how_much_was_freed() {
+    let mut h = harness(ThemeMode::Light, |a| a.set_tab(Tab::Install));
+    h.state_mut().open(Modal::confirm(
+        "Remove install media",
+        "x",
+        crate::app::Action::Run(Task::RemoveMedia),
+    ));
+    h.run_steps(3);
+    h.get_by_label("OK").click();
+    h.run_steps(5);
+    assert!(
+        matches!(&h.state().modals[..], [Modal::Info { title, text }]
+            if title == "Install media removed" && text.ends_with("1.20 GB freed"))
+    );
+}
+
+#[test]
+fn settings_move_opens_the_move_dialog() {
+    let mut h = harness(ThemeMode::Light, |a| {
+        if let Some(m) = Modal::settings(a) {
+            a.open(m);
+        }
+    });
+    h.get_by_label("Move…").click();
+    h.run_steps(5);
+    assert!(matches!(h.state().modals.as_slice(), [Modal::File(_)]));
+}

@@ -293,6 +293,14 @@ impl App {
         let s = self.cache.install.clone();
         let free = self.busy.is_none() && self.state() == VmState::Stopped;
         let done = s.done();
+        let en = self.enabled();
+        let running = self.state() == VmState::Running;
+        let disc = self
+            .cur
+            .as_deref()
+            .filter(|_| running)
+            .and_then(|id| self.backend.installer_command(id));
+        let idle = self.busy.is_none();
         ScrollArea::vertical().auto_shrink(false).show(ui, |ui| {
             ui.spacing_mut().item_spacing.y = 6.0;
             section_band(ui, icons::app("storage"), "Installation");
@@ -352,10 +360,18 @@ impl App {
             let (b, c, st, acc) = step(2, s.disk.is_some(), first_missing == 2);
             item_card(ui, b, c, "Virtual hard disk", "A qcow2 disk that only takes the space macOS uses.", st, s.disk.as_deref().unwrap_or(""), acc, |ui| {
                 if s.disk.is_none() {
-                    right(ui, |ui| {
-                        if widgets::button(ui, "folder-open", "Create disk (80 GB)", true, free).clicked() {
-                            out.push(Action::Run(Task::CreateDisk { gib: 80 }));
-                        }
+                    ui.horizontal(|ui| {
+                        ui.label("Size");
+                        ui.add(egui::TextEdit::singleline(&mut self.disk_gib).desired_width(60.0));
+                        ui.label("GB (thin, at least 40)");
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if widgets::button(ui, "folder-open", "Create disk", true, free).clicked() {
+                                out.push(match disk_task(&self.disk_gib) {
+                                    Ok(task) => Action::Run(task),
+                                    Err(e) => Action::Modal(Modal::error("Create disk", e)),
+                                });
+                            }
+                        });
                     });
                 }
             });
@@ -363,9 +379,29 @@ impl App {
             let (b, c, st, acc) = step(3, false, ready);
             item_card(ui, b, c, "Install macOS", "Start the VM, erase the disk in Disk Utility and run Reinstall macOS, or install from the full installer.", st, "", acc, |ui| {
                 ui.collapsing("Show the steps inside macOS", |ui| note(ui, MANUAL_STEPS));
+                if let Some((cmd, typable)) = &disc {
+                    ui.separator();
+                    ui.label(bold("Install from the full installer"));
+                    ui.checkbox(&mut self.unattended, "Unattended: erase the VM's empty disk and accept Apple's macOS license for me");
+                    let line = if self.unattended { format!("{cmd} -u") } else { cmd.clone() };
+                    ui.horizontal(|ui| {
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            let tip = if *typable { "Opens Utilities › Terminal in the recovery and types the line (Caps Lock off)" } else { "QEMU's own window has no input channel for the app: copy the line and type it in the recovery's Terminal" };
+                            if widgets::button(ui, "monitor", "Type it in the VM", true, idle && *typable).on_hover_text(tip).clicked() {
+                                out.push(Action::Run(Task::InstallOffline { unattended: self.unattended }));
+                                out.push(Action::Tab(Tab::Screen)); // watch it on the Screen tab
+                            }
+                            if widgets::button(ui, "copy", "Copy", false, true).clicked() {
+                                ui.ctx().copy_text(line.clone());
+                            }
+                            let mut shown = line.as_str();
+                            ui.add(egui::TextEdit::singleline(&mut shown).font(egui::TextStyle::Monospace).desired_width(ui.available_width()));
+                        });
+                    });
+                    caption(ui, OFFLINE_NOTE);
+                }
                 caption(ui, "Stuck at the Apple logo? Start with verbose boot shows macOS's boot log instead of the logo, for that start only.");
                 right(ui, |ui| {
-                    let en = self.enabled();
                     if widgets::button(ui, "play", "Start the VM", true, en.start).clicked() {
                         out.push(Action::Start { verbose: false });
                     }
@@ -529,13 +565,13 @@ impl App {
                 let available = matches!(v.config.version.as_str(), "monterey" | "ventura" | "sonoma" | "sequoia");
                 let mut on = v.config.root_patch;
                 ui.add_enabled_ui(available && !running && self.busy.is_none(), |ui| {
+                    // The box follows the saved setting: it only changes once the user confirms.
                     if ui.checkbox(&mut on, "Root-patch mode for an NVIDIA Kepler GPU (OpenCore Legacy Patcher)").changed() {
-                        let mut c = v.config.clone();
-                        c.root_patch = on;
-                        if let Err(e) = self.backend.save_config(&v.id, &c) {
-                            out.push(Action::Modal(Modal::error("Root-patch mode", &e)));
-                        }
-                        self.vms = self.backend.vms();
+                        out.push(Action::Modal(if on {
+                            Modal::confirm("Turn on root-patch mode", &format!("For {}, {ROOT_PATCH_ON}", v.display_name()), Action::Run(Task::RootPatch { on: true }))
+                        } else {
+                            Modal::confirm("Turn off root-patch mode", ROOT_PATCH_OFF, Action::Run(Task::RootPatch { on: false }))
+                        }));
                     }
                 });
                 caption(ui, if !available && !v.config.root_patch {
@@ -655,6 +691,20 @@ fn nic_summary(n: &rg_core::Nic) -> String {
 }
 
 pub(crate) const NO_GPU: &str = "None (emulated display)";
+
+/// Install step 3's size field: the disk to create, or why the text is not a size.
+pub(crate) fn disk_task(text: &str) -> Result<Task, &'static str> {
+    text.trim()
+        .parse()
+        .map(|gib| Task::CreateDisk { gib })
+        .map_err(|_| "Disk size: enter a whole number of GB.")
+}
+
+const OFFLINE_NOTE: &str = "The installer is attached to the VM as the disc OFFLINE, so no network is needed. When the recovery shows its window, click Type it in the VM (with Caps Lock off): the app opens Utilities › Terminal and types the line. Without Unattended, first erase the disk in Disk Utility (APFS, named \"Macintosh HD\") and quit it; the line copies the installer onto that disk and opens it. Unattended erases the empty disk itself and installs with no questions: macOS restarts by itself and is ready at Setup Assistant.";
+
+const ROOT_PATCH_ON: &str = "OpenCore will lower System Integrity Protection to 0x803 (unsigned kexts, a writable system volume, unauthenticated root) and load AMFIPass, RSRHelper, RestrictEvents and KDKlessWorkaround, downloaded now from OpenCore Legacy Patcher 2.5.1 and checked against their SHA-256. Then root-patch inside macOS with OCLP (see the steps below). Turn FileVault off first. Continue?";
+
+const ROOT_PATCH_OFF: &str = "Did you revert the root patch in OCLP (Post-Install Root Patch › Revert Root Patches) and restart? Remaining root patches can prevent macOS from booting once its protections are restored at the next start.";
 
 const MANUAL_STEPS: &str = "1. In the OpenCore menu, macOS Base System is selected and starts by itself after five seconds.\n2. Open Disk Utility, enable View › Show All Devices, select the QEMU HARDDISK disk and Erase it (APFS, GUID).\n3. Close Disk Utility and choose Reinstall macOS. The VM restarts a few times: in OpenCore pick macOS Installer, then the installed disk.\n4. Once macOS boots from the disk, remove the install media here to free space.";
 

@@ -205,6 +205,16 @@ pub enum Task {
     RemoveInstaller {
         build: String,
     },
+    /// Install step 4's "Type it in the VM": opens the recovery's Terminal and types the line
+    /// of the attached installer disc (rg-ops `install_offline`); `unattended` is the user's
+    /// consent to erase the empty disk and accept Apple's license.
+    InstallOffline {
+        unattended: bool,
+    },
+    /// GPU tab root-patch mode, confirmed: on downloads OCLP's kexts first, then saves.
+    RootPatch {
+        on: bool,
+    },
 }
 
 impl Task {
@@ -228,6 +238,9 @@ impl Task {
             Self::Export { .. } => "Export VM settings".into(),
             Self::Move { .. } => "Move VM".into(),
             Self::RemoveInstaller { .. } => "Delete offline installer".into(),
+            Self::InstallOffline { .. } => "Type the install line in the VM".into(),
+            Self::RootPatch { on: true } => "Download OCLP's kexts for root-patch mode".into(),
+            Self::RootPatch { on: false } => "Turn off root-patch mode".into(),
         }
     }
 }
@@ -253,6 +266,11 @@ pub enum Event {
     },
     /// The VM list changed (created, removed, renamed, started elsewhere).
     VmsChanged,
+    /// Something the user must read, shown as a dialog (e.g. "Disk created with a warning").
+    Notice {
+        title: String,
+        text: String,
+    },
 }
 
 /// New pixels for the Details Preview.
@@ -327,6 +345,13 @@ pub trait Backend {
     fn reserved_gpus(&self) -> String;
     fn install_status(&self, id: &str) -> InstallStatus;
     fn installers(&self) -> Vec<Installer>;
+    /// The line to type in the recovery's Terminal when the VM `id`, started by this app, has
+    /// the full installer disc attached, and whether the app can type it (QEMU has a VNC
+    /// socket: not with VMware SVGA in QEMU's own window); None otherwise. Called every frame
+    /// on the Install tab.
+    fn installer_command(&self, _id: &str) -> Option<(String, bool)> {
+        None
+    }
     /// The asset versions for About ("OpenCore 1.0.8, …").
     fn about(&self) -> String;
 

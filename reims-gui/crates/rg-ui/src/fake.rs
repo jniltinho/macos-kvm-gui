@@ -302,6 +302,14 @@ impl Backend for FakeBackend {
             used_by: vec!["Nilton".into()],
         }]
     }
+    /// The Nilton VM has the full installer cached, so its disc is attached while it runs.
+    fn installer_command(&self, id: &str) -> Option<(String, bool)> {
+        self.vms
+            .borrow()
+            .iter()
+            .any(|v| v.id == id && v.id == "1" && v.state == VmState::Running)
+            .then(|| (rg_macos::DISC_COMMAND.into(), true))
+    }
     fn about(&self) -> String {
         "Boot files: OpenCore 1.0.8, Lilu 1.7.2, VirtualSMC 1.3.8, WhateverGreen 1.7.1".into()
     }
@@ -333,12 +341,24 @@ impl Backend for FakeBackend {
                 }
                 self.push(Event::VmsChanged);
             }
+            Task::InstallOffline { .. } => self.push(Event::Log(format!("{task:?}"))),
+            Task::RootPatch { on } => {
+                if let Some(v) = self
+                    .vms
+                    .borrow_mut()
+                    .iter_mut()
+                    .find(|v| Some(v.id.as_str()) == id)
+                {
+                    v.config.root_patch = *on;
+                }
+            }
             _ => {}
         }
-        self.push(Event::TaskDone {
-            task,
-            result: Ok(String::new()),
+        let result = Ok(match task {
+            Task::RemoveMedia => "Install media removed: 1.20 GB freed".into(),
+            _ => String::new(),
         });
+        self.push(Event::TaskDone { task, result });
     }
     fn poll_event(&self) -> Option<Event> {
         self.events.borrow_mut().pop_front()

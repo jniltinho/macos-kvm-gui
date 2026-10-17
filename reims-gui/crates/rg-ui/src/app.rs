@@ -129,6 +129,10 @@ pub struct App {
     pub(crate) screen: crate::screen::Screen,
     /// The file chooser request of the Import/Export/Move dialogs.
     pub(crate) picker: crate::files::Picker,
+    /// Install step 3's disk size field, in GB.
+    pub(crate) disk_gib: String,
+    /// Install step 4's Unattended check (the offline install).
+    pub(crate) unattended: bool,
 }
 
 impl App {
@@ -153,6 +157,8 @@ impl App {
             screen_area: ScreenArea::default(),
             screen: Default::default(),
             picker: Default::default(),
+            disk_gib: "80".into(),
+            unattended: false,
         };
         app.reload_vms();
         app
@@ -165,6 +171,27 @@ impl App {
 
     pub fn set_tab(&mut self, tab: Tab) {
         self.tab = tab;
+    }
+
+    /// Closing the window while a VM this app started runs: QEMU (started with `--pdeathsig`)
+    /// would die with the app, so refuse and say why, as the Go app does. VMs started elsewhere
+    /// (CLI, MCP, another app) keep running without it.
+    pub(crate) fn refuse_close(&mut self) -> bool {
+        if !self
+            .vms
+            .iter()
+            .any(|v| v.state != VmState::Stopped && !v.outside)
+        {
+            return false;
+        }
+        let shown = self
+            .modals
+            .iter()
+            .any(|m| matches!(m, Modal::Info { title, .. } if title == "VM running"));
+        if !shown {
+            self.modals.push(Modal::info("VM running", CLOSE_NOTE));
+        }
+        true
     }
 
     pub(crate) fn current(&self) -> Option<&VmEntry> {
@@ -265,7 +292,13 @@ impl App {
                             } else {
                                 msg
                             };
-                            self.toast(ctx, text, true);
+                            if task == Task::RemoveMedia {
+                                // The Go app's "N GB freed" dialog.
+                                self.modals
+                                    .push(Modal::info("Install media removed", &text));
+                            } else {
+                                self.toast(ctx, text, true);
+                            }
                         }
                         Err(err) => {
                             self.append_log(format!("error: {err}"));
@@ -294,6 +327,7 @@ impl App {
                     }
                 }
                 Event::VmsChanged => reload = true,
+                Event::Notice { title, text } => self.modals.push(Modal::info(&title, &text)),
             }
         }
         if reload {
@@ -335,6 +369,9 @@ impl App {
             return;
         }
         self.poll(&ctx);
+        if ctx.input(|i| i.viewport().close_requested()) && self.refuse_close() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
         let mut out = Vec::new();
         if self.modals.is_empty() {
             self.shortcuts(&ctx, &mut out);
@@ -1244,6 +1281,8 @@ pub const DOCS: &str = "https://github.com/jniltinho/macos-kvm-gui/tree/main/doc
 pub const SITE: &str = "https://github.com/jniltinho/macos-kvm-gui";
 pub const ISSUES: &str = "https://github.com/jniltinho/macos-kvm-gui/issues";
 pub const HOME_LAB: &str = "For home lab use. macOS is Apple's software: its license only allows it on Apple-branded hardware, so make sure your use complies with it.";
+const CLOSE_NOTE: &str =
+    "Shut down the VM before closing the app: a VM started here stops with the app.";
 const SHUTDOWN_NOTE: &str = "The power button was sent to macOS. Many macOS versions treat it as Sleep, which does nothing in a VM.\n\nIf macOS keeps running, shut it down from the Apple menu (Apple › Shut Down) inside the VM: the app notices when it powers off. Use Force stop only if macOS is frozen.";
 
 impl eframe::App for App {

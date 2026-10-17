@@ -112,6 +112,7 @@ fn child() -> ExitCode {
                 done,
                 since: Instant::now(),
                 conn: x11rb::connect(None).unwrap().0,
+                closing: false,
             }))
         }),
     );
@@ -135,6 +136,8 @@ struct Probe {
     done: Arc<AtomicBool>,
     since: Instant,
     conn: x11rb::rust_connection::RustConnection,
+    /// Close sent: the app no longer gets frames, or it would refuse to close while its VM runs.
+    closing: bool,
 }
 
 impl Probe {
@@ -172,13 +175,20 @@ impl Probe {
 
 impl eframe::App for Probe {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        eframe::App::ui(&mut self.app, ui, frame);
         let ctx = ui.ctx().clone();
+        if self.closing {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            return;
+        }
+        eframe::App::ui(&mut self.app, ui, frame);
         let app = rg_ui::screen::backend_choice::x11_window(frame).expect("an X11 window");
         if self.embedded(app) {
             self.done.store(true, Ordering::Relaxed);
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            self.closing = true;
         } else if self.since.elapsed() > TIMEOUT {
+            self.closing = true;
+        }
+        if self.closing {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
         ctx.request_repaint_after(Duration::from_millis(100));

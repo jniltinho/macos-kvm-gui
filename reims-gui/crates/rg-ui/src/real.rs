@@ -74,6 +74,8 @@ struct Inner {
 struct Own {
     vm: rg_qemu::Vm,
     vnc: Option<PathBuf>,
+    /// The install line when the full installer disc is attached (Install step 4).
+    installer_command: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -496,6 +498,22 @@ impl Inner {
         }
     }
 
+    fn disk_warning(&self, warning: impl Into<String>) {
+        self.emit(Event::Notice {
+            title: "Disk created with a warning".into(),
+            text: warning.into(),
+        });
+    }
+
+    fn save_config(&self, id: &str, config: &Config) -> Result<(), String> {
+        let e = self.entry(id)?;
+        self.reg.lock().save(&e, config.clone()).map_err(err)?;
+        if let Some(s) = &self.single {
+            s.lock().config = config.clone();
+        }
+        Ok(())
+    }
+
     fn invalidate_checks(&self) {
         self.checks.lock().fresh = None;
     }
@@ -539,6 +557,7 @@ impl Inner {
                 let w = Workspace::new(vm()?.config.workspace_dir().map_err(err)?);
                 if let Some(warning) = w.create_disk(u64::from(*gib)).map_err(err)? {
                     log(&format!("[disk] {warning}"));
+                    self.disk_warning(warning);
                 }
                 Ok(format!("Disk created: {gib} GB"))
             }
@@ -581,6 +600,7 @@ impl Inner {
                 let w = Workspace::new(c.workspace_dir().map_err(err)?);
                 if let Some(warning) = w.create_disk(u64::from(*disk_gib)).map_err(err)? {
                     log(&format!("[disk] {warning}"));
+                    self.disk_warning(warning);
                 }
                 if *download {
                     ops.download_media(c, &c.version, cancel, &mut progress, &mut log)
@@ -689,6 +709,27 @@ impl Inner {
                 rg_macos::remove_installer(&ops.installers_dir(), build).map_err(err)?;
                 Ok(format!("Deleted the offline installer {build}"))
             }
+            Task::InstallOffline { unattended } => {
+                // The Unattended check is the user's consent to erase the disk and accept the license.
+                let u = *unattended;
+                ops.install_offline(&vm()?.config, u, u, u).map_err(err)?;
+                Ok("Install line typed in the VM's Terminal".into())
+            }
+            Task::RootPatch { on } => {
+                let e = vm()?;
+                if *on {
+                    rg_assets::download_root_patch_kexts(&ops.kext_cache(), cancel).map_err(err)?;
+                }
+                // Reread: Settings may have been saved during the download.
+                let mut c = self.entry(&e.id)?.config;
+                c.root_patch = *on;
+                self.save_config(&e.id, &c)?;
+                Ok(format!(
+                    "Root-patch mode {} for {}",
+                    if *on { "on" } else { "off" },
+                    e.display_name()
+                ))
+            }
         }
     }
 
@@ -740,6 +781,7 @@ impl Inner {
                 Own {
                     vm,
                     vnc: vnc.clone(),
+                    installer_command: installer_command.map(str::to_owned),
                 },
             );
             inner.set_seen(
@@ -947,16 +989,7 @@ impl Backend for RealBackend {
     }
 
     fn save_config(&self, id: &str, config: &Config) -> Result<(), String> {
-        let e = self.inner.entry(id)?;
-        self.inner
-            .reg
-            .lock()
-            .save(&e, config.clone())
-            .map_err(err)?;
-        if let Some(s) = &self.inner.single {
-            s.lock().config = config.clone();
-        }
-        Ok(())
+        self.inner.save_config(id, config)
     }
 
     fn create_vm(&self, config: &Config) -> Result<VmId, String> {
@@ -1189,6 +1222,12 @@ impl Backend for RealBackend {
         *self.inner.screen.lock() = area;
     }
 
+    fn installer_command(&self, id: &str) -> Option<(String, bool)> {
+        let own = self.inner.own.lock();
+        let o = own.get(id)?;
+        Some((o.installer_command.clone()?, o.vnc.is_some()))
+    }
+
     fn screen_source(&self, id: &str) -> Option<ScreenSource> {
         let s = self.inner.seen(id);
         if s.state == VmState::Stopped {
@@ -1207,14 +1246,9 @@ impl Backend for RealBackend {
             } else {
                 ScreenSource::Standalone
             }
-        } else if x11 && !s.outside && s.pid != 0 {
-            // Started here with `-display sdl` (rg-ops `start_vm` with x11_embed).
-            ScreenSource::Window {
-                pid: s.pid,
-                reims: false,
-            }
         } else {
-            // Without X11, or started by the CLI/MCP (no SDL window): QEMU's VNC socket.
+            // VMware SVGA: QEMU's VNC socket drawn in the tab (rg-ops never asks QEMU for its
+            // SDL window, see `display` in rg-ops' start.rs).
             s.vnc.map_or(ScreenSource::Standalone, ScreenSource::Vnc)
         })
     }

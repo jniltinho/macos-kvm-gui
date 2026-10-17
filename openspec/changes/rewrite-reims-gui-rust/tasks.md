@@ -21,18 +21,18 @@
 - [x] 3.1 `rg-ui` shell: theme (light/dark/system, Go colors), menus, toolbar, VM list, tabs, status bar, modals with depth; kittest snapshots.
 - [x] 3.2 `rg-ui` dialogs: Settings pages, New VM wizard, Preferences, Offline installers, confirmations.
 - [x] 3.3 `rg-ui` tabs: Details (with Preview), Install stepper, Host (with Reims section), GPU, Log.
-- [ ] 3.4 `rg-ui` Screen: X11 embedding for Reims and SVGA VMs with overlay hiding, X11/Wayland backend choice at startup, VNC texture fallback; Preview over VNC.
+- [x] 3.4 `rg-ui` Screen: X11 embedding for Reims and SVGA VMs with overlay hiding, X11/Wayland backend choice at startup, VNC texture fallback; Preview over VNC.
 - [x] 3.5 `rg-agent`: CLI command tree and MCP tools with tests matching the Go tests.
 
 ## 4. Build, packages, CI
 
 - [x] 4.1 `scripts/build.sh <release>`: release builds, `.tar.gz`, `.deb` (shlibdeps plus runtime-loaded libraries), `.sha256`, `--self-test`; verify each `.deb` installs in a clean `ubuntu:<release>` container and the GUI renders under Xvfb.
 - [x] 4.3 License bundle: generated THIRD_PARTY_LICENSES, source archive (git archive + cargo vendor + Dockerfile) per release.
-- [ ] 4.2 `.github/workflows/reims-gui-ci.yml` and `reims-gui-release.yml`; lint with actionlint.
+- [x] 4.2 `.github/workflows/reims-gui-ci.yml` and `reims-gui-release.yml`; lint with actionlint (clean, actionlint 1.7.12).
 
 ## 5. Integration and release
 
-- [ ] 5.1 Wire the UI to the real crates; `PARITY.md` fully checked.
+- [x] 5.1 Wire the UI to the real crates; `PARITY.md` fully checked.
 - [ ] 5.2 Live tests on this host: the Nilton VM on Reims and on SVGA embedded in the Screen tab (overlay, mode change, restart, keyboard incl. ABNT2/keypad), frame rate ≥ 90% of standalone; Go and Rust apps at once; CLI and MCP start/stop; screenshots.
 - [ ] 5.2b Release gate: manual checks on GNOME Wayland sessions of Ubuntu 24.04 and 26.04, recorded in `PARITY.md`.
 - [ ] 5.3 Docs (`reims-gui/README.md`, `docs/reims-gui.md`), Codex review, fixes.

@@ -227,7 +227,11 @@ impl App {
                     Some("Cancel"),
                     |ui| s.ui(ui),
                 );
-                if std::mem::take(&mut s.remove_media) {
+                if std::mem::take(&mut s.move_vm) {
+                    // As Machine › Move; the Go app closes Settings first too.
+                    o.close = true;
+                    o.actions.push(Action::Move);
+                } else if std::mem::take(&mut s.remove_media) {
                     // As Install step 5, with its confirmation (the Go app's Storage "Remove…").
                     o.close = true;
                     o.modals.push(Modal::confirm(
@@ -383,6 +387,8 @@ pub struct Settings {
     pub can_remove_media: bool,
     /// Storage "Remove…" was clicked.
     remove_media: bool,
+    /// General "Move…" was clicked.
+    move_vm: bool,
 }
 
 const LABEL_W: f32 = 150.0;
@@ -460,6 +466,7 @@ impl Settings {
             media: None,
             can_remove_media: false,
             remove_media: false,
+            move_vm: false,
         }
     }
 
@@ -580,7 +587,15 @@ impl Settings {
                     .fit_to_exact_size(vec2(40.0, 40.0)),
             );
         });
-        form_row(ui, LABEL_W, "Folder", |ui| ui.label(&self.c.workspace));
+        form_row(ui, LABEL_W, "Folder", |ui| {
+            ui.label(&self.c.workspace);
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                ui.add_space(8.0);
+                self.move_vm = widgets::button(ui, "folder-open", "Move…", false, true)
+                    .on_hover_text("Move the VM's files to another folder")
+                    .clicked();
+            });
+        });
     }
 
     fn system(&mut self, ui: &mut Ui) {
