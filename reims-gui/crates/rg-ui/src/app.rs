@@ -284,8 +284,8 @@ impl App {
                     match result {
                         Ok(msg) => {
                             self.append_log(format!("ok: {}", task.title()));
-                            if matches!(task, Task::Import { .. }) {
-                                self.cur = None; // the backend selected the imported VM
+                            if matches!(task, Task::Import { .. } | Task::RemoveVm { .. }) {
+                                self.cur = None; // the backend's selection (the imported VM)
                             }
                             let text = if msg.is_empty() {
                                 format!("{}: done", task.title())

@@ -153,11 +153,6 @@ impl Backend for FakeBackend {
         self.push(Event::VmsChanged);
         Ok(id)
     }
-    fn remove_vm(&self, id: &str, _delete_files: bool) -> Result<(), String> {
-        self.vms.borrow_mut().retain(|v| v.id != id);
-        self.push(Event::VmsChanged);
-        Ok(())
-    }
     fn recommended(&self) -> Config {
         Config {
             ram_mib: 16384,
@@ -339,6 +334,10 @@ impl Backend for FakeBackend {
                 {
                     v.config.workspace = folder.clone();
                 }
+                self.push(Event::VmsChanged);
+            }
+            Task::RemoveVm { id, .. } => {
+                self.vms.borrow_mut().retain(|v| &v.id != id);
                 self.push(Event::VmsChanged);
             }
             Task::InstallOffline { .. } => self.push(Event::Log(format!("{task:?}"))),
