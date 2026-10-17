@@ -63,7 +63,7 @@ make test-integration  # real QEMU/KVM boot of the embedded OpenCore
 - **Ubuntu and Debian:** `docker build --build-arg UBUNTU=24.04|26.04` (or `--build-arg BASE=debian:13`) `-t reims-build:<rel> - < internal/core/reims/Dockerfile`, then `docker run ... -v <dir>:/build reims-build:<rel>`.
 - **Rocky Linux 10:** `internal/core/reims/Dockerfile.rocky`.
 - An Ubuntu build does not run on Debian (`libjpeg.so.8`); each distribution needs its own.
-- **What the apps install:** "Install Reims vGPU" and `reims install` fetch only the Ubuntu packages that the manifest pins (`internal/core/reims/manifest.json`, `reims-gui/crates/rg-reims/reims/manifest.json`).
+- **What the apps install:** "Install Reims vGPU" and `reims install` fetch only the Ubuntu packages that the manifest pins; the `reims-c099dd5` release also carries debian13 and rocky10 packages (added to the same tag, unpacked by hand) (`internal/core/reims/manifest.json`, `reims-gui/crates/rg-reims/reims/manifest.json`).
 - **Nothing installs it on its own:** starting a Reims VM does not download QEMU. macOS Tahoe's `ReimsVgpu.kext` is the only part fetched automatically.
 
 ## Workflows (`.github/workflows/`)

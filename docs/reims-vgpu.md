@@ -44,7 +44,7 @@ Reims vGPU and GPU passthrough are mutually exclusive per VM. Other VMs keep VMw
 | `ReimsVgpu.kext` (macOS Tahoe guests) | **Yes**: downloaded at the first start and injected by OpenCore | nothing to do |
 | `METAL_ERROR_MODE` inside macOS | **No**: once per macOS install | the commands under [First boot in macOS](#first-boot-in-macos) (also shown in Settings › Display) |
 
-Starting a Reims vGPU VM on a host without its QEMU does not download anything: Start stops with *"Reims vGPU is not installed (looked for …): install it in the Host tab or with `macos-kvm-gui reims install`"*. The prebuilt package exists for Ubuntu 24.04 and 26.04. On Debian 13 and Rocky Linux 10, build it as below and point `reims_qemu` at it. On any release, **Build from source (Docker)** builds the Ubuntu ones.
+Starting a Reims vGPU VM on a host without its QEMU does not download anything: Start stops with *"Reims vGPU is not installed (looked for …): install it in the Host tab or with `macos-kvm-gui reims install`"*. The prebuilt package exists for Ubuntu 24.04 and 26.04. On Debian 13 and Rocky Linux 10, download its package from the `reims-c099dd5` release (or build it as below) and point `reims_qemu` at it. On any release, **Build from source (Docker)** builds the Ubuntu ones.
 
 The app does not embed Reims vGPU. It installs a separate QEMU build into `<Workspace>/.reims/qemu/<build>` and points `<Workspace>/.reims/qemu/current` at it, next to `.kexts` and `.installers`. Nothing else on the host changes.
 
@@ -105,7 +105,7 @@ docker run --rm -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) -v ~/reims-debian:/bui
 sudo apt install libglib2.0-0t64 libpixman-1-0 libslirp0 libfdt1 libgtk-3-0t64 libpipewire-0.3-0t64 libpulse0 libasound2t64 libvulkan1 libgbm1
 ```
 
-Then point `reims_qemu` at `~/reims-debian/share/reims-ctl/qemu/current/bin/qemu-system-x86_64`. Releases made from now on also carry a `debian13` package.
+Then point `reims_qemu` at `~/reims-debian/share/reims-ctl/qemu/current/bin/qemu-system-x86_64`. Or skip the build: the [`reims-c099dd5`](https://github.com/jniltinho/macos-kvm-gui/releases/tag/reims-c099dd5) release has `reims-qemu-c099dd5-debian13-x86_64.tar.gz`; unpack it and point `reims_qemu` at its `bin/qemu-system-x86_64`.
 
 ### Rocky Linux (RHEL family)
 
@@ -125,7 +125,7 @@ On the Rocky host, QEMU needs these runtime packages (BaseOS and AppStream only,
 sudo dnf install glib2 pixman libslirp libfdt gtk3 pipewire-libs pulseaudio-libs alsa-lib vulkan-loader mesa-libgbm
 ```
 
-Then point `reims_qemu` at `~/reims-rocky/share/reims-ctl/qemu/current/bin/qemu-system-x86_64` (see the list above) and check it with `qemu-system-x86_64 -device help | grep apple-gfx-pci`. `reims-<commit>` releases made from now on also carry the `rocky10` package (`.github/workflows/reims-release.yml`); `reims-c099dd5` does not.
+Then point `reims_qemu` at `~/reims-rocky/share/reims-ctl/qemu/current/bin/qemu-system-x86_64` (see the list above) and check it with `qemu-system-x86_64 -device help | grep apple-gfx-pci`. Or skip the build: [`reims-c099dd5`](https://github.com/jniltinho/macos-kvm-gui/releases/tag/reims-c099dd5) has `reims-qemu-c099dd5-rocky10-x86_64.tar.gz` (built from this Dockerfile and checked in a clean Rocky Linux 10); `.github/workflows/reims-release.yml` builds it for later `reims-<commit>` releases too.
 
 ## Turn it on for a VM
 

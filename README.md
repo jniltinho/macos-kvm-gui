@@ -53,7 +53,7 @@ It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x
 
 Guide, limits and troubleshooting: [docs/reims-gui.md](docs/reims-gui.md).
 
-**Debian 13 and Rocky Linux 10.** The `.deb` installs and runs on Debian 13, whose QEMU has what macOS needs. The `.tar.gz` runs on Rocky Linux 10.2 (the window opens on Wayland and XWayland), but Rocky's own `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so macOS VMs there need Reims vGPU's QEMU. On both, Reims vGPU's QEMU needs its own build ([Debian](docs/reims-vgpu.md#debian-13), [Rocky](docs/reims-vgpu.md#rocky-linux-rhel-family)); **Install Reims vGPU** in the Host tab installs the Ubuntu packages only.
+**Debian 13 and Rocky Linux 10.** The `.deb` installs and runs on Debian 13, whose QEMU has what macOS needs. The `.tar.gz` runs on Rocky Linux 10.2 (the window opens on Wayland and XWayland), but Rocky's own `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so macOS VMs there need Reims vGPU's QEMU. On both, Reims vGPU's QEMU has its own package on the [`reims-c099dd5`](https://github.com/jniltinho/macos-kvm-gui/releases/tag/reims-c099dd5) release, installed by hand ([Debian](docs/reims-vgpu.md#debian-13), [Rocky](docs/reims-vgpu.md#rocky-linux-rhel-family)); **Install Reims vGPU** in the Host tab installs the Ubuntu packages only.
 
 ## Highlights
 
