@@ -83,6 +83,19 @@ A VM on Reims vGPU runs the first `qemu-system-x86_64` found here:
 
 The binary must list `apple-gfx-pci` in `-device help`; the app checks it once per binary version.
 
+### Debian 13
+
+An Ubuntu build does not run on Debian (it links Ubuntu's `libjpeg.so.8`), so Debian gets its own build from the same Dockerfile with another base image. Verified on Debian 13.7 (QEMU lists `apple-gfx-pci`, no missing library):
+
+```sh
+docker build --build-arg BASE=debian:13 -t reims-build:debian13 - < internal/core/reims/Dockerfile
+mkdir -p ~/reims-debian
+docker run --rm -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) -v ~/reims-debian:/build reims-build:debian13
+sudo apt install libglib2.0-0t64 libpixman-1-0 libslirp0 libfdt1 libgtk-3-0t64 libpipewire-0.3-0t64 libpulse0 libasound2t64 libvulkan1 libgbm1
+```
+
+Then point `reims_qemu` at `~/reims-debian/share/reims-ctl/qemu/current/bin/qemu-system-x86_64`. Releases made from now on also carry a `debian13` package.
+
 ### Rocky Linux (RHEL family)
 
 The app does not install or build for Rocky Linux itself, but `Dockerfile.rocky` (next to the Ubuntu `Dockerfile`, in `internal/core/reims/` and `reims-gui/crates/rg-reims/reims/`) builds the same QEMU, at the same commit and with the same layout, on `rockylinux/rockylinux:10`, with the build packages from dnf (EPEL and CRB). Upstream's `install-ctl.sh` only knows apt and pacman; on Rocky it just warns, and the image already has everything. Verified on Rocky Linux 10.2; the first build took about 5.5 minutes on the reference host (image 2.5, QEMU 3):

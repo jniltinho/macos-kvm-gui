@@ -33,12 +33,12 @@ This repository has two apps that read the same VMs and settings:
 
 | App | Language | Releases | Status |
 |---|---|---|---|
-| **[reims-gui](reims-gui/README.md)** | Rust (egui) | [`reims-gui-v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true) | **Recommended.** Reims vGPU's Metal display inside the window, one package for Ubuntu 24.04 and 26.04 |
-| macos-kvm-gui | Go (Fyne) | [`v*`](https://github.com/jniltinho/macos-kvm-gui/releases/tag/v0.10.1) | Previous app, no longer released |
+| **[reims-gui](reims-gui/README.md)** | Rust (egui) | [`reims-gui-v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true) | **Recommended.** Reims vGPU's Metal display inside the window; `.deb` for Ubuntu 24.04, 26.04 and Debian 13, `.tar.gz` also for Rocky Linux 10 |
+| macos-kvm-gui | Go (Fyne) | [`v*`](https://github.com/jniltinho/macos-kvm-gui/releases?q=macos-kvm-gui&expanded=true) | The first app; also embeds Reims vGPU's window since v0.11.0; `.deb`, `.rpm` (Fedora 39+), `.tar.gz` |
 
 ## Download and install reims-gui
 
-From the [latest release](https://github.com/jniltinho/macos-kvm-gui/releases/latest), take the `.deb` (one package for Ubuntu 24.04 and 26.04) and check it:
+From the [latest release](https://github.com/jniltinho/macos-kvm-gui/releases/latest), take the `.deb` (one package for Ubuntu 24.04, 26.04 and Debian 13) and check it:
 
 ```sh
 sha256sum -c reims-gui_0.1.4_amd64.deb.sha256
@@ -53,7 +53,7 @@ It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x
 
 Guide, limits and troubleshooting: [docs/reims-gui.md](docs/reims-gui.md).
 
-**Red Hat family (preview).** The `.tar.gz` runs on Rocky Linux 10.2 (glibc 2.39; the window opens on Wayland and XWayland), but Rocky's own `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so macOS VMs there need Reims vGPU's QEMU, which builds for Rocky Linux 10 in Docker ([how](docs/reims-vgpu.md#rocky-linux-rhel-family)). Ubuntu 24.04 and 26.04 are the supported hosts.
+**Debian 13 and Rocky Linux 10.** The `.deb` installs and runs on Debian 13, whose QEMU has what macOS needs. The `.tar.gz` runs on Rocky Linux 10.2 (the window opens on Wayland and XWayland), but Rocky's own `qemu-kvm` has no `isa-applesmc` or `vmware-svga`, so macOS VMs there need Reims vGPU's QEMU. On both, Reims vGPU's QEMU needs its own build ([Debian](docs/reims-vgpu.md#debian-13), [Rocky](docs/reims-vgpu.md#rocky-linux-rhel-family)); **Install Reims vGPU** in the Host tab installs the Ubuntu packages only.
 
 ## Highlights
 
@@ -77,7 +77,7 @@ More in the [screenshots](docs/screenshots/README.md).
 
 ## macos-kvm-gui (Go, previous app)
 
-The Go app is still in this repository and its [last release](https://github.com/jniltinho/macos-kvm-gui/releases/tag/v0.10.1) still works (`.deb` for Ubuntu 24.04+ and Debian 13+, `.rpm` for Fedora 39+, `.tar.gz`); it gets no new releases. Its guide: [getting started](docs/getting-started.md).
+The Go app is still in this repository, with [its own releases](https://github.com/jniltinho/macos-kvm-gui/releases?q=macos-kvm-gui&expanded=true) (`.deb` for Ubuntu 24.04+ and Debian 13+, `.rpm` for Fedora 39+, `.tar.gz`). Since v0.11.0 it also shows Reims vGPU's window inside its Screen tab. Its guide: [getting started](docs/getting-started.md).
 
 ## Documentation
 

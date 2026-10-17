@@ -79,17 +79,21 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Version from the tag
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#reims-gui-}" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
-          make_latest: true # reims-gui is the recommended app; the Go app gets no new releases
+          name: reims-gui (Rust) ${{ steps.v.outputs.version }}
+          make_latest: true # reims-gui is the recommended app; the Go app's releases are not marked latest
           body: |
             > **For home lab use.** macOS is Apple's software, and its license only allows it on Apple-branded hardware.
 
-            **This is the Rust app (`reims-gui`), the recommended version.** The older `macos-kvm-gui` in Go (the `v*` releases) is no longer released; both read the same VMs and settings.
+            **This is the Rust app (`reims-gui`), the recommended version.** The older `macos-kvm-gui` in Go has its own `v*` releases; both read the same VMs and settings.
 
-            reims-gui, the Rust rewrite of macos-kvm-gui, for Ubuntu 24.04 and 26.04 (x86_64): one `.deb` and one `.tar.gz` for both releases, each with a `.sha256`.
+            reims-gui, the Rust rewrite of macos-kvm-gui (x86_64): one `.deb` for Ubuntu 24.04 and 26.04 and Debian 13, and one `.tar.gz` that also runs on Rocky Linux 10, each with a `.sha256`.
 
             The binaries are distributed under GPL-3.0-or-later (the source is GPL-2.0-or-later OR LGPL-3.0-or-later). `THIRD_PARTY_LICENSES` holds the license text of every crate compiled in; `reims-gui-*-source.tar.gz` is the corresponding source, with vendored crates and the build Dockerfile.
           files: dist/*

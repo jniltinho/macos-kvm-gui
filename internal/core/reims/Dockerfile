@@ -8,8 +8,11 @@
 #
 # Output: <dir>/share/reims-ctl/qemu/<date>-<commit>/ (bin/qemu-system-x86_64 and its data,
 # stripped); <dir>/cache keeps the library's and QEMU's builds for the next run.
+# BASE picks another apt-based distribution, e.g. --build-arg BASE=debian:13 (its own build:
+# an Ubuntu build does not run there, the libraries differ).
 ARG UBUNTU=24.04
-FROM ubuntu:${UBUNTU}
+ARG BASE=ubuntu:${UBUNTU}
+FROM ${BASE}
 ARG REIMS_COMMIT=c099dd5a4d61107a5527efc64cf1d1ab2f3a9b85
 ARG RUST=1.98.1
 ENV DEBIAN_FRONTEND=noninteractive

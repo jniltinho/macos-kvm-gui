@@ -1,4 +1,4 @@
-name: CI
+name: macos-kvm-gui (Go) CI
 
 # Disabled: the Go app is no longer built on push; reims-gui (Rust) has its own CI. Run it by
 # hand from the Actions tab if needed.

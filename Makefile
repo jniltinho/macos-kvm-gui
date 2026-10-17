@@ -15,8 +15,15 @@ build: build-go build-rust
 EMBED_LIB := reims-gui/target/rg-x11-ffi/release/librg_x11_ffi.a
 GO_TAGS   := -tags reims_embed
 
+# The archive is pruned to the rgx_* functions and what they use (ld -r --gc-sections): Rust's
+# std otherwise brings weak pidfd_* references that the Ubuntu 24.04 linker binds to GLIBC_2.39,
+# raising the Go binary's floor above the 2.38 its packages declare (Debian 13, Fedora 39).
 embed-lib:
-	cd reims-gui && CARGO_TARGET_DIR=target/rg-x11-ffi scripts/cargo-docker.sh 24.04 cargo build --release --locked -p rg-x11-ffi
+	cd reims-gui && CARGO_TARGET_DIR=target/rg-x11-ffi scripts/cargo-docker.sh 24.04 sh -c '\
+		set -e; cargo build --release --locked -p rg-x11-ffi; cd target/rg-x11-ffi/release; \
+		roots=$$(nm -g --defined-only librg_x11_ffi.a 2>/dev/null | awk "/ T rgx_/{print \"-u \" \$$3}" | sort -u); \
+		ld -r --gc-sections $$roots --whole-archive librg_x11_ffi.a -o rg_x11_ffi.o; \
+		rm -f librg_x11_ffi.a; ar rcs librg_x11_ffi.a rg_x11_ffi.o; rm rg_x11_ffi.o'
 
 build-go: embed-lib
 	mkdir -p dist

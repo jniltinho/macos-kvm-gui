@@ -5,7 +5,7 @@ description: Create a version tag and a GitHub Release for macos-kvm-gui with po
 
 # Releasing macos-kvm-gui
 
-Pushing a `v*` tag triggers `.github/workflows/release.yml`, which tests, builds the binary with the tag as its version, packages it and creates the GitHub Release. This skill covers the tag and the release notes.
+`.github/workflows/release.yml` is manual: after pushing a `v*` tag, run `gh workflow run release.yml --ref vX.Y.Z`. It tests, builds the binary (with Reims vGPU window embedding, so the runner builds reims-gui's rg-x11 library in Docker) with the tag as its version, packages it and creates the GitHub Release, not marked latest: reims-gui is the recommended app. This skill covers the tag and the release notes.
 
 ## Before you start
 
@@ -24,7 +24,7 @@ Semantic versioning with a `v` prefix: `v0.MINOR.PATCH` until the first stable r
 
 - `feat:` commits since the last tag → bump MINOR (`v0.1.3` → `v0.2.0`).
 - Only `fix:`, `perf:`, `refactor:`, `ci:`, `docs:` or `chore:` → bump PATCH (`v0.1.3` → `v0.1.4`).
-- Release titles also use the `v` prefix.
+- Release titles name the app: `macos-kvm-gui (Go) vX.Y.Z` (reims-gui's are `reims-gui (Rust) X.Y.Z`, Reims vGPU's QEMU `Reims vGPU QEMU <commit>`).
 
 ```bash
 LAST=$(git describe --tags --abbrev=0)
@@ -109,7 +109,7 @@ Requires Linux x86_64 with glibc 2.38+ (Ubuntu 24.04+, Debian 13+, Fedora 39+) a
 
 **Full Changelog**: https://github.com/jniltinho/macos-kvm-gui/compare/vPREV...vNEXT
 EOF
-gh release edit "$NEXT" --title "$NEXT" --notes-file /tmp/release-notes-$NEXT.md
+gh release edit "$NEXT" --title "macos-kvm-gui (Go) $NEXT" --notes-file /tmp/release-notes-$NEXT.md
 ~~~
 
 ### 5. Verify
@@ -120,7 +120,7 @@ gh release download "$NEXT" -D /tmp/check-$NEXT && (cd /tmp/check-$NEXT && sha25
 ```
 
 Check that:
-- the title is `$NEXT`;
+- the title is `macos-kvm-gui (Go) $NEXT`;
 - six assets are attached: the `.tar.gz`, the `.deb`, the `.rpm` and one `.sha256` for each;
 - the checksums pass and the binary opens (`./macos-kvm-gui` shows "macOS KVM vX.Y.Z" in the title bar);
 - the Full Changelog link covers the right range.

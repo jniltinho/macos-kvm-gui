@@ -1,12 +1,13 @@
-name: Release
+name: macos-kvm-gui (Go) release
 
-# Disabled: no more Go app releases on v* tags; reims-gui (Rust) releases on reims-gui-v* tags.
-# Run it by hand from the Actions tab if needed.
+# Manual only: run it on a v* tag (gh workflow run release.yml --ref vX.Y.Z). reims-gui (Rust),
+# the recommended app, releases on reims-gui-v* tags and stays the latest release.
 on:
   workflow_dispatch:
 
 jobs:
   release:
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -38,7 +39,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          name: macos-kvm-gui (Go) ${{ github.ref_name }}
+          make_latest: false # reims-gui (Rust) is the recommended app
           generate_release_notes: true
           files: |
             dist/*.tar.gz

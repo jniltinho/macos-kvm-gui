@@ -1,7 +1,8 @@
 name: Reims vGPU packages
 
 # Builds Reims vGPU's QEMU at the commit internal/core/reims/Dockerfile pins, for each Ubuntu
-# release the app supports, and for Rocky Linux 10 (Dockerfile.rocky), and publishes the packages
+# release the app supports, for Debian 13 (Dockerfile with BASE=debian:13) and Rocky Linux 10
+# (Dockerfile.rocky), and publishes the packages
 # `macos-kvm-gui reims install` downloads (Ubuntu only), with their corresponding source, on a
 # release of their own. Tag: reims-<7-digit commit>.
 # After a release, internal/core/reims/manifest.json takes the published SHA-256 files.
@@ -20,6 +21,7 @@ jobs:
         include:
           - { release: '24.04', image: 'ubuntu:24.04', dockerfile: Dockerfile, arg: 'UBUNTU=24.04' }
           - { release: '26.04', image: 'ubuntu:26.04', dockerfile: Dockerfile, arg: 'UBUNTU=26.04' }
+          - { release: debian13, image: 'debian:13', dockerfile: Dockerfile, arg: 'BASE=debian:13' }
           - { release: rocky10, image: 'rockylinux/rockylinux:10', dockerfile: Dockerfile.rocky, arg: 'ROCKY=10' }
 
     steps:
@@ -84,13 +86,17 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Version from the tag
+        id: v
+        run: echo "version=${GITHUB_REF_NAME#reims-}" >> "$GITHUB_OUTPUT"
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ github.ref_name }}
+          name: Reims vGPU QEMU ${{ steps.v.outputs.version }}
           make_latest: false # the app's own releases stay "latest"
           body: |
-            Reims vGPU's QEMU (https://github.com/steelbrain/reims-vgpu) built for Ubuntu 24.04 and 26.04, which `macos-kvm-gui reims install` downloads, and for Rocky Linux 10 (manual install). The source archive is the corresponding source of these binaries (GPL-2.0); see THIRD_PARTY_NOTICES.md.
+            Reims vGPU's QEMU (https://github.com/steelbrain/reims-vgpu) built for Ubuntu 24.04 and 26.04, which `macos-kvm-gui reims install` downloads, and for Debian 13 and Rocky Linux 10 (manual install: point reims_qemu at it). The source archive is the corresponding source of these binaries (GPL-2.0); see THIRD_PARTY_NOTICES.md.
           files: |
             dist/*.tar.gz
             dist/*.sha256
