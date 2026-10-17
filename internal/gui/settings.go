@@ -155,7 +155,7 @@ func (u *ui) settingsDialog() {
 	), note("Remove the install media once macOS boots from its disk. Create the disk and download the media in the Install tab."))
 
 	// Network: VirtualBox's Adapter 1–4 tabs.
-	network, readNetwork := networkPage(c, func() string { return short[version.Selected] })
+	network, readNetwork := networkPage(u.cur.ID, c, func() string { return short[version.Selected] })
 
 	pages := []struct {
 		title, icon string

@@ -7,6 +7,7 @@ import (
 	"image/color"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 
 	"fyne.io/fyne/v2"
@@ -178,11 +179,17 @@ func (u *ui) newVMDialog() {
 	attach.OnChanged = func(string) { netUpdate() }
 	attach.SetSelected(attachNAT)
 	onVersion(short[version.Selected])
+	freePort, err := core.NextSSHPort("", nil)
+	if err != nil {
+		freePort = core.FirstSSHPort // creation reports the real problem
+	}
+	port, portRow := sshPortField("", freePort)
 	network := container.NewVBox(widget.NewForm(
 		widget.NewFormItem("Attached to", attach),
 		widget.NewFormItem("Name", bridge),
 		widget.NewFormItem("Adapter Type", model),
 		widget.NewFormItem("MAC Address", container.NewBorder(nil, nil, nil, regen, mac)),
+		widget.NewFormItem("SSH port on 127.0.0.1", portRow),
 	), netWarn, note("This is Adapter 1. Add more adapters later in Settings › Network. NAT also forwards SSH from 127.0.0.1."))
 
 	sections := widget.NewAccordion(
@@ -236,9 +243,12 @@ func (u *ui) newVMDialog() {
 			nic.Mode, nic.Bridge = core.NetBridged, strings.TrimSpace(bridge.Text)
 		}
 		c.Networks = []core.NIC{nic}
+		if c.SSHPort, err = strconv.Atoi(strings.TrimSpace(port.Text)); err != nil {
+			return fail(2, errors.New("SSH port: enter a whole number"))
+		}
 		if err := c.Validate(); err != nil {
 			var fe *core.FieldError
-			if errors.As(err, &fe) && strings.HasPrefix(fe.Field, "nic") {
+			if errors.As(err, &fe) && (strings.HasPrefix(fe.Field, "nic") || fe.Field == "ssh_port") {
 				return fail(2, fmt.Errorf("Network: %w", err))
 			}
 			return fail(1, err)
@@ -288,6 +298,10 @@ func (u *ui) createVM(c core.Config, sizeGiB int, download bool) {
 		dialog.ShowError(err, u.win)
 		return
 	}
+	if e.Notice != "" {
+		u.appendLog("[new VM] " + e.Notice)
+	}
+	c = e.Config // with the SSH port it got
 	core.SelectVM(e.ID)
 	u.reloadVMs(e.ID)
 	u.tabs.SelectIndex(2) // Install shows the progress

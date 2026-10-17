@@ -225,7 +225,7 @@ func TestExtraKextsBoot(t *testing.T) {
 	pair := ExtraKext{URL: srv.URL + "/pair.zip", Kexts: []string{"Provider", "Plugin"}}
 	w := NewWorkspace(filepath.Join(root, "vm"))
 	os.MkdirAll(w.Dir, 0o755)
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace = w.Dir
 	read := func() string { b, _ := os.ReadFile(w.Path(EFIDir + "/EFI/OC/config.plist")); return string(b) }
 
@@ -300,7 +300,7 @@ func TestExtraKextsBoot(t *testing.T) {
 func TestKextSwitches(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	id, _ := newIdentity()
-	c := Defaults()
+	c := testDefaults()
 	c.Extras = &ExtraKexts{Disabled: []string{"WhateverGreen"}}
 	cfg, err := OpenCoreConfig(c, id, false)
 	if err != nil {

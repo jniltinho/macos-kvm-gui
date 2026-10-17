@@ -249,6 +249,9 @@ func (u *ui) importVMDialog() {
 				dialog.ShowError(err, u.win)
 				return
 			}
+			if e.Notice != "" {
+				u.appendLog("[import] " + e.Notice)
+			}
 			core.SelectVM(e.ID)
 			u.reloadVMs(e.ID)
 			dialog.ShowInformation("Import", e.DisplayName()+" imported. It uses the folder "+e.Config.Workspace+".", u.win)
@@ -278,6 +281,9 @@ func (u *ui) importVMDialog() {
 						if err != nil {
 							dialog.ShowError(err, u.win)
 							return
+						}
+						if e.Notice != "" {
+							u.appendLog("[import] " + e.Notice)
 						}
 						core.SelectVM(e.ID)
 						u.reloadVMs(e.ID)

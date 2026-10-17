@@ -16,10 +16,10 @@ func TestVMsDatabase(t *testing.T) {
 	app := filepath.Join(cfg, "macos-kvm-gui")
 
 	// Files from older versions are imported into the new database and kept, renamed.
-	legacy := Defaults()
+	legacy := testDefaults()
 	legacy.RAMMiB = 12288
 	SaveConfig(filepath.Join(app, "config.json"), legacy)
-	fromDir := Defaults()
+	fromDir := testDefaults()
 	fromDir.Name, fromDir.Version = "Old Tahoe", "tahoe"
 	SaveConfig(filepath.Join(app, "vms", "old-tahoe.json"), fromDir)
 	write(t, filepath.Join(app, "selected"), "old-tahoe\n")
@@ -39,7 +39,7 @@ func TestVMsDatabase(t *testing.T) {
 	}
 
 	// Create, refuse duplicates (case-insensitive) and bad settings.
-	c := Defaults()
+	c := testDefaults()
 	c.Name, c.Workspace = "Lab", filepath.Join(t.TempDir(), "lab")
 	os.MkdirAll(c.Workspace, 0o755)
 	e, err := CreateVM(c)
@@ -131,7 +131,7 @@ func TestMoveVM(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	old := t.TempDir()
-	c := Defaults()
+	c := testDefaults()
 	c.Name, c.Workspace = "Mover", old
 	w := NewWorkspace(old)
 	if err := w.PrepareBoot(c, false); err != nil {

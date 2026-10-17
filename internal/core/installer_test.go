@@ -185,7 +185,7 @@ func TestInstallerDiscAndCache(t *testing.T) {
 	if got, _ := os.ReadFile(iso); !bytes.Equal(got, b) {
 		t.Fatal("the refreshed disc must equal a new one")
 	}
-	cf := Defaults()
+	cf := testDefaults()
 	cf.Version = "sequoia"
 	if args := strings.Join(BuildArgs(cf, Workspace{Dir: t.TempDir()}, "/q", true, nil), " "); !strings.Contains(args, "snapshot=on,file="+iso) {
 		t.Errorf("the disc is attached with install media: %s", args)
@@ -270,7 +270,7 @@ func TestCheckRunDir(t *testing.T) {
 			t.Errorf("%s must be refused", bad)
 		}
 	}
-	args := BuildArgs(Defaults(), Workspace{Dir: t.TempDir()}, filepath.Join(good, "qmp.sock"), false, nil)
+	args := BuildArgs(testDefaults(), Workspace{Dir: t.TempDir()}, filepath.Join(good, "qmp.sock"), false, nil)
 	if !strings.Contains(strings.Join(args, " "), filepath.Join(good, "qmp-control.sock")) {
 		t.Error("every run has a second QMP socket for one other process")
 	}

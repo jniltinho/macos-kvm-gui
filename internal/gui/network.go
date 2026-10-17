@@ -38,11 +38,11 @@ func nicLabel(model string) string {
 }
 
 // networkPage is the page and the function that reads it back; version gives the macOS
-// version currently chosen in General, for the driver warnings.
-func networkPage(c core.Config, version func() string) (fyne.CanvasObject, func() ([]core.NIC, int, error)) {
+// version currently chosen in General, for the driver warnings. id is the VM's, so its own port
+// is not reported as shared.
+func networkPage(id string, c core.Config, version func() string) (fyne.CanvasObject, func() ([]core.NIC, int, error)) {
 	current := c.Adapters()
-	port := widget.NewEntry()
-	port.SetText(strconv.Itoa(c.SSHPort))
+	port, portRow := sshPortField(id, c.SSHPort)
 
 	var models []string
 	byLabel := map[string]string{}
@@ -174,8 +174,37 @@ func networkPage(c core.Config, version func() string) (fyne.CanvasObject, func(
 		"iCloud and Messages may then ask you to sign in again.")
 	note.Wrapping = fyne.TextWrapWord
 	page := container.NewVBox(container.NewAppTabs(items...),
-		widget.NewForm(widget.NewFormItem("SSH port on 127.0.0.1", port)), note)
+		widget.NewForm(widget.NewFormItem("SSH port on 127.0.0.1", portRow)), note)
 	return page, read
+}
+
+// sshPortField is the SSH port entry with a "Use a free port" button and, under it, a warning
+// when another VM uses the port (saving is still allowed: the two cannot run at the same time).
+// id is the VM's own id ("" for a new VM).
+func sshPortField(id string, value int) (*widget.Entry, fyne.CanvasObject) {
+	port := widget.NewEntry()
+	warn := caption("")
+	warn.Importance = widget.WarningImportance
+	warn.Wrapping = fyne.TextWrapWord
+	port.OnChanged = func(t string) {
+		msg := ""
+		if p, err := strconv.Atoi(strings.TrimSpace(t)); err == nil {
+			msg = core.SSHPortWarning(p, id)
+		}
+		warn.SetText(msg)
+		warn.Hidden = msg == ""
+	}
+	port.SetText(strconv.Itoa(value))
+	free := widget.NewButton("Use a free port", func() {
+		p, err := core.NextSSHPort(id, nil)
+		if err != nil {
+			warn.SetText(err.Error())
+			warn.Show()
+			return
+		}
+		port.SetText(strconv.Itoa(p))
+	})
+	return port, container.NewVBox(container.NewBorder(nil, nil, nil, free, port), warn)
 }
 
 // adapterSummary is a Details line for an adapter, like VirtualBox's "Intel PRO/1000 MT Desktop (NAT)".

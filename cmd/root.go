@@ -4,11 +4,13 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
 	"github.com/jniltinho/macos-kvm-gui/internal/core"
 	"github.com/jniltinho/macos-kvm-gui/internal/gui"
+	"github.com/jniltinho/macos-kvm-gui/internal/mcp"
 )
 
 var (
@@ -34,6 +36,9 @@ For home lab use: macOS's license only allows it on Apple-branded hardware.`,
 // Execute runs the command line; appVersion comes from the build.
 func Execute(appVersion string) {
 	version, rootCmd.Version = appVersion, appVersion
+	if filepath.Base(os.Args[0]) == mcp.AskpassName { // ssh runs the binary as SSH_ASKPASS with its prompt
+		rootCmd.SetArgs([]string{mcp.AskpassName})
+	}
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

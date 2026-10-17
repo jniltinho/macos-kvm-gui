@@ -18,7 +18,7 @@ import (
 func TestBuildArgsSVGAGolden(t *testing.T) {
 	w := NewWorkspace("/vm/a,b")
 	sock := "/run/macos-kvm-gui-x/qmp.sock"
-	c := Defaults()
+	c := testDefaults()
 	app := strings.Join(BuildArgs(c, w, sock, false, nil), "\n")
 	c.Graphics, c.Display = GraphicsSVGA, DisplayWindow
 	win := strings.Join(BuildArgs(c, w, sock, false, []string{"0000:03:00.0", "0000:03:00.1"}), "\n")
@@ -46,7 +46,7 @@ func withAudio(t *testing.T, backend string) {
 
 func TestBuildArgsReims(t *testing.T) {
 	withAudio(t, "pipewire")
-	c := Defaults()
+	c := testDefaults()
 	c.Graphics, c.Display, c.RAMMiB = GraphicsReims, DisplayWindow, 16384
 	args := BuildArgs(c, NewWorkspace("/vm/a"), "/run/macos-kvm-gui-x/qmp.sock", false, nil)
 	joined := strings.Join(args, " ")
@@ -74,7 +74,7 @@ func TestBuildArgsReims(t *testing.T) {
 func runningInArgs(args []string) (string, bool) {
 	proc, _ := os.MkdirTemp("", "proc-")
 	defer os.RemoveAll(proc)
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace = proc
 	os.WriteFile(filepath.Join(proc, DiskFile), nil, 0o644)
 	os.MkdirAll(filepath.Join(proc, "42"), 0o755)
@@ -87,7 +87,7 @@ func runningInArgs(args []string) (string, bool) {
 }
 
 func TestGraphicsValidate(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	var fe *FieldError
 	for _, g := range []string{"", GraphicsSVGA, GraphicsReims} {
 		c.Graphics = g
@@ -231,7 +231,7 @@ func TestStartReimsWithoutBuild(t *testing.T) {
 	}
 	w := readyWorkspace(t)
 	write(t, w.Path(DiskFile), "")
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace, c.Graphics, c.SSHPort = w.Dir, GraphicsReims, 2399
 	err := (&VM{}).Start(c)
 	if err == nil || !strings.Contains(err.Error(), "not installed") || !strings.Contains(err.Error(), "looked for") {
@@ -302,7 +302,7 @@ func TestReimsRealizesPaused(t *testing.T) {
 	t.Setenv("XDG_RUNTIME_DIR", t.TempDir())
 	withAudio(t, "none")
 	w := NewWorkspace(t.TempDir())
-	c := Defaults()
+	c := testDefaults()
 	c.Workspace, c.Graphics, c.RAMMiB, c.SSHPort = w.Dir, GraphicsReims, 4096, 2398
 	c.Extras = &ExtraKexts{}
 	if err := w.PrepareBoot(c, false); err != nil {

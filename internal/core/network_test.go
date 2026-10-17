@@ -11,7 +11,7 @@ import (
 )
 
 func TestLegacyVMKeepsItsNetwork(t *testing.T) {
-	c := Defaults() // Sonoma, no adapter list
+	c := testDefaults() // Sonoma, no adapter list
 	first, rest := netArgs(c, "/usr/lib/qemu/qemu-bridge-helper")
 	want := []string{"-netdev", "user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22",
 		"-device", "virtio-net-pci,netdev=net0,id=net0,mac=52:54:00:c9:18:27"}
@@ -21,7 +21,7 @@ func TestLegacyVMKeepsItsNetwork(t *testing.T) {
 }
 
 func TestNetArgs(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	c.Networks = []NIC{
 		{Enabled: true, Mode: NetNAT, Model: "virtio-net-pci", MAC: "52:54:00:00:00:01"},
 		{Enabled: true, Mode: NetBridged, Bridge: "br0", Model: "vmxnet3", MAC: "52:54:00:00:00:02"},
@@ -114,7 +114,7 @@ func TestBridgeACL(t *testing.T) {
 	netRoot := t.TempDir()
 	os.MkdirAll(filepath.Join(netRoot, "br0", "bridge"), 0o755)
 	os.MkdirAll(filepath.Join(netRoot, "eth0"), 0o755)
-	c := Defaults()
+	c := testDefaults()
 	c.Networks = []NIC{{Enabled: true, Mode: NetBridged, Bridge: "br2", Model: "vmxnet3", MAC: "52:54:00:00:00:01"}}
 	write(t, acl, "allow br0\n")
 	if err := checkBridges(c, netRoot, acl, "/helper"); err == nil || !strings.Contains(err.Error(), "no bridge named br2") {
@@ -143,7 +143,7 @@ func TestSSHPortInUse(t *testing.T) {
 		t.Skip(err)
 	}
 	defer l.Close()
-	c := Defaults()
+	c := testDefaults()
 	c.SSHPort = l.Addr().(*net.TCPAddr).Port
 	if err := checkSSHPort(c); err == nil {
 		t.Fatal("a taken port must be reported before QEMU starts")
@@ -213,7 +213,7 @@ func TestDiskVirtualSize(t *testing.T) {
 }
 
 func TestNoAdaptersSurviveJSON(t *testing.T) {
-	c := Defaults()
+	c := testDefaults()
 	c.Networks = []NIC{}
 	b, err := json.Marshal(c)
 	if err != nil {

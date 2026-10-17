@@ -32,7 +32,7 @@ func Serve(ctx context.Context, version string) error {
 
 func newServer(version string) *mcp.Server {
 	s := mcp.NewServer(&mcp.Implementation{Name: "macos-kvm-gui", Version: version}, nil)
-	yes := true
+	yes, no := true, false
 	destructive := &mcp.ToolAnnotations{DestructiveHint: &yes}
 	readOnly := &mcp.ToolAnnotations{ReadOnlyHint: true}
 
@@ -72,6 +72,17 @@ func newServer(version string) *mcp.Server {
 			"so it needs erase_disk: true and accept_license: true, which only the user can decide."}, installOffline)
 	mcp.AddTool(s, &mcp.Tool{Name: "host_check", Annotations: readOnly,
 		Description: "Check that this computer can run macOS VMs (KVM, QEMU, CPU), like the app's Host tab."}, hostCheck)
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_config_get", Annotations: readOnly,
+		Description: "Read a VM's settings: version, RAM, cores, vCPUs, SSH port, graphics, resolution, display, GPU, root-patch mode and network adapters."}, vmConfigGet)
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_config_set", Annotations: &mcp.ToolAnnotations{DestructiveHint: &no},
+		Description: "Change a stopped VM's settings with the CLI's config set keys and validation: ssh-port, ram (MiB), cores, vcpus, graphics, resolution, display, gpu, version. " +
+			"root-patch and workspace are for the app or `config set` only. Returns the new settings and warnings (for example an SSH port another VM uses)."}, vmConfigSet)
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_create", Annotations: &mcp.ToolAnnotations{DestructiveHint: &no},
+		Description: "Create a VM like `vm create`: CPU and RAM recommended for this host, a fresh network adapter, the lowest free SSH port from 2222 (or ssh_port, unless another VM has it), " +
+			"its folder with the boot files and an 80 GiB disk, and select it. vm_start can start it right away; it downloads nothing (installers: installer_download)."}, vmCreate)
+	mcp.AddTool(s, &mcp.Tool{Name: "vm_ssh", Annotations: destructive,
+		Description: "Run one command in a running VM's macOS over SSH (127.0.0.1 and the VM's forwarded port) with the system's ssh, and return stdout, stderr and the exit code. " +
+			"It logs in with the user's SSH keys or agent, or with password (never logged or stored). Commands can change or delete data in the guest: it needs confirm: true; ask the user first."}, vmSSH)
 	return s
 }
 
@@ -153,6 +164,8 @@ type vmStatusOut struct {
 	Layout     string `json:"keyboard_layout"`
 	Screen     bool   `json:"screen_available"`
 	Uptime     string `json:"uptime,omitempty"`
+	SSHPort    int    `json:"ssh_port"`
+	Warning    string `json:"warning,omitempty" jsonschema:"set when another VM uses the same SSH port"`
 }
 
 func vmStatus(_ context.Context, _ *mcp.CallToolRequest, in vmArg) (*mcp.CallToolResult, vmStatusOut, error) {
@@ -161,7 +174,8 @@ func vmStatus(_ context.Context, _ *mcp.CallToolRequest, in vmArg) (*mcp.CallToo
 		return nil, vmStatusOut{}, err
 	}
 	out := vmStatusOut{vmInfo: vmInfo{e.ID, e.DisplayName(), e.Config.Version, false}, QEMUState: "stopped",
-		GuestPhase: "unknown", Layout: core.RecoveryKeyboard()}
+		GuestPhase: "unknown", Layout: core.RecoveryKeyboard(), SSHPort: e.Config.SSHPort,
+		Warning: core.SSHPortWarning(e.Config.SSHPort, e.ID)}
 	r, ok := core.FindRunning(e.Config)
 	if !ok {
 		return nil, out, nil
@@ -689,4 +703,86 @@ func hostCheck(_ context.Context, _ *mcp.CallToolRequest, in vmArg) (*mcp.CallTo
 
 func text(s string) *mcp.CallToolResult {
 	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: s}}}
+}
+
+// --- settings --------------------------------------------------------------------------------
+
+type vmConfigOut struct {
+	ID string `json:"id"`
+	core.Config
+	Notice   string   `json:"notice,omitempty" jsonschema:"what changed from the request, such as an SSH port another VM had"`
+	Warnings []string `json:"warnings,omitempty"`
+}
+
+func vmConfigGet(_ context.Context, _ *mcp.CallToolRequest, in vmArg) (*mcp.CallToolResult, vmConfigOut, error) {
+	e, err := findVM(in.VM)
+	if err != nil {
+		return nil, vmConfigOut{}, err
+	}
+	return nil, vmConfigOut{ID: e.ID, Config: e.Config, Warnings: core.ConfigWarnings(e)}, nil
+}
+
+type configSetIn struct {
+	VM         string  `json:"vm,omitempty" jsonschema:"VM name or id; default: the VM selected in the app"`
+	SSHPort    *int    `json:"ssh-port,omitempty" jsonschema:"SSH port on 127.0.0.1 (1024-65535)"`
+	RAM        *int    `json:"ram,omitempty" jsonschema:"RAM in MiB (at least 4096)"`
+	Cores      *int    `json:"cores,omitempty" jsonschema:"CPU cores: 1, 2, 4, 8 or 16"`
+	VCPUs      *int    `json:"vcpus,omitempty" jsonschema:"vCPUs, a multiple of cores"`
+	Graphics   *string `json:"graphics,omitempty" jsonschema:"vmware-svga or reims-vgpu"`
+	Resolution *string `json:"resolution,omitempty" jsonschema:"Reims vGPU display size, such as 1920x1080"`
+	Display    *string `json:"display,omitempty" jsonschema:"app or window"`
+	GPU        *string `json:"gpu,omitempty" jsonschema:"PCI address of a passed-through GPU, or empty for none"`
+	Version    *string `json:"version,omitempty" jsonschema:"macOS version: high-sierra ... tahoe"`
+	RootPatch  *bool   `json:"root-patch,omitempty" jsonschema:"refused: use the app or config set"`
+	Workspace  *string `json:"workspace,omitempty" jsonschema:"refused: use the app or config set"`
+}
+
+func vmConfigSet(_ context.Context, _ *mcp.CallToolRequest, in configSetIn) (*mcp.CallToolResult, vmConfigOut, error) {
+	if in.RootPatch != nil {
+		return nil, vmConfigOut{}, errors.New("root-patch: use the app or `config set` (it needs a confirmation and downloads OCLP's kexts)")
+	}
+	if in.Workspace != nil {
+		return nil, vmConfigOut{}, errors.New("workspace: use the app or `config set` (it changes the folder; moving is vm move)")
+	}
+	values := map[string]string{}
+	for k, v := range map[string]*int{"ssh-port": in.SSHPort, "ram": in.RAM, "cores": in.Cores, "vcpus": in.VCPUs} {
+		if v != nil {
+			values[k] = fmt.Sprint(*v)
+		}
+	}
+	for k, v := range map[string]*string{"graphics": in.Graphics, "resolution": in.Resolution, "display": in.Display, "gpu": in.GPU, "version": in.Version} {
+		if v != nil {
+			values[k] = *v
+		}
+	}
+	e, err := findVM(in.VM)
+	if err != nil {
+		return nil, vmConfigOut{}, err
+	}
+	e, warnings, err := core.SetVMConfig(e, values)
+	if err != nil {
+		return nil, vmConfigOut{}, err
+	}
+	return nil, vmConfigOut{ID: e.ID, Config: e.Config, Warnings: warnings}, nil
+}
+
+type createIn struct {
+	Name    string `json:"name" jsonschema:"the VM's name"`
+	Version string `json:"version,omitempty" jsonschema:"macOS version: high-sierra ... tahoe; default sonoma"`
+	Folder  string `json:"folder,omitempty" jsonschema:"VM folder; default <Workspace>/<name>"`
+	SSHPort int    `json:"ssh_port,omitempty" jsonschema:"SSH port on 127.0.0.1; default the lowest free one from 2222; another VM's port is replaced by a free one"`
+}
+
+func vmCreate(ctx context.Context, _ *mcp.CallToolRequest, in createIn) (*mcp.CallToolResult, vmConfigOut, error) {
+	if in.Version == "" {
+		in.Version = core.Defaults().Version
+	}
+	e, err := core.CreateVMWithDefaults(ctx, in.Name, in.Version, in.Folder, in.SSHPort)
+	if err != nil {
+		if e.ID != "" {
+			return nil, vmConfigOut{}, fmt.Errorf("%s was added but its folder is not ready: %w", e.DisplayName(), err)
+		}
+		return nil, vmConfigOut{}, err
+	}
+	return nil, vmConfigOut{ID: e.ID, Config: e.Config, Notice: e.Notice}, nil
 }
