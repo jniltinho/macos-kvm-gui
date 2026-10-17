@@ -8,7 +8,7 @@ name: Reims vGPU packages
 on:
   push:
     tags:
-      - 'reims-*'
+      - 'reims-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]'
 
 jobs:
   build:
