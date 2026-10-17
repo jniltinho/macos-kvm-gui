@@ -49,6 +49,9 @@ fn xvfb() -> (Xvfb, String) {
     let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let mut c = Command::new("Xvfb")
         .args([
+            // Without it the server resets when its last client leaves (the readiness probe),
+            // refusing connections meanwhile.
+            "-noreset",
             "-displayfd",
             "1",
             "-screen",
