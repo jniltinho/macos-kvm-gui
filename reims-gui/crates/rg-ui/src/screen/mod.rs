@@ -46,6 +46,12 @@ impl Screen {
         }
         self.parent = backend_choice::x11_window(frame);
     }
+
+    /// Whether Reims vGPU's window goes into the Screen tab: the app has an X11 window (or has
+    /// not drawn yet, as in tests). Without one it opens on its own.
+    pub fn embedding(&self) -> bool {
+        !self.attached || self.parent.is_some()
+    }
 }
 
 /// Whether the VM has a screen: running here, or started by the CLI or MCP.
@@ -444,5 +450,23 @@ mod tests {
         assert!(h.state().screen.vnc.has_frame());
         let presses = click_screen(&mut h);
         assert!(presses.is_empty(), "{presses:?}");
+    }
+}
+
+#[cfg(test)]
+mod embedding_tests {
+    use super::Screen;
+
+    #[test]
+    fn embedding_follows_the_app_s_x11_window() {
+        let mut s = Screen::default();
+        assert!(s.embedding(), "before the first frame (tests): as embedded");
+        s.attached = true;
+        assert!(
+            !s.embedding(),
+            "on Wayland without X11: Reims opens its own window"
+        );
+        s.parent = Some(0x40_0002);
+        assert!(s.embedding());
     }
 }

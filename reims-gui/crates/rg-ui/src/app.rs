@@ -996,8 +996,11 @@ impl App {
                 "  ·  Started by the command line, an AI agent (MCP) or the other app. Keys and clicks on the screen go to macOS; shut it down in macOS or where it was started."
             }
             VmState::Stopped => "",
-            _ if reims => {
+            _ if reims && self.screen.embedding() => {
                 "  ·  The Reims vGPU display is in the Screen tab; click it to type, Ctrl+Alt+Super releases the keyboard."
+            }
+            _ if reims => {
+                "  ·  In the Reims vGPU window on the desktop (the app has no X server to hold it); Ctrl+Alt+Super releases the keyboard there."
             }
             _ if in_app => "  ·  Click the screen to type; keys go to macOS while it has focus.",
             _ => "  ·  In the QEMU window.",
