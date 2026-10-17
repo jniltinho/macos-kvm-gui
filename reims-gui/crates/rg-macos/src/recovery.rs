@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use rsa::RsaPublicKey;
 
-use crate::chunklist::{apple_efi_key, verify_image_with};
+use crate::chunklist::{apple_efi_key, parse_chunklist, verify_image_with};
 use crate::http::{Http, copy_body, http_err, status_text};
 use crate::{Error, Progress, Result, check_cancel, other};
 use rg_core::workspace::{GIB, MEDIA_FILE, MEDIA_MARKER, MIN_FREE_GIB, STAGING_DIR};
@@ -103,10 +103,15 @@ pub const STAGE_CONVERT: &str = "Converting to raw image";
 /// (`BaseSystem.dmg`, `BaseSystem.chunklist`: names from the server never reach the file
 /// system). Each file goes through a `.part` file renamed when complete; on any error nothing is
 /// left in `dir`. Progress is in bytes, with [`STAGE_CHUNKLIST`] then [`STAGE_IMAGE`].
-pub fn download_recovery(
+///
+/// The API is plain HTTP, so nothing is trusted before the signature: the chunklist is capped at
+/// [`MAX_CHUNKLIST`] and checked against `key`, and the image may not exceed the size its signed
+/// chunks declare.
+pub(crate) fn download_recovery(
     http: &Http,
     version: &str,
     dir: &Path,
+    key: &RsaPublicKey,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Progress),
 ) -> Result<(PathBuf, PathBuf)> {
@@ -124,18 +129,27 @@ pub fn download_recovery(
         &info.ct,
         &dir.join("BaseSystem.chunklist"),
         STAGE_CHUNKLIST,
+        MAX_CHUNKLIST,
         cancel,
         progress,
     )?;
-    match save(
-        http,
-        &info.au,
-        &info.at,
-        &dir.join("BaseSystem.dmg"),
-        STAGE_IMAGE,
-        cancel,
-        progress,
-    ) {
+    let image_size = fs::read(&cnk)
+        .map_err(Error::from)
+        .and_then(|b| parse_chunklist(&b, key))
+        .map(|chunks| chunks.iter().map(|c| u64::from(c.size)).sum());
+    let res = image_size.and_then(|max| {
+        save(
+            http,
+            &info.au,
+            &info.at,
+            &dir.join("BaseSystem.dmg"),
+            STAGE_IMAGE,
+            max,
+            cancel,
+            progress,
+        )
+    });
+    match res {
         Ok(dmg) => Ok((dmg, cnk)),
         Err(e) => {
             let _ = fs::remove_file(&cnk);
@@ -250,13 +264,19 @@ fn recovery_id(n: usize) -> Result<String> {
         .collect())
 }
 
-/// Downloads `url` into `dst` through an exclusively created `.part` file.
+/// The largest recovery chunklist accepted (real ones are a few KiB).
+const MAX_CHUNKLIST: u64 = 1 << 20;
+
+/// Downloads `url` into `dst` through an exclusively created `.part` file, failing past `max`
+/// bytes.
+#[expect(clippy::too_many_arguments, reason = "one download, all its inputs")]
 fn save(
     http: &Http,
     url: &str,
     token: &str,
     dst: &Path,
     stage: &str,
+    max: u64,
     cancel: &AtomicBool,
     progress: &mut dyn FnMut(Progress),
 ) -> Result<PathBuf> {
@@ -279,11 +299,16 @@ fn save(
         ));
     }
     let total = resp.body().content_length().unwrap_or(0);
+    if total > max {
+        return other(format!(
+            "recovery: download {name}: {total} bytes, more than the {max} expected"
+        ));
+    }
     let (mut f, part) = create_part(dst, &name)?;
     let res = (|| {
         progress(Progress::new(stage, 0, total));
         let n = copy_body(
-            &mut resp.into_body().into_reader(),
+            &mut resp.into_body().into_reader().take(max + 1),
             &mut f,
             cancel,
             &mut |n| {
@@ -294,6 +319,11 @@ fn save(
             Error::Io(e) => Error::Other(format!("recovery: download {name}: {e}")),
             e => e,
         })?;
+        if n > max {
+            return other(format!(
+                "recovery: download {name}: more than the {max} bytes expected"
+            ));
+        }
         if total > 0 && n != total {
             return other(format!(
                 "recovery: download {name}: got {n} of {total} bytes"
@@ -368,11 +398,12 @@ pub(crate) fn download_media_with(
     fs::create_dir(&staging.0)?;
 
     progress(Progress::new(STAGE_CHUNKLIST, 0, 0));
-    let (dmg, cnk) =
-        download_recovery(http, version, &staging.0, cancel, progress).map_err(|e| match e {
+    let (dmg, cnk) = download_recovery(http, version, &staging.0, key, cancel, progress).map_err(
+        |e| match e {
             Error::Cancelled => e,
             e => Error::Other(format!("download failed: {e}")),
-        })?;
+        },
+    )?;
     verify_image_with(&dmg, &cnk, key, &mut |done, total| {
         progress(Progress::new(STAGE_VERIFY, done, total))
     })
@@ -497,6 +528,7 @@ pub(crate) mod tests {
     pub(crate) struct Fake {
         pub state: Arc<Mutex<State>>,
         pub http: Http,
+        pub key: RsaPublicKey,
     }
 
     impl Fake {
@@ -563,9 +595,11 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn fake_recovery() -> std::result::Result<Fake, Box<dyn std::error::Error>> {
+        let key = test_key()?;
+        let dmg = vec![b'D'; 3 << 20];
         let state = Arc::new(Mutex::new(State {
-            chunklist: b"CNKL-data".to_vec(),
-            dmg: vec![b'D'; 3 << 20],
+            chunklist: build_chunklist(&key, &dmg, 1 << 20),
+            dmg,
             ..State::default()
         }));
         let st = state.clone();
@@ -574,6 +608,7 @@ pub(crate) mod tests {
         Ok(Fake {
             state,
             http: Http::for_tests(&[], &srv.base),
+            key: key.to_public_key(),
         })
     }
 
@@ -611,7 +646,7 @@ pub(crate) mod tests {
             let dir = tempdir()?.join("out");
             let mut last: HashMap<String, f64> = HashMap::new();
             let never = AtomicBool::new(false);
-            let (dmg, cnk) = download_recovery(&f.http, version, &dir, &never, &mut |p| {
+            let (dmg, cnk) = download_recovery(&f.http, version, &dir, &f.key, &never, &mut |p| {
                 last.insert(p.phase.clone(), p.pct().unwrap_or(-1.0));
             })?;
             assert_eq!(
@@ -645,6 +680,7 @@ pub(crate) mod tests {
             &Http::default(),
             "leopard",
             &tempdir()?,
+            &test_key()?.to_public_key(),
             &AtomicBool::new(false),
             &mut |_| {},
         );
@@ -661,6 +697,7 @@ pub(crate) mod tests {
             &f.http,
             "sonoma",
             &dir,
+            &f.key,
             &AtomicBool::new(false),
             &mut |_| {},
         );
@@ -679,6 +716,7 @@ pub(crate) mod tests {
                 &f.http,
                 "sonoma",
                 &dir,
+                &f.key,
                 &AtomicBool::new(false),
                 &mut |_| {}
             )
@@ -692,11 +730,53 @@ pub(crate) mod tests {
         Ok(())
     }
 
+    /// Nothing is trusted before the chunklist's signature: an oversized or unsigned chunklist
+    /// fails before the image is requested, and the image may not exceed its signed size.
+    #[test]
+    fn recovery_bounds_unverified_downloads() -> TestResult {
+        let f = fake_recovery()?;
+        let signed = f.st().chunklist.clone();
+        let dmg = f.st().dmg.clone();
+        for (chunklist, image, want, image_requested) in [
+            (vec![0; (1 << 20) + 1], dmg.clone(), "more than", false),
+            (b"CNKL-data".to_vec(), dmg.clone(), "chunklist", false),
+            (signed, [dmg.as_slice(), b"x"].concat(), "more than", true),
+        ] {
+            {
+                let mut s = f.st();
+                s.chunklist = chunklist;
+                s.dmg = image;
+                s.cookies.clear();
+            }
+            let dir = tempdir()?;
+            let never = AtomicBool::new(false);
+            let e = download_recovery(&f.http, "sonoma", &dir, &f.key, &never, &mut |_| {});
+            assert!(
+                e.is_err_and(|e| e.to_string().contains(want)),
+                "want {want}"
+            );
+            assert!(entries(&dir)?.is_empty(), "leftover files");
+            assert_eq!(
+                f.st().cookies.contains_key("/dl/BaseSystem.dmg"),
+                image_requested,
+                "{want}"
+            );
+        }
+        Ok(())
+    }
+
     #[test]
     fn recovery_cancelled() -> TestResult {
         let f = fake_recovery()?;
         let dir = tempdir()?;
-        let res = download_recovery(&f.http, "sonoma", &dir, &AtomicBool::new(true), &mut |_| {});
+        let res = download_recovery(
+            &f.http,
+            "sonoma",
+            &dir,
+            &f.key,
+            &AtomicBool::new(true),
+            &mut |_| {},
+        );
         assert!(matches!(res, Err(Error::Cancelled)));
         assert!(entries(&dir)?.is_empty());
         Ok(())
@@ -707,6 +787,8 @@ pub(crate) mod tests {
     fn recovery_ignores_server_file_names() -> TestResult {
         let base = Arc::new(Mutex::new(String::new()));
         let b = base.clone();
+        let key = test_key()?;
+        let cnk = build_chunklist(&key, b"payload", 1024);
         let evil = Server::http(move |r| {
             let u = b.lock().map(|s| s.clone()).unwrap_or_default();
             match r.path.as_str() {
@@ -714,6 +796,7 @@ pub(crate) mod tests {
                     format!("AP: x\nAU: {u}/dl/%2e%2e\nAH: x\nAT: t\nCU: {u}/dl/%2e%2e%2f%2e%2e%2fvictim\nCH: x\nCT: t\n").into_bytes(),
                 ),
                 "/" => Reply::new(200, vec![("Set-Cookie".into(), "session=abc".into())], b"payload".to_vec()),
+                p if p.ends_with("victim") => Reply::ok(cnk.clone()),
                 _ => Reply::ok(b"payload".to_vec()),
             }
         })?;
@@ -721,8 +804,14 @@ pub(crate) mod tests {
         let parent = tempdir()?;
         let dir = parent.join("staging");
         let http = Http::for_tests(&[], &evil.base);
-        let (dmg, cnk) =
-            download_recovery(&http, "sonoma", &dir, &AtomicBool::new(false), &mut |_| {})?;
+        let (dmg, cnk) = download_recovery(
+            &http,
+            "sonoma",
+            &dir,
+            &key.to_public_key(),
+            &AtomicBool::new(false),
+            &mut |_| {},
+        )?;
         assert_eq!(
             (dmg, cnk),
             (dir.join("BaseSystem.dmg"), dir.join("BaseSystem.chunklist"))
