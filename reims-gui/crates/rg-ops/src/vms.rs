@@ -59,10 +59,11 @@ impl Ops {
         Ok(())
     }
 
-    /// The wizard's and `vm create`'s flow: default adapters, validation, the VM added and
-    /// selected, its folder prepared, then the disk and the recovery when asked. The entry is
-    /// returned once added, even if a later step fails (`Err` names that step's error; the VM
-    /// stays in the list, as in the Go app).
+    /// The wizard's, `vm create`'s and MCP `vm_create`'s flow: default adapters, validation,
+    /// the VM added with a free SSH port (port 0) and selected, its folder prepared, then the
+    /// disk and the recovery when asked. Returns the entry and the notice of
+    /// [`Registry::create_noted`] (the port asked for belongs to another VM). If a later step
+    /// fails, `Err` names that step's error and the VM stays in the list, as in the Go app.
     pub fn create_vm(
         &self,
         reg: &Registry,
@@ -71,12 +72,14 @@ impl Ops {
         cancel: &AtomicBool,
         progress: &mut dyn FnMut(Progress),
         log: &mut dyn FnMut(&str),
-    ) -> Result<VmEntry> {
+    ) -> Result<(VmEntry, Option<String>)> {
         if c.networks.is_none() {
             c.networks = Some(rg_core::network::new_networks(&c.version));
         }
-        c.validate()?;
-        let e = reg.create(c)?;
+        let (e, notice) = reg.create_noted(c)?;
+        if let Some(n) = &notice {
+            log(n);
+        }
         reg.select(&e.id)?;
         self.prepare_workspace(&e.config)?;
         if let Some(gib) = opts.disk_gib {
@@ -88,7 +91,7 @@ impl Ops {
         if opts.download {
             self.download_media(&e.config, &e.config.version, cancel, progress, log)?;
         }
-        Ok(e)
+        Ok((e, notice))
     }
 
     fn refuse_running(&self, c: &Config, what: String) -> Result<()> {
@@ -239,7 +242,7 @@ mod tests {
         let o = ops(&t)?;
         let reg = Registry::open(&o.app)?;
         let no = AtomicBool::new(false);
-        let e = o.create_vm(
+        let (e, _) = o.create_vm(
             &reg,
             config(&t, "Lab"),
             CreateOptions::default(),

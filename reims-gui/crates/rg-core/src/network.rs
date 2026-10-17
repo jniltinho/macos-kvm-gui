@@ -390,7 +390,11 @@ mod tests {
 
     #[test]
     fn legacy_vm_keeps_its_network() {
-        let (first, rest) = net_args(&Config::defaults(), "/usr/lib/qemu/qemu-bridge-helper");
+        let c = Config {
+            ssh_port: 2222,
+            ..Config::defaults()
+        };
+        let (first, rest) = net_args(&c, "/usr/lib/qemu/qemu-bridge-helper");
         assert_eq!(
             first,
             [
@@ -405,7 +409,10 @@ mod tests {
 
     #[test]
     fn net_args_for_four_adapters() {
-        let mut c = Config::defaults();
+        let mut c = Config {
+            ssh_port: 2222,
+            ..Config::defaults()
+        };
         c.networks = Some(vec![
             nic("nat", "", "virtio-net-pci", "52:54:00:00:00:01", true),
             nic("bridged", "br0", "vmxnet3", "52:54:00:00:00:02", true),

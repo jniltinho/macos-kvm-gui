@@ -17,8 +17,8 @@ use std::time::{Duration, Instant};
 
 use anyhow::{Result, anyhow, bail};
 use base64::Engine;
-use rg_core::registry::find_vm;
-use rg_core::{Config, VmEntry};
+use rg_core::registry::{find_vm, port_warning};
+use rg_core::{Config, VmEntry, Workspace};
 use rg_qemu::qcode::{self, Ev};
 use rg_qemu::{KeyCode, Qmp, RunInfo, find_running};
 use rmcp::model::{
@@ -121,8 +121,125 @@ const TOOLS: &[ToolDef] = &[
                 ("keyboard_layout", json!({"type": "string"}), true),
                 ("screen_available", json!({"type": "boolean"}), true),
                 ("uptime", json!({"type": "string"}), false),
+                ("ssh_port", json!({"type": "integer"}), true),
+                ("warning", json!({"type": "string"}), false),
             ]);
             object(&p)
+        }),
+    },
+    ToolDef {
+        name: "vm_config_get",
+        desc: "A VM's settings: name, version, RAM, cores, vCPUs, SSH port, graphics, resolution, display, GPU, root-patch mode and network adapters.",
+        hint: Hint::ReadOnly,
+        input: vm_only,
+        output: None,
+    },
+    ToolDef {
+        name: "vm_config_set",
+        desc: "Change a stopped VM's settings with `config set`'s keys and checks: ssh-port, ram (MiB), cores, vcpus, graphics (vmware-svga or reims-vgpu), resolution, display (app or window), gpu (PCI address or empty) and version. root-patch and workspace are changed in the app or with `config set`. Returns the settings and warnings, such as an SSH port another VM uses.",
+        hint: Hint::None,
+        input: || {
+            object(&[
+                vm_prop(),
+                (
+                    "ssh-port",
+                    integer("SSH port on 127.0.0.1 (1024-65535)"),
+                    false,
+                ),
+                ("ram", integer("memory in MiB (at least 4096)"), false),
+                ("cores", integer("CPU cores: 1, 2, 4, 8 or 16"), false),
+                ("vcpus", integer("vCPUs, a multiple of cores"), false),
+                ("graphics", string("vmware-svga or reims-vgpu"), false),
+                (
+                    "resolution",
+                    string("Reims vGPU display size, such as 1920x1080"),
+                    false,
+                ),
+                ("display", string("app or window"), false),
+                (
+                    "gpu",
+                    string("PCI address of a passed-through GPU, or empty"),
+                    false,
+                ),
+                (
+                    "version",
+                    string("macOS version: high-sierra ... tahoe"),
+                    false,
+                ),
+            ])
+        },
+        output: None,
+    },
+    ToolDef {
+        name: "vm_create",
+        desc: "Create a VM as `vm create` does: the host's recommended CPU and RAM, fresh network MACs, a free SSH port (or ssh_port when no other VM has it), its folder and disk prepared, and the VM selected. vm_start starts it; the install media come from installer_download.",
+        hint: Hint::None,
+        input: || {
+            object(&[
+                ("name", string("the VM's name"), true),
+                ("version", string("macOS version (default sonoma)"), false),
+                (
+                    "folder",
+                    string("VM folder (default <Workspace>/<name>)"),
+                    false,
+                ),
+                (
+                    "ssh_port",
+                    integer("SSH port on 127.0.0.1 (default: the first free one from 2222)"),
+                    false,
+                ),
+                (
+                    "disk_gib",
+                    integer("thin disk size in GiB (default 80, minimum 40)"),
+                    false,
+                ),
+            ])
+        },
+        output: None,
+    },
+    ToolDef {
+        name: "vm_ssh",
+        desc: "Run one command in a running VM's macOS over its SSH forward (127.0.0.1) with the system ssh, and return its standard output, standard error and exit code. It authenticates with the user's SSH keys or agent, or with password (never logged or stored). It RUNS COMMANDS IN THE GUEST, so it needs confirm: true; ask the user first.",
+        hint: Hint::Destructive,
+        input: || {
+            object(&[
+                vm_prop(),
+                ("user", string("the macOS account"), true),
+                (
+                    "command",
+                    string("the command line, run by the account's shell"),
+                    true,
+                ),
+                (
+                    "password",
+                    string("the account's password, when keys are not set up"),
+                    false,
+                ),
+                (
+                    "timeout_sec",
+                    integer("seconds before ssh is killed (default 60, at most 600)"),
+                    false,
+                ),
+                (
+                    "reset_host_key",
+                    boolean("forget the guest's host key first (after reinstalling macOS)"),
+                    false,
+                ),
+                (
+                    "confirm",
+                    boolean("must be true: the user agreed to run this command in the guest"),
+                    false,
+                ),
+            ])
+        },
+        output: Some(|| {
+            object(&[
+                ("stdout", json!({"type": "string"}), true),
+                ("stderr", json!({"type": "string"}), true),
+                ("exit_code", json!({"type": "integer"}), true),
+                ("truncated", json!({"type": "boolean"}), true),
+                ("timed_out", json!({"type": "boolean"}), true),
+            ])
         }),
     },
     ToolDef {
@@ -391,6 +508,51 @@ struct ConfirmVm {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+struct CreateIn {
+    name: String,
+    #[serde(default)]
+    version: String,
+    #[serde(default)]
+    folder: String,
+    #[serde(default)]
+    ssh_port: u16,
+    #[serde(default)]
+    disk_gib: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SshIn {
+    #[serde(default)]
+    vm: String,
+    user: String,
+    command: String,
+    #[serde(default)]
+    password: Option<String>,
+    #[serde(default)]
+    timeout_sec: Option<u64>,
+    #[serde(default)]
+    reset_host_key: bool,
+    #[serde(default)]
+    confirm: bool,
+}
+
+/// The keys `vm_config_set` takes (the CLI's `config set` keys, without root-patch, workspace
+/// and the adapters).
+const SET_KEYS: [&str; 9] = [
+    "ssh-port",
+    "ram",
+    "cores",
+    "vcpus",
+    "graphics",
+    "resolution",
+    "display",
+    "gpu",
+    "version",
+];
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CaptureIn {
     #[serde(default)]
     vm: String,
@@ -508,6 +670,10 @@ impl Server {
     ) -> Result<CallToolResult> {
         match name {
             "vm_list" => self.vm_list(args(a)?),
+            "vm_config_get" => self.vm_config_get(args(a)?),
+            "vm_config_set" => self.vm_config_set(a),
+            "vm_create" => self.vm_create(args(a)?).await,
+            "vm_ssh" => self.vm_ssh(args(a)?).await,
             "vm_status" => self.vm_status(args(a)?).await,
             "vm_start" => self.vm_start(args(a)?).await,
             "vm_shutdown" => self.vm_shutdown(args(a)?).await,
@@ -541,12 +707,172 @@ impl Server {
         Ok(CallToolResult::structured(json!({ "vms": vms })))
     }
 
+    /// The settings and the shared-port warnings of `e`.
+    fn settings(&self, e: &VmEntry) -> Result<Value> {
+        let mut out = serde_json::to_value(&e.config)?;
+        out["id"] = e.id.clone().into();
+        out["name"] = e.display_name().into();
+        out["root_patch"] = e.config.root_patch.into();
+        out["networks"] = serde_json::to_value(e.config.adapters())?;
+        let users = self
+            .ctx
+            .registry()?
+            .ssh_port_users(e.config.ssh_port, &e.id)?;
+        out["warnings"] = json!(port_warning(&users).into_iter().collect::<Vec<_>>());
+        Ok(out)
+    }
+
+    fn vm_config_get(&self, a: VmArg) -> Result<CallToolResult> {
+        let e = self.find_vm(&a.vm)?;
+        Ok(CallToolResult::structured(self.settings(&e)?))
+    }
+
+    /// Design D5: under the VM folder's Workspace lock (which a start takes), refused while the
+    /// VM runs; the VM is reloaded, changed, checked and saved in one immediate transaction.
+    fn vm_config_set(&self, a: &JsonObject) -> Result<CallToolResult> {
+        let mut key = String::new();
+        let mut pairs = Vec::new();
+        for (k, v) in a {
+            if k == "vm" {
+                key = v
+                    .as_str()
+                    .ok_or_else(|| anyhow!("vm: expected a string"))?
+                    .into();
+                continue;
+            }
+            if k == "root-patch" || k == "workspace" {
+                bail!("{k} cannot be changed over MCP: use the app or `config set`");
+            }
+            if !SET_KEYS.contains(&k.as_str()) {
+                bail!("unknown key {k:?}: use {}", SET_KEYS.join(", "));
+            }
+            let v = match v {
+                Value::String(s) => s.clone(),
+                Value::Number(n) => n.to_string(),
+                other => bail!("{k}: expected a string or a number, got {other}"),
+            };
+            pairs.push((k.clone(), v));
+        }
+        if pairs.is_empty() {
+            bail!("nothing to change: pass one of {}", SET_KEYS.join(", "));
+        }
+        let e = self.find_vm(&key)?;
+        let name = e.display_name();
+        let running = || {
+            find_running(&e.config).map(|_| {
+                anyhow!("{name} is running: shut it down first, its settings cannot change while it runs")
+            })
+        };
+        if let Some(err) = running() {
+            return Err(err);
+        }
+        let _lock = Workspace::new(e.config.workspace_dir()?)
+            .lock()
+            .map_err(|err| match err {
+                rg_core::Error::Busy => anyhow!(
+                    "{name}'s folder is in use (the VM is starting, or another app is using it): try again"
+                ),
+                err => err.into(),
+            })?;
+        if let Some(err) = running() {
+            return Err(err);
+        }
+        let e = self.ctx.registry()?.update(&e.id, |c| {
+            for (k, v) in &pairs {
+                match crate::cli::set_key(c, k, v) {
+                    Some(Ok(())) => {}
+                    Some(Err(err)) => return Err(rg_core::Error::Msg(format!("{k}: {err}"))),
+                    None => return Err(rg_core::Error::Msg(format!("unknown key {k:?}"))),
+                }
+            }
+            Ok(())
+        })?;
+        Ok(CallToolResult::structured(self.settings(&e)?))
+    }
+
+    /// `vm create`'s workflow (rg-ops `Ops::create_vm`), with the disk.
+    async fn vm_create(&self, a: CreateIn) -> Result<CallToolResult> {
+        let ctx = self.ctx.clone();
+        tokio::task::spawn_blocking(move || -> Result<CallToolResult> {
+            let reg = ctx.registry()?;
+            let mut c =
+                Config::defaults().recommended(crate::cli::threads(), ctx.host().mem_total_mib());
+            c.workspace = if a.folder.trim().is_empty() {
+                reg.vm_folder(&a.name)
+            } else {
+                a.folder
+            };
+            c.name = a.name;
+            if !a.version.is_empty() {
+                c.version = a.version;
+            }
+            c.ssh_port = a.ssh_port;
+            c.networks = Some(rg_core::network::new_networks(&c.version));
+            let (e, notice) = ctx.ops.create_vm(&reg, c, Some(a.disk_gib.unwrap_or(80)))?;
+            let mut out = json!({"id": e.id, "name": e.display_name(), "version": e.config.version,
+                "folder": e.config.workspace, "ssh_port": e.config.ssh_port});
+            if let Some(n) = notice {
+                out["notice"] = n.into();
+            }
+            Ok(CallToolResult::structured(out))
+        })
+        .await?
+    }
+
+    /// Design D6: the system ssh, on the port the running QEMU forwards.
+    async fn vm_ssh(&self, a: SshIn) -> Result<CallToolResult> {
+        if !a.confirm {
+            bail!(
+                "vm_ssh runs commands in the guest: ask the user, then call it with confirm: true"
+            );
+        }
+        let timeout = a.timeout_sec.unwrap_or(60);
+        if !(1..=600).contains(&timeout) {
+            bail!("timeout_sec: use 1 to 600 seconds");
+        }
+        let (e, r) = self.running(&a.vm)?;
+        let port = r.ssh_port.ok_or_else(|| {
+            anyhow!(
+                "{} has no SSH forward on 127.0.0.1 (no NAT adapter): use the VM's address on its network",
+                e.display_name()
+            )
+        })?;
+        let known_hosts = self.ctx.app.path().join("known_hosts");
+        std::fs::create_dir_all(self.ctx.app.path())?;
+        if a.reset_host_key {
+            crate::ssh::reset_host_key(&known_hosts, port)?;
+        }
+        let askpass = std::env::current_exe()?;
+        let o = crate::ssh::run(&crate::ssh::Request {
+            ssh: Path::new("ssh"),
+            port,
+            user: &a.user,
+            command: &a.command,
+            password: a.password.as_deref(),
+            known_hosts: &known_hosts,
+            askpass: &askpass,
+            timeout: Duration::from_secs(timeout),
+        })
+        .await?;
+        Ok(CallToolResult::structured(json!({
+            "stdout": o.stdout, "stderr": o.stderr, "exit_code": o.exit_code,
+            "truncated": o.truncated, "timed_out": o.timed_out,
+        })))
+    }
+
     async fn vm_status(&self, a: VmArg) -> Result<CallToolResult> {
         let e = self.find_vm(&a.vm)?;
         let layout = rg_core::keyboard::recovery_keyboard();
         let mut out = json!({"id": e.id, "name": e.display_name(), "version": e.config.version, "running": false,
             "qemu_state": "stopped", "guest_phase": "unknown", "offline_disc_attached": false,
-            "keyboard_layout": layout, "screen_available": false});
+            "keyboard_layout": layout, "screen_available": false, "ssh_port": e.config.ssh_port});
+        let users = self
+            .ctx
+            .registry()?
+            .ssh_port_users(e.config.ssh_port, &e.id)?;
+        if let Some(w) = port_warning(&users) {
+            out["warning"] = w.into();
+        }
         if let Some(r) = find_running(&e.config) {
             out["running"] = true.into();
             out["offline_disc_attached"] = r.disc.into();

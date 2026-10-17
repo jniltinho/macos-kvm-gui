@@ -26,6 +26,9 @@ pub struct RunInfo {
     pub disc: bool,
     /// It runs on Reims vGPU (apple-gfx-pci), whatever the VM's config says now.
     pub reims: bool,
+    /// The SSH forward it was started with (`hostfwd=tcp:127.0.0.1:<port>-:22`), whatever the
+    /// VM's config says now.
+    pub ssh_port: Option<u16>,
 }
 
 impl RunInfo {
@@ -85,6 +88,9 @@ pub fn running_in(proc: &Path, c: &Config) -> Option<RunInfo> {
             if a.starts_with("apple-gfx-pci") {
                 info.reims = true;
             }
+            if let Some(p) = hostfwd_port(a) {
+                info.ssh_port = Some(p);
+            }
             if *a == "-vnc" && i + 1 < args.len() {
                 info.vnc_socket = Some(socket_path(next, ",lock-key-sync"));
             }
@@ -92,6 +98,14 @@ pub fn running_in(proc: &Path, c: &Config) -> Option<RunInfo> {
         return Some(info);
     }
     None
+}
+
+/// The host port of a `-netdev user,...,hostfwd=tcp:127.0.0.1:<port>-:22` argument.
+fn hostfwd_port(arg: &str) -> Option<u16> {
+    arg.split(',')
+        .find_map(|o| o.strip_prefix("hostfwd=tcp:127.0.0.1:"))
+        .and_then(|r| r.strip_suffix("-:22"))
+        .and_then(|p| p.parse().ok())
 }
 
 /// `unix:<path>,<opts>` → path, with QEMU's ",," unescaped.
@@ -213,10 +227,17 @@ mod tests {
                 "unix:/run/user/1000/macos-kvm-gui-1/qmp-control.sock,server=on,wait=off",
                 "-drive",
                 "id=InstallerDisc,if=none,format=raw,snapshot=on,file=/c/InstallAssistant.iso",
+                "-netdev",
+                "user,id=net0,hostfwd=tcp:127.0.0.1:2224-:22",
             ],
         )?;
         let r = running_in(proc, &c).ok_or_else(|| std::io::Error::other("not found"))?;
         assert_eq!(r.pid, 200);
+        assert_eq!(
+            r.ssh_port,
+            Some(2224),
+            "the run's forward, not the config's"
+        );
         assert!(r.by_app && r.disc && !r.reims && r.started.is_some());
         assert_eq!(
             r.vnc_socket.as_deref(),
@@ -242,7 +263,7 @@ mod tests {
                 "apple-gfx-pci,id=gfx,displays=1,resolution=1920x1080",
             ],
         )?;
-        assert!(running_in(proc, &c).is_some_and(|r| r.reims && !r.by_app));
+        assert!(running_in(proc, &c).is_some_and(|r| r.reims && !r.by_app && r.ssh_port.is_none()));
         Ok(())
     }
 

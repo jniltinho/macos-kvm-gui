@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 
 use anyhow::Result;
-use rg_core::{AppDir, Config, Registry};
+use rg_core::{AppDir, Config, Registry, VmEntry};
 use rg_qemu::VmEvent;
 use tokio::runtime::{Handle, Runtime};
 
@@ -46,6 +46,22 @@ impl AgentOps {
 impl rg_agent::Ops for AgentOps {
     fn prepare_workspace(&self, c: &Config) -> Result<()> {
         Ok(self.ops()?.prepare_workspace(c)?)
+    }
+
+    fn create_vm(
+        &self,
+        reg: &Registry,
+        c: Config,
+        disk_gib: Option<u64>,
+    ) -> Result<(VmEntry, Option<String>)> {
+        let opts = rg_ops::CreateOptions {
+            disk_gib,
+            download: false,
+        };
+        let no = AtomicBool::new(false);
+        Ok(self
+            .ops()?
+            .create_vm(reg, c, opts, &no, &mut |_| {}, &mut |_| {})?)
     }
 
     fn download_media(

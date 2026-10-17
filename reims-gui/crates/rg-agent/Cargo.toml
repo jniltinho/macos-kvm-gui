@@ -23,6 +23,8 @@ serde_json.workspace = true
 tokio = { workspace = true, features = ["signal"] }
 rmcp.workspace = true
 image.workspace = true
+# vm_ssh's timeout kills ssh's process group.
+rustix = { workspace = true, features = ["process"] }
 # Already in the lock through other crates; encodes the screen capture's PNG for MCP.
 base64 = "=0.23.1"
 

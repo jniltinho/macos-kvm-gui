@@ -65,11 +65,36 @@ fn tools() -> Result<()> {
         "installer_remove",
         "install_offline",
         "host_check",
+        "vm_config_get",
+        "vm_config_set",
+        "vm_create",
+        "vm_ssh",
     ] {
         ensure!(get(n).is_some(), "missing tool {n}");
     }
-    ensure!(tools.len() == 14);
-    for n in ["vm_force_stop", "installer_remove", "install_offline"] {
+    ensure!(tools.len() == 18);
+    for n in ["vm_config_set", "vm_create", "vm_ssh"] {
+        ensure!(
+            get(n).is_some_and(|t| t["inputSchema"]["properties"].is_object()),
+            "{n} has no input schema"
+        );
+    }
+    for n in ["vm_config_set", "vm_create"] {
+        ensure!(
+            get(n).is_some_and(|t| t["annotations"].is_null()),
+            "{n} is neither read-only nor destructive"
+        );
+    }
+    let ssh = get("vm_ssh")
+        .map(|t| t["inputSchema"].clone())
+        .unwrap_or_default();
+    ensure!(ssh["required"] == json!(["user", "command"]), "{ssh}");
+    for n in [
+        "vm_force_stop",
+        "installer_remove",
+        "install_offline",
+        "vm_ssh",
+    ] {
         ensure!(
             get(n).is_some_and(|t| t["annotations"]["destructiveHint"] == true),
             "{n} must be marked destructive"
@@ -81,6 +106,7 @@ fn tools() -> Result<()> {
         "screen_capture",
         "installer_list",
         "host_check",
+        "vm_config_get",
     ] {
         ensure!(
             get(n).is_some_and(|t| t["annotations"]["readOnlyHint"] == true),
@@ -128,6 +154,18 @@ fn consent_first() -> Result<()> {
         ),
         ("vm_status", json!({"vm": "nope"}), "no VM"),
         ("vm_status", json!({"vm": "x", "agent": 1}), "unknown field"),
+        (
+            "vm_ssh",
+            json!({"user": "u", "command": "true"}),
+            "runs commands in the guest",
+        ),
+        (
+            "vm_config_set",
+            json!({"root-patch": false}),
+            "use the app or `config set`",
+        ),
+        ("vm_config_set", json!({"workspace": "/x"}), "use the app"),
+        ("vm_config_set", json!({"nic1.mode": "nat"}), "unknown key"),
     ];
     let calls = cases
         .iter()
@@ -227,7 +265,7 @@ fn vm_start_downloads_kexts_first() -> Result<()> {
 #[test]
 fn self_test_lists_the_tools() -> Result<()> {
     let env = Env::new()?;
-    ensure!(self_test(env.ctx.clone())?.len() == 14);
+    ensure!(self_test(env.ctx.clone())?.len() == 18);
     Ok(())
 }
 
@@ -237,4 +275,217 @@ fn scale_down_keeps_small_frames() {
     assert_eq!((img.width(), s), (800, 1.0));
     let (img, s) = scale_down(image::RgbaImage::new(2560, 1440), 1280);
     assert_eq!((img.width(), img.height(), s), (1280, 720, 0.5));
+}
+
+/// A process that running detection takes for the QEMU of the VM using `disk`: a copy of
+/// /bin/sh named qemu-system-x86_64, sleeping, with the disk (and an SSH forward) on its
+/// command line. Killed on drop.
+struct FakeQemu(std::process::Child);
+
+impl FakeQemu {
+    fn start(dir: &Path, disk: &Path, hostfwd: Option<u16>) -> Result<Self> {
+        let bin = dir.join("qemu-system-x86_64");
+        if !bin.exists() {
+            std::fs::copy("/bin/sh", &bin)?;
+        }
+        let mut cmd = std::process::Command::new(&bin);
+        cmd.args(["-c", "sleep 60; true", "qemu", "-drive"])
+            .arg(format!("file={}", disk.display()));
+        if let Some(p) = hostfwd {
+            cmd.args([
+                "-netdev",
+                &format!("user,id=net0,hostfwd=tcp:127.0.0.1:{p}-:22"),
+            ]);
+        }
+        let q = Self(cmd.spawn()?);
+        let comm = format!("/proc/{}/comm", q.0.id());
+        for _ in 0..200 {
+            if std::fs::read(&comm).is_ok_and(|c| c.starts_with(b"qemu-system")) {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        Ok(q)
+    }
+}
+
+impl Drop for FakeQemu {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
+
+/// A VM in the list with its folder and an empty disk.
+fn vm(env: &Env, name: &str, port: u16) -> Result<VmEntry> {
+    let mut c = Config::defaults();
+    c.name = name.into();
+    c.workspace = env
+        .path(rg_core::registry::slug(name))
+        .display()
+        .to_string();
+    c.ssh_port = port;
+    c.networks = Some(rg_core::network::new_networks(&c.version));
+    let e = Registry::open(&env.ctx.app)?.create(c)?;
+    let dir = e.config.workspace_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join(rg_core::workspace::DISK_FILE), "")?;
+    Ok(e)
+}
+
+fn stored(env: &Env, name: &str) -> Result<Config> {
+    find_vm(&Registry::open(&env.ctx.app)?.list()?, name)
+        .map(|e| e.config.clone())
+        .ok_or_else(|| anyhow!("no {name}"))
+}
+
+#[test]
+fn vm_config_get_and_set() -> Result<()> {
+    let env = Env::new()?;
+    vm(&env, "Nilton", 2222)?;
+    vm(&env, "sonoma-test", 2300)?;
+    let r = session(
+        &env,
+        vec![
+            call(1, "vm_config_get", json!({"vm": "Nilton"})),
+            call(
+                2,
+                "vm_config_set",
+                json!({"vm": "sonoma-test", "ssh-port": 2222, "ram": 16384}),
+            ),
+            call(
+                3,
+                "vm_config_set",
+                json!({"vm": "sonoma-test", "ram": 1024}),
+            ),
+            call(
+                4,
+                "vm_config_set",
+                json!({"vm": "sonoma-test", "ssh-port": "abc"}),
+            ),
+            call(5, "vm_status", json!({"vm": "Nilton"})),
+        ],
+    )?;
+    let got = &r[1]["result"]["structuredContent"];
+    ensure!(
+        got["ssh_port"] == 2222
+            && got["name"] == "Nilton"
+            && got["root_patch"] == false
+            && got["networks"].as_array().is_some_and(|n| n.len() == 1)
+            && got["warnings"] == json!([]),
+        "{got}"
+    );
+    let set = &r[2]["result"]["structuredContent"];
+    ensure!(
+        set["ssh_port"] == 2222
+            && set["ram_mib"] == 16384
+            && set["warnings"] == json!(["Also used by Nilton: they cannot run at the same time"]),
+        "{}",
+        r[2]
+    );
+    let c = stored(&env, "sonoma-test")?;
+    ensure!(
+        c.ssh_port == 2222 && c.ram_mib == 16384,
+        "saved for both apps"
+    );
+    let (msg, is_err) = result(&r[3]);
+    ensure!(is_err && msg.contains("ram: minimum is 4096 MiB"), "{msg}");
+    let (msg, is_err) = result(&r[4]);
+    ensure!(
+        is_err && msg.contains(r#"ssh-port: "abc" is not a whole number"#),
+        "{msg}"
+    );
+    ensure!(
+        stored(&env, "sonoma-test")?.ram_mib == 16384,
+        "a refused change changes nothing"
+    );
+    let st = &r[5]["result"]["structuredContent"];
+    ensure!(
+        st["ssh_port"] == 2222
+            && st["warning"] == "Also used by sonoma-test: they cannot run at the same time",
+        "{st}"
+    );
+    Ok(())
+}
+
+#[test]
+fn vm_config_set_and_vm_ssh_refuse_a_running_or_busy_vm() -> Result<()> {
+    let env = Env::new()?;
+    let e = vm(&env, "Run", 2222)?;
+    let dir = e.config.workspace_dir()?;
+    let set = || call(1, "vm_config_set", json!({"vm": "Run", "ram": 16384}));
+    {
+        // A start in progress (or the other app) holds the Workspace lock.
+        let _held = rg_core::Workspace::new(&dir).lock()?;
+        let (msg, is_err) = result(&session(&env, vec![set()])?[1]);
+        ensure!(is_err && msg.contains("in use"), "{msg}");
+    }
+    let ssh = |id| {
+        call(
+            id,
+            "vm_ssh",
+            json!({"vm": "Run", "user": "u", "command": "true", "confirm": true}),
+        )
+    };
+    let (msg, is_err) = result(&session(&env, vec![ssh(1)])?[1]);
+    ensure!(is_err && msg.contains("Run is not running"), "{msg}");
+    let _qemu = FakeQemu::start(
+        env.tmp.path(),
+        &dir.join(rg_core::workspace::DISK_FILE),
+        None,
+    )?;
+    let r = session(&env, vec![set(), ssh(2)])?;
+    let (msg, is_err) = result(&r[1]);
+    ensure!(is_err && msg.contains("shut it down first"), "{msg}");
+    let (msg, is_err) = result(&r[2]);
+    ensure!(is_err && msg.contains("no SSH forward"), "{msg}");
+    ensure!(stored(&env, "Run")?.ram_mib == 8192, "nothing changed");
+    Ok(())
+}
+
+#[test]
+fn vm_create_picks_a_free_port_and_is_ready_to_start() -> Result<()> {
+    let env = Env::new()?;
+    vm(&env, "Nilton", 2222)?;
+    let r = session(
+        &env,
+        vec![
+            call(
+                1,
+                "vm_create",
+                json!({"name": "lab", "version": "sonoma", "ssh_port": 2222}),
+            ),
+            call(2, "vm_create", json!({"name": "auto"})),
+            call(3, "vm_create", json!({"name": "low", "ssh_port": 80})),
+        ],
+    )?;
+    let lab = &r[1]["result"]["structuredContent"];
+    ensure!(
+        lab["ssh_port"] == 2223 && lab["notice"] == "SSH port 2222 belongs to Nilton; using 2223",
+        "{}",
+        r[1]
+    );
+    let auto = &r[2]["result"]["structuredContent"];
+    ensure!(
+        auto["ssh_port"] == 2224 && auto["notice"].is_null(),
+        "{}",
+        r[2]
+    );
+    let (msg, is_err) = result(&r[3]);
+    ensure!(
+        is_err && msg.contains("use a port between 1024 and 65535"),
+        "{msg}"
+    );
+    let reg = Registry::open(&env.ctx.app)?;
+    let vms = reg.list()?;
+    ensure!(find_vm(&vms, "low").is_none(), "a refused VM is not added");
+    ensure!(reg.selected(&vms).is_some_and(|e| e.config.name == "auto"));
+    // vm_start's preconditions: the boot folder (its log goes there) and the disk.
+    let dir = stored(&env, "lab")?.workspace_dir()?;
+    ensure!(dir == env.root().join("lab"), "{}", dir.display());
+    ensure!(parent_exists(
+        &dir.join(rg_core::workspace::BOOT_DIR).join("mcp-start.log")
+    ));
+    ensure!(dir.join(rg_core::workspace::DISK_FILE).exists());
+    Ok(())
 }

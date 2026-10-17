@@ -142,11 +142,15 @@ impl Backend for FakeBackend {
         Ok(())
     }
     fn create_vm(&self, c: &Config) -> Result<VmId, String> {
+        let mut c = c.clone();
+        if c.ssh_port == 0 {
+            c.ssh_port = self.next_ssh_port("").ok_or("no free SSH port")?;
+        }
         let id = self.next_id.get().to_string();
         self.next_id.set(self.next_id.get() + 1);
         self.vms.borrow_mut().push(VmEntry {
             id: id.clone(),
-            config: c.clone(),
+            config: c,
             state: VmState::Stopped,
             outside: false,
         });

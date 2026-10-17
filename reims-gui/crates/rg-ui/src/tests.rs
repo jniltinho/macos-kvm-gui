@@ -710,3 +710,92 @@ fn a_short_dialog_after_a_tall_one_keeps_its_own_height() {
         "OK at {ok:?}, title at {title:?}: the footer kept the wizard's height"
     );
 }
+
+// ---- SSH ports (unique-ssh-ports) ----
+
+const SHARED: &str = "Also used by Nilton: they cannot run at the same time";
+
+/// Settings › Network of "Sonoma" (2223) with Nilton's port 2222 typed in.
+fn settings_network_shared(a: &mut App) {
+    a.cur = Some("2".into());
+    if let Some(Modal::Settings(mut s)) = Modal::settings(a) {
+        s.page = Page::Network;
+        s.c.ssh_port = 2222;
+        a.open(Modal::Settings(s));
+    }
+}
+
+#[test]
+fn snapshot_settings_network_shared_port_light() {
+    snap(
+        "settings_network_shared_port_light",
+        ThemeMode::Light,
+        settings_network_shared,
+    );
+}
+
+#[test]
+fn settings_warns_about_a_shared_port_and_saves_anyway() {
+    let mut h = harness(ThemeMode::Light, settings_network_shared);
+    assert!(
+        h.query_by_label(SHARED).is_some(),
+        "the warning under the port"
+    );
+    h.get_by_label("OK").click();
+    h.run_steps(5);
+    assert!(h.state().modals.is_empty(), "a shared port is still saved");
+    assert_eq!(h.state().backend.vms()[1].config.ssh_port, 2222);
+}
+
+#[test]
+fn use_a_free_port_fills_the_first_free_one() {
+    let mut h = harness(ThemeMode::Light, settings_network_shared);
+    h.get_by_label("Use a free port").click();
+    h.run_steps(5);
+    let Some(Modal::Settings(s)) = h.state().modals.last() else {
+        unreachable!("Settings closed")
+    };
+    assert_eq!(s.c.ssh_port, 2223, "2222 is Nilton's");
+    assert!(h.query_by_label(SHARED).is_none(), "the warning goes away");
+}
+
+#[test]
+fn wizard_prefills_the_next_free_port() {
+    let a = App::new(Box::new(FakeBackend::default()));
+    let Modal::NewVm(mut w) = Modal::new_vm(&a) else {
+        unreachable!()
+    };
+    assert_eq!(w.ssh_port, 2224, "2222 and 2223 are taken");
+    w.name = "Lab".into();
+    let (c, _) = w.collect(&[]).unwrap_or_else(|e| unreachable!("{e:?}"));
+    assert_eq!(c.ssh_port, 2224);
+}
+
+/// Both VMs on 2222: Details warns for each of them.
+fn details_shared(a: &mut App) {
+    let mut c = a.backend.vms()[1].config.clone();
+    c.ssh_port = 2222;
+    let _ = a.backend.save_config("2", &c);
+    a.reload_vms();
+}
+
+#[test]
+fn snapshot_details_shared_port_light() {
+    snap(
+        "details_shared_port_light",
+        ThemeMode::Light,
+        details_shared,
+    );
+}
+
+#[test]
+fn details_warns_for_both_vms_sharing_a_port() {
+    let mut h = harness(ThemeMode::Light, details_shared);
+    assert!(
+        h.query_by_label("Also used by Sonoma: they cannot run at the same time")
+            .is_some()
+    );
+    h.state_mut().cur = Some("2".into());
+    h.run_steps(5);
+    assert!(h.query_by_label(SHARED).is_some());
+}

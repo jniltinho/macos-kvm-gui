@@ -673,7 +673,7 @@ impl Inner {
                 if self.single.is_some() {
                     return Err("importing needs the VM list (not with --config)".into());
                 }
-                let e = if folder.is_empty() {
+                let (e, notice) = if folder.is_empty() {
                     self.reg
                         .lock()
                         .import_settings(Path::new(path))
@@ -693,6 +693,9 @@ impl Inner {
                     })
                     .map_err(err)?
                 };
+                if let Some(n) = notice {
+                    self.log(n);
+                }
                 let _ = self.reg.lock().select(&e.id);
                 self.emit(Event::VmsChanged);
                 Ok(format!(
@@ -1047,11 +1050,18 @@ impl Backend for RealBackend {
             c.networks = Some(rg_core::network::new_networks(&c.version));
         }
         let reg = self.inner.reg.lock();
-        let e = reg.create(c).map_err(err)?;
+        let (e, notice) = reg.create_noted(c).map_err(err)?;
         reg.select(&e.id).map_err(err)?;
         drop(reg);
+        if let Some(n) = notice {
+            self.inner.log(n);
+        }
         self.inner.emit(Event::VmsChanged);
         Ok(e.id)
+    }
+
+    fn next_ssh_port(&self, except_id: &str) -> Option<u16> {
+        self.inner.reg.lock().next_ssh_port(except_id).ok()
     }
 
     fn recommended(&self) -> Config {

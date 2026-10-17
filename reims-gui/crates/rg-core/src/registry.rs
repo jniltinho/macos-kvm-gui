@@ -7,10 +7,10 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, TransactionBehavior, params};
 use serde::Serialize;
 
-use crate::config::{Config, field_err, load_config, save_config, version_display};
+use crate::config::{Config, FIRST_SSH_PORT, field_err, load_config, save_config, version_display};
 use crate::settings::AppDir;
 use crate::workspace::{
     SNAPSHOT_FILE, WORKSPACE_FILES, Workspace, remove_all, require_empty, write_file_atomic,
@@ -82,6 +82,36 @@ impl VmEntry {
 #[derive(Debug)]
 pub struct Registry {
     conn: Connection,
+    /// Whether a port is free on 127.0.0.1 ([`port_free`]; tests swap it).
+    probe: fn(u16) -> bool,
+}
+
+/// Whether nothing listens on `127.0.0.1:port`.
+pub fn port_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
+}
+
+/// Go `NextSSHPort`'s search: the first port from 2222 up that is not in `used` and that
+/// `probe` accepts.
+pub fn next_free_port(used: &[u16], probe: impl Fn(u16) -> bool) -> Result<u16> {
+    (FIRST_SSH_PORT..=u16::MAX)
+        .find(|p| !used.contains(p) && probe(*p))
+        .ok_or_else(|| {
+            msg(format!(
+                "no free SSH port from {FIRST_SSH_PORT} to {}",
+                u16::MAX
+            ))
+        })
+}
+
+/// The shared-port warning (the same wording as the Go app), or None when no other VM has it.
+pub fn port_warning(users: &[String]) -> Option<String> {
+    (!users.is_empty()).then(|| {
+        format!(
+            "Also used by {}: they cannot run at the same time",
+            users.join(", ")
+        )
+    })
 }
 
 /// A file- and id-safe word: "Tahoe lab" → "tahoe-lab"; "vm" when nothing is left.
@@ -183,7 +213,10 @@ impl Registry {
         let v: i64 = conn
             .query_row("PRAGMA user_version", [], |r| r.get(0))
             .map_err(|e| msg(format!("database {}: {e}", path.display())))?;
-        let reg = Self { conn };
+        let reg = Self {
+            conn,
+            probe: port_free,
+        };
         if v < SCHEMA_VERSION {
             reg.migrate(v, app.path())
                 .map_err(|e| msg(format!("upgrading {}: {e}", path.display())))?;
@@ -292,14 +325,89 @@ impl Registry {
         Ok(vms)
     }
 
+    /// Replaces the host probe of [`Registry::next_ssh_port`] (tests, so they do not depend
+    /// on the ports in use on the host).
+    pub fn with_port_probe(mut self, probe: fn(u16) -> bool) -> Self {
+        self.probe = probe;
+        self
+    }
+
+    /// Go `NextSSHPort`: the first port from 2222 up that no VM but `except_id` uses and that
+    /// is free on 127.0.0.1.
+    pub fn next_ssh_port(&self, except_id: &str) -> Result<u16> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT ssh_port FROM vms WHERE id != ?1")?;
+        let used = stmt
+            .query_map([except_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<u16>>>()?;
+        next_free_port(&used, self.probe)
+    }
+
+    /// Go `SSHPortUsers`: the names of the VMs other than `except_id` that use `port`.
+    pub fn ssh_port_users(&self, port: u16, except_id: &str) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name FROM vms WHERE ssh_port = ?1 AND id != ?2 ORDER BY name COLLATE NOCASE",
+        )?;
+        let names = stmt
+            .query_map(params![port, except_id], |r| r.get(0))?
+            .collect::<rusqlite::Result<Vec<String>>>()?;
+        Ok(names)
+    }
+
     /// Validates `c` (which must have a name) and stores it as a new VM.
-    pub fn create(&self, mut c: Config) -> Result<VmEntry> {
+    pub fn create(&self, c: Config) -> Result<VmEntry> {
+        self.create_noted(c).map(|(e, _)| e)
+    }
+
+    /// [`Registry::create`], with the notice to show when the VM did not get the SSH port it
+    /// asked for (design D1). Port 0 gets the next free port; an explicit port is kept unless
+    /// another VM has it. The port is chosen and the VM stored in one immediate transaction, so
+    /// two creates (from either app) never pick the same port.
+    pub fn create_noted(&self, mut c: Config) -> Result<(VmEntry, Option<String>)> {
         c.name = c.name.trim().to_owned();
         if c.name.is_empty() {
             return Err(field_err("name", "give the VM a name"));
         }
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let auto = c.ssh_port == 0;
+        if auto {
+            c.ssh_port = self.next_ssh_port("")?;
+        }
         c.validate()?;
-        self.insert(c)
+        let mut notice = None;
+        if !auto {
+            let users = self.ssh_port_users(c.ssh_port, "")?;
+            if !users.is_empty() {
+                let p = self.next_ssh_port("")?;
+                notice = Some(format!(
+                    "SSH port {} belongs to {}; using {p}",
+                    c.ssh_port,
+                    users.join(", ")
+                ));
+                c.ssh_port = p;
+            }
+        }
+        let e = self.insert(c)?;
+        tx.commit()?;
+        Ok((e, notice))
+    }
+
+    /// Reloads the VM `id`, applies `f` and saves it, all in one immediate transaction: no
+    /// other writer (this app or the Go app) changes the VM in between. Returns the new entry.
+    pub fn update(&self, id: &str, f: impl FnOnce(&mut Config) -> Result<()>) -> Result<VmEntry> {
+        let tx = Transaction::new_unchecked(&self.conn, TransactionBehavior::Immediate)?;
+        let mut e = self
+            .list()?
+            .into_iter()
+            .find(|e| e.id == id)
+            .ok_or_else(|| msg(format!("VM {id} no longer exists")))?;
+        let mut c = e.config.clone();
+        f(&mut c)?;
+        self.save(&e, c.clone())?;
+        tx.commit()?;
+        e.config = c;
+        Ok(e)
     }
 
     fn insert(&self, c: Config) -> Result<VmEntry> {
@@ -549,8 +657,9 @@ impl Registry {
     }
 
     /// Adds a VM from a settings file: an export, a `--config` file or a workspace snapshot
-    /// (`vm.json`). A name in use gets " (imported)" appended.
-    pub fn import_settings(&self, path: &Path) -> Result<VmEntry> {
+    /// (`vm.json`). A name in use gets " (imported)" appended, a port another VM uses the next
+    /// free one (with the notice of [`Registry::create_noted`]).
+    pub fn import_settings(&self, path: &Path) -> Result<(VmEntry, Option<String>)> {
         #[derive(serde::Deserialize)]
         struct Wrapped {
             config: Option<Config>,
@@ -570,12 +679,12 @@ impl Registry {
         self.create_or_rename(c)
     }
 
-    /// [`Registry::create`], retrying with " (imported)" appended when the name is taken.
-    pub(crate) fn create_or_rename(&self, mut c: Config) -> Result<VmEntry> {
-        match self.create(c.clone()) {
+    /// [`Registry::create_noted`], retrying with " (imported)" appended when the name is taken.
+    pub(crate) fn create_or_rename(&self, mut c: Config) -> Result<(VmEntry, Option<String>)> {
+        match self.create_noted(c.clone()) {
             Err(Error::Field(f)) if f.field == "name" && !c.name.trim().is_empty() => {
                 c.name = format!("{} (imported)", c.name.trim());
-                self.create(c)
+                self.create_noted(c)
             }
             r => r,
         }
@@ -600,12 +709,14 @@ mod tests {
             &dir.join("config.json"),
             &Config {
                 ram_mib: 12288,
+                ssh_port: 2222,
                 ..Config::defaults()
             },
         )?;
         let old = Config {
             name: "Old Tahoe".into(),
             version: "tahoe".into(),
+            ssh_port: 2223,
             ..Config::defaults()
         };
         save_config(&dir.join("vms/old-tahoe.json"), &old)?;
@@ -628,6 +739,7 @@ mod tests {
         let mut c = Config {
             name: "Lab".into(),
             workspace: ws.display().to_string(),
+            ssh_port: 2300,
             ..Config::defaults()
         };
         let e = reg.create(c.clone())?;
@@ -862,17 +974,126 @@ mod tests {
         })?;
         let p = tmp.path().join("vm.json");
         std::fs::write(&p, export_vm(&e)?)?;
-        assert_eq!(reg.import_settings(&p)?.config.name, "From JSON (imported)");
+        assert_eq!(
+            reg.import_settings(&p)?.0.config.name,
+            "From JSON (imported)"
+        );
         // A workspace snapshot, wrapped in {"config": ...}, without a name.
         std::fs::write(
             &p,
             r#"{"_note":"x","config":{"workspace":"/tmp/s","version":"tahoe"}}"#,
         )?;
-        let got = reg.import_settings(&p)?;
+        let (got, _) = reg.import_settings(&p)?;
         assert_eq!(
             (got.config.name.as_str(), got.config.version.as_str()),
             ("vm", "tahoe")
         );
+        Ok(())
+    }
+
+    #[test]
+    fn next_free_port_skips_used_and_busy_ports() {
+        let all = |_| true;
+        assert_eq!(next_free_port(&[], all).ok(), Some(2222));
+        assert_eq!(next_free_port(&[2222], all).ok(), Some(2223));
+        assert_eq!(next_free_port(&[2222, 2223], all).ok(), Some(2224));
+        assert_eq!(next_free_port(&[2222], |p| p != 2223).ok(), Some(2224));
+        let none = next_free_port(&[], |_| false).err().map(|e| e.to_string());
+        assert_eq!(none.as_deref(), Some("no free SSH port from 2222 to 65535"));
+        assert_eq!(
+            port_warning(&["Nilton".into()]).as_deref(),
+            Some("Also used by Nilton: they cannot run at the same time")
+        );
+        assert_eq!(port_warning(&[]), None);
+    }
+
+    /// Design D4: two VMs created, a third imported with a taken port: 2222, 2223, 2224.
+    #[test]
+    fn create_and_import_get_unique_ports() -> Result<()> {
+        let (tmp, app) = setup()?;
+        let reg = Registry::open(&app)?.with_port_probe(|_| true);
+        let vm = |name: &str, port: u16| Config {
+            name: name.into(),
+            ssh_port: port,
+            ..Config::defaults()
+        };
+        assert_eq!(Config::defaults().ssh_port, 0, "automatic by default");
+        let (a, note) = reg.create_noted(vm("Nilton", 0))?;
+        assert_eq!((a.config.ssh_port, note), (2222, None));
+        let (b, note) = reg.create_noted(vm("B", 2222))?;
+        assert_eq!(b.config.ssh_port, 2223);
+        assert_eq!(
+            note.as_deref(),
+            Some("SSH port 2222 belongs to Nilton; using 2223")
+        );
+        let p = tmp.path().join("c.json");
+        std::fs::write(&p, serde_json::to_string(&vm("C", 2222))?)?;
+        let (c, note) = reg.import_settings(&p)?;
+        assert!(c.config.ssh_port == 2224 && note.is_some());
+        std::fs::write(&p, serde_json::to_string(&vm("D", 2300))?)?;
+        let (d, note) = reg.import_settings(&p)?;
+        assert_eq!(
+            (d.config.ssh_port, note),
+            (2300, None),
+            "an unused port is kept"
+        );
+        assert_eq!(reg.ssh_port_users(2222, &b.id)?, ["Nilton"]);
+        assert!(reg.ssh_port_users(2222, &a.id)?.is_empty());
+        assert_eq!(reg.next_ssh_port("")?, 2225);
+        assert_eq!(
+            reg.next_ssh_port(&a.id)?,
+            2222,
+            "its own port is free for it"
+        );
+
+        // Out of range: refused, nothing added.
+        let bad = reg.create(vm("Low", 80)).err().map(|e| e.to_string());
+        assert_eq!(
+            bad.as_deref(),
+            Some("ssh_port: use a port between 1024 and 65535")
+        );
+        // Exhaustion: an error and no row.
+        let full = Registry::open(&app)?.with_port_probe(|_| false);
+        let err = full.create(vm("E", 0)).err().map(|e| e.to_string());
+        assert_eq!(err.as_deref(), Some("no free SSH port from 2222 to 65535"));
+        assert!(full.create(vm("F", 2222)).is_err());
+        assert_eq!(reg.list()?.len(), 4);
+
+        // A shared port is still allowed on save, and update reloads and saves.
+        let e = reg.update(&d.id, |c| {
+            c.ssh_port = 2222;
+            Ok(())
+        })?;
+        assert_eq!(e.config.ssh_port, 2222);
+        assert_eq!(reg.ssh_port_users(2222, &a.id)?, ["D"]);
+        assert!(reg.update("nope", |_| Ok(())).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn concurrent_creates_get_different_ports() -> Result<()> {
+        let (_tmp, app) = setup()?;
+        Registry::open(&app)?;
+        let app = &app;
+        let mut ports = std::thread::scope(|s| {
+            let hs: Vec<_> = (0..4)
+                .map(|i| {
+                    s.spawn(move || -> Result<u16> {
+                        let reg = Registry::open(app)?.with_port_probe(|_| true);
+                        let c = Config {
+                            name: format!("vm{i}"),
+                            ..Config::defaults()
+                        };
+                        Ok(reg.create(c)?.config.ssh_port)
+                    })
+                })
+                .collect();
+            hs.into_iter()
+                .map(|h| h.join().map_err(|_| msg("thread panicked"))?)
+                .collect::<Result<Vec<u16>>>()
+        })?;
+        ports.sort_unstable();
+        assert_eq!(ports, [2222, 2223, 2224, 2225]);
         Ok(())
     }
 }
