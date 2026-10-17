@@ -34,6 +34,7 @@ fn main() -> ExitCode {
     }
     let Ok(mut x) = Command::new("Xvfb")
         .args([
+            "-noreset",
             "-displayfd",
             "1",
             "-screen",
