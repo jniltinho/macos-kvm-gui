@@ -38,6 +38,8 @@ pub enum Modal {
     Settings(Box<Settings>),
     NewVm(Box<Wizard>),
     Preferences(Prefs),
+    /// Import, Export, Move, Offline installers and the copy progress (`files.rs`).
+    File(Box<crate::files::FileDialog>),
 }
 
 impl Modal {
@@ -76,11 +78,16 @@ impl Modal {
     }
     pub fn settings(app: &App) -> Option<Self> {
         let v = app.current()?;
-        Some(Self::Settings(Box::new(Settings::new(
+        let mut s = Settings::new(
             v,
             app.backend.host_info(),
             app.cache.reims_status.installed,
-        ))))
+        );
+        let i = &app.cache.install;
+        s.disk = i.disk.clone().unwrap_or_else(|| "not created yet".into());
+        s.media = i.recovery.clone();
+        s.can_remove_media = app.busy.is_none();
+        Some(Self::Settings(Box::new(s)))
     }
     pub fn new_vm(app: &App) -> Self {
         let reims_ok = app.cache.reims_status.installed
@@ -103,10 +110,10 @@ impl Modal {
 
 /// What a dialog asked for this frame.
 #[derive(Default)]
-struct Outcome {
-    close: bool,
-    actions: Vec<Action>,
-    modals: Vec<Modal>,
+pub(crate) struct Outcome {
+    pub close: bool,
+    pub actions: Vec<Action>,
+    pub modals: Vec<Modal>,
 }
 
 impl App {
@@ -115,8 +122,9 @@ impl App {
         let mut modals = std::mem::take(&mut self.modals);
         let mut keep = Vec::with_capacity(modals.len());
         let mut pushed = Vec::new();
+        let top = modals.len().saturating_sub(1);
         for (n, m) in modals.iter_mut().enumerate() {
-            let o = self.dialog(ctx, n, m);
+            let o = self.dialog(ctx, n, m, n == top);
             out.extend(o.actions);
             pushed.extend(o.modals);
             if !o.close {
@@ -134,7 +142,7 @@ impl App {
         self.modals = remaining;
     }
 
-    fn dialog(&mut self, ctx: &egui::Context, n: usize, m: &mut Modal) -> Outcome {
+    fn dialog(&mut self, ctx: &egui::Context, n: usize, m: &mut Modal, top: bool) -> Outcome {
         let mut o = Outcome::default();
         let id = format!("modal-{n}");
         let err = matches!(m, Modal::Error { .. });
@@ -223,7 +231,15 @@ impl App {
                     Some("Cancel"),
                     |ui| s.ui(ui),
                 );
-                if f == Footer::Ok {
+                if std::mem::take(&mut s.remove_media) {
+                    // As Install step 5, with its confirmation (the Go app's Storage "Remove…").
+                    o.close = true;
+                    o.modals.push(Modal::confirm(
+                        "Remove install media",
+                        "Confirm that macOS already boots from the installed disk. BaseSystem.img will be deleted.",
+                        Action::Run(Task::RemoveMedia),
+                    ));
+                } else if f == Footer::Ok {
                     match s
                         .collect()
                         .and_then(|c| self.backend.save_config(&s.id, &c))
@@ -318,6 +334,7 @@ impl App {
                     o.close = f == Footer::Cancel;
                 }
             }
+            Modal::File(d) => o = self.file_dialog(ctx, &id, d, top),
         }
         o
     }
@@ -364,6 +381,12 @@ pub struct Settings {
     nics: Vec<Nic>,
     host: HostInfo,
     reims_installed: bool,
+    /// Storage: the disk and the install media, as the Install tab shows them.
+    pub disk: String,
+    pub media: Option<String>,
+    pub can_remove_media: bool,
+    /// Storage "Remove…" was clicked.
+    remove_media: bool,
 }
 
 const LABEL_W: f32 = 150.0;
@@ -437,6 +460,10 @@ impl Settings {
             nics,
             host,
             reims_installed,
+            disk: "not created yet".into(),
+            media: None,
+            can_remove_media: false,
+            remove_media: false,
         }
     }
 
@@ -504,8 +531,16 @@ impl Settings {
                     Page::Display => self.display(ui),
                     Page::Storage => {
                         form_row(ui, LABEL_W, "Controller", |ui| ui.label("SATA (ICH9 AHCI)"));
-                        form_row(ui, LABEL_W, "SATA Port 0", |ui| ui.label("mac_hdd_ng.img"));
-                        form_row(ui, LABEL_W, "SATA Port 1", |ui| ui.label("Install media (see the Install tab)"));
+                        form_row(ui, LABEL_W, "SATA Port 0", |ui| ui.label(&self.disk));
+                        form_row(ui, LABEL_W, "SATA Port 1", |ui| {
+                            ui.label(self.media.as_deref().unwrap_or("Empty"));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                ui.add_space(8.0);
+                                self.remove_media = widgets::button(ui, "trash", "Remove…", false, self.can_remove_media && self.media.is_some())
+                                    .on_hover_text("Delete the install media once macOS boots from its disk")
+                                    .clicked();
+                            });
+                        });
                         form_row(ui, LABEL_W, "Boot Disk", |ui| ui.label("OpenCore (built in, read-only)"));
                         note(ui, "Remove the install media once macOS boots from its disk. Create the disk and download the media in the Install tab.");
                     }

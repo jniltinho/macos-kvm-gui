@@ -1,4 +1,4 @@
-//! Embeds QEMU's display window (Reims vGPU's SDL3 window, or QEMU's GTK window for VMware SVGA)
+//! Embeds QEMU's display window (Reims vGPU's SDL3 window, or QEMU's SDL window for VMware SVGA)
 //! into the app's Screen tab by X11 reparenting (design D3). See `API.md`.
 //!
 //! Each [`Embedded`] owns its own X connection, so its events (the child's ConfigureNotify and
@@ -42,15 +42,16 @@ pub enum WindowKind {
     /// Reims vGPU's SDL3 window: title starts with "Reims vGPU" (the library changes the rest,
     /// ports append " (port N)").
     Reims,
-    /// QEMU's GTK window: "QEMU", "QEMU (<vm name>)", with " [Paused]" or grab hints appended.
-    QemuGtk,
+    /// QEMU's SDL window (`-display sdl`, VMware SVGA): "QEMU" or "QEMU (<vm name>)", with
+    /// " [Stopped]" or grab hints appended.
+    QemuSdl,
 }
 
 impl WindowKind {
     pub fn matches(self, title: &str) -> bool {
         match self {
             WindowKind::Reims => title.starts_with("Reims vGPU"),
-            WindowKind::QemuGtk => title.starts_with("QEMU"),
+            WindowKind::QemuSdl => title.starts_with("QEMU"),
         }
     }
 }
@@ -181,7 +182,10 @@ impl Embedder {
         conn.change_save_set(SetMode::INSERT, child)?.check()?;
         conn.change_window_attributes(
             child,
-            &ChangeWindowAttributesAux::new().event_mask(EventMask::STRUCTURE_NOTIFY),
+            // EnterWindow: the pointer entering QEMU's window gives it the keyboard (see `pump`);
+            // ButtonPress cannot be shared with SDL, so a click cannot be watched instead.
+            &ChangeWindowAttributesAux::new()
+                .event_mask(EventMask::STRUCTURE_NOTIFY | EventMask::ENTER_WINDOW),
         )?
         .check()?;
         // Unmap first so a window manager lets go of it (its frame goes away), and drop any
@@ -194,6 +198,7 @@ impl Embedder {
         Ok(Embedded {
             conn,
             root: self.root,
+            parent: self.parent,
             container,
             child,
             rect: None,
@@ -210,6 +215,7 @@ impl Embedder {
 pub struct Embedded {
     conn: RustConnection,
     root: Window,
+    parent: Window,
     container: Window,
     child: Window,
     rect: Option<(i32, i32, u32, u32)>,
@@ -259,7 +265,9 @@ impl Embedded {
     }
 
     /// Processes pending X events without blocking: a child that moved or resized itself (the
-    /// library on a guest mode change) is configured back; DestroyNotify marks it dead.
+    /// library on a guest mode change) is configured back; DestroyNotify marks it dead; the
+    /// pointer entering the child gives it the keyboard (no window manager does it for a child
+    /// window, and SDL's ButtonPress selection is exclusive, so clicks cannot be watched).
     /// A storm of ConfigureNotify events is coalesced: only the last one counts.
     pub fn pump(&mut self) -> Result<()> {
         let mut last = None;
@@ -276,6 +284,13 @@ impl Embedded {
                     last = Some(geom);
                 }
                 Event::DestroyNotify(e) if e.window == self.child => self.alive = false,
+                Event::EnterNotify(e) if e.event == self.child && self.alive => {
+                    // Best effort: it may be unmapping right now.
+                    let _ = self
+                        .conn
+                        .set_input_focus(InputFocus::PARENT, self.child, CURRENT_TIME);
+                    self.conn.flush()?;
+                }
                 // Errors from fire-and-forget requests on a child that just died.
                 _ => {}
             }
@@ -305,6 +320,14 @@ impl Embedded {
     pub fn focus(&self) -> Result<()> {
         self.conn
             .set_input_focus(InputFocus::PARENT, self.child, CURRENT_TIME)?
+            .check()?;
+        Ok(())
+    }
+
+    /// Gives the keyboard back to the app's window (a click on the app outside the tab).
+    pub fn unfocus(&self) -> Result<()> {
+        self.conn
+            .set_input_focus(InputFocus::PARENT, self.parent, CURRENT_TIME)?
             .check()?;
         Ok(())
     }
@@ -383,7 +406,8 @@ mod tests {
         assert!(WindowKind::Reims.matches("Reims vGPU"));
         assert!(WindowKind::Reims.matches("Reims vGPU — 60 fps (port 2)"));
         assert!(!WindowKind::Reims.matches("QEMU (mac)"));
-        assert!(WindowKind::QemuGtk.matches("QEMU (mac) [Paused]"));
-        assert!(!WindowKind::QemuGtk.matches("Reims vGPU"));
+        assert!(WindowKind::QemuSdl.matches("QEMU (mac) [Stopped]"));
+        assert!(WindowKind::QemuSdl.matches("QEMU"));
+        assert!(!WindowKind::QemuSdl.matches("Reims vGPU"));
     }
 }

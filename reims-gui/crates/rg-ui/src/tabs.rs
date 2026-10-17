@@ -285,60 +285,7 @@ impl App {
 
     /// The Screen tab: the area QEMU's window is embedded into (design D3).
     fn screen(&mut self, ui: &mut Ui) -> Rect {
-        let t = self.t;
-        let (rect, _) =
-            ui.allocate_exact_size(ui.available_size() - vec2(0.0, 4.0), Sense::click());
-        let Some(v) = self.current() else { return rect };
-        let running = v.state == VmState::Running;
-        let p = ui.painter();
-        p.rect_filled(rect, 0, if running { Color32::BLACK } else { t.input });
-        let (icon, title, body) = if self.detached {
-            (
-                "monitor",
-                "The screen is in its own window",
-                "Close that window to bring it back here.".to_owned(),
-            )
-        } else if running {
-            // ponytail: placeholder until rg-x11 reparents QEMU's window over this rectangle.
-            (
-                "monitor",
-                "QEMU's display is placed here",
-                format!(
-                    "{} is running; its window is embedded over this area.",
-                    v.display_name()
-                ),
-            )
-        } else if v.config.reims() {
-            ("monitor", "The Reims vGPU display appears here while the VM runs", "Start the VM: Reims vGPU draws macOS on the host's GPU right in this tab. Click it to type; Ctrl+Alt+Super releases the keyboard.".to_owned())
-        } else {
-            (
-                "monitor",
-                "The VM screen appears here while it runs",
-                "Click it to type.".to_owned(),
-            )
-        };
-        let c = if running {
-            Color32::from_gray(200)
-        } else {
-            t.text_muted
-        };
-        ui.scope_builder(
-            egui::UiBuilder::new()
-                .max_rect(rect.shrink(40.0))
-                .layout(Layout::top_down(Align::Center)),
-            |ui| {
-                ui.add_space((rect.height() / 2.0 - 90.0).max(0.0));
-                ui.add(icons::lucide(icon, 48.0, c));
-                ui.add_space(8.0);
-                ui.label(bold(title).size(15.0).color(if running {
-                    Color32::WHITE
-                } else {
-                    t.text
-                }));
-                ui.add(egui::Label::new(RichText::new(body).color(c)).wrap());
-            },
-        );
-        rect
+        self.screen_tab(ui)
     }
 
     fn install(&mut self, ui: &mut Ui, out: &mut Vec<Action>) {

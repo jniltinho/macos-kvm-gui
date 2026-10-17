@@ -9,7 +9,9 @@ mod app;
 pub mod backend;
 mod dialogs;
 mod fake;
+mod files;
 mod icons;
+pub mod screen;
 mod tabs;
 pub mod theme;
 mod widgets;
@@ -21,17 +23,13 @@ pub use app::{App, Tab};
 pub use backend::Backend;
 pub use dialogs::{Modal, Page};
 pub use fake::FakeBackend;
+pub use files::FileDialog;
+pub use screen::backend_choice::{native_options, x11_available};
 
-/// Opens the main window on `backend` and blocks until it closes.
+/// Opens the main window on `backend` and blocks until it closes: on X11 when an X server
+/// answers, so QEMU's windows can be embedded (design D3).
 pub fn run(backend: Box<dyn Backend>) -> eframe::Result {
-    let options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("reims-gui")
-            .with_app_id("io.github.jniltinho.reims-gui")
-            .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([960.0, 600.0]),
-        ..Default::default()
-    };
+    let options = native_options(x11_available());
     eframe::run_native(
         "reims-gui",
         options,

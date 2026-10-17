@@ -20,6 +20,10 @@ pub struct FakeBackend {
     /// The Screen area the UI reported last (tests read it).
     pub screen: Cell<ScreenArea>,
     preview_sent: Cell<bool>,
+    /// What [`Backend::set_x11_embed`] was told.
+    pub x11: Cell<bool>,
+    /// QEMU's pid in [`ScreenSource::Window`]; 0 = a made-up one per VM.
+    pub screen_pid: Cell<u32>,
     next_id: Cell<u32>,
     mac: Cell<u8>,
 }
@@ -74,6 +78,8 @@ impl Default for FakeBackend {
             workspace: RefCell::new("/home/nilton/VMs".into()),
             screen: Cell::default(),
             preview_sent: Cell::new(false),
+            x11: Cell::new(false),
+            screen_pid: Cell::new(0),
             next_id: Cell::new(3),
             mac: Cell::new(0x10),
         }
@@ -293,14 +299,37 @@ impl Backend for FakeBackend {
             build: "24H32".into(),
             size_gb: 15.7,
             cached: true,
+            used_by: vec!["Nilton".into()],
         }]
     }
     fn about(&self) -> String {
         "Boot files: OpenCore 1.0.8, Lilu 1.7.2, VirtualSMC 1.3.8, WhateverGreen 1.7.1".into()
     }
 
-    fn run(&self, _id: Option<&str>, task: Task) {
+    fn run(&self, id: Option<&str>, task: Task) {
         self.push(Event::Log(format!("== {}", task.title())));
+        match &task {
+            Task::Import { path, folder } => {
+                let name = std::path::Path::new(path)
+                    .file_stem()
+                    .map_or("Imported".into(), |s| s.to_string_lossy().into_owned());
+                let c = Config {
+                    workspace: folder.clone(),
+                    name,
+                    ..Config::defaults()
+                };
+                if let Ok(new) = self.create_vm(&c) {
+                    self.select(&new);
+                }
+            }
+            Task::Move { folder } => {
+                if let Some(v) = self.vms.borrow_mut().iter_mut().find(|v| Some(v.id.as_str()) == id) {
+                    v.config.workspace = folder.clone();
+                }
+                self.push(Event::VmsChanged);
+            }
+            _ => {}
+        }
         self.push(Event::TaskDone {
             task,
             result: Ok(String::new()),
@@ -335,6 +364,24 @@ impl Backend for FakeBackend {
     }
     fn set_screen_area(&self, area: ScreenArea) {
         self.screen.set(area);
+    }
+    fn set_x11_embed(&self, on: bool) {
+        self.x11.set(on);
+    }
+    fn screen_source(&self, id: &str) -> Option<ScreenSource> {
+        let vms = self.vms.borrow();
+        let v = vms
+            .iter()
+            .find(|v| v.id == id && (v.state != VmState::Stopped || v.outside))?;
+        let pid = match self.screen_pid.get() {
+            0 => 4000 + id.parse::<u32>().unwrap_or(0),
+            p => p,
+        };
+        Some(match (v.config.reims(), v.config.in_app(), self.x11.get()) {
+            (_, false, _) | (true, _, false) => ScreenSource::Standalone,
+            (reims, true, true) => ScreenSource::Window { pid, reims },
+            (false, true, false) => ScreenSource::Vnc("/nonexistent/vnc.sock".into()),
+        })
     }
 
     fn workspace_root(&self) -> String {

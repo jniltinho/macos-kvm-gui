@@ -16,6 +16,7 @@ use crate::backend::{
     VmEntry, VmId, VmState,
 };
 use crate::dialogs::Modal;
+use crate::files::FileDialog;
 use crate::icons;
 use crate::theme::{self, ThemeMode, Tokens};
 use crate::widgets::{self, anim, bold, bold_font};
@@ -124,6 +125,10 @@ pub struct App {
     pub(crate) detached: bool,
     /// The Screen area sent to the backend this frame.
     pub(crate) screen_area: ScreenArea,
+    /// The embedded or VNC screen, Full screen (design D3, D4).
+    pub(crate) screen: crate::screen::Screen,
+    /// The file chooser request of the Import/Export/Move dialogs.
+    pub(crate) picker: crate::files::Picker,
 }
 
 impl App {
@@ -146,6 +151,8 @@ impl App {
             fonts_set: false,
             detached: false,
             screen_area: ScreenArea::default(),
+            screen: Default::default(),
+            picker: Default::default(),
         };
         app.reload_vms();
         app
@@ -278,6 +285,9 @@ impl App {
                     if state == VmState::Stopped {
                         self.preview = None;
                         self.detached = false;
+                        if std::mem::take(&mut self.screen.full) {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                        }
                     }
                 }
                 Event::VmsChanged => reload = true,
@@ -328,49 +338,53 @@ impl App {
         }
         let t = self.t;
         let band = Frame::NONE.fill(t.bg);
+        // Full screen slides the shell away and leaves the screen (and a thin bar).
+        let full = self.screen.full;
+        egui::Panel::top("full-bar")
+            .exact_size(30.0)
+            .frame(band.inner_margin(Margin::symmetric(10, 0)))
+            .show_collapsible(ui, &mut full.clone(), |ui| {
+                if self.full_screen_bar(ui) {
+                    out.push(Action::FullScreen);
+                }
+            });
         egui::Panel::top("menu")
             .exact_size(26.0)
             .frame(band.inner_margin(Margin::symmetric(6, 0)))
             .show_separator_line(false)
-            .show(ui, |ui| self.menu_bar(ui, &mut out));
+            .show_collapsible(ui, &mut !full, |ui| self.menu_bar(ui, &mut out));
         egui::Panel::top("toolbar")
             .exact_size(64.0)
             .frame(band.inner_margin(Margin::symmetric(4, 4)))
-            .show(ui, |ui| self.toolbar(ui, &mut out));
+            .show_collapsible(ui, &mut !full, |ui| self.toolbar(ui, &mut out));
         egui::Panel::bottom("status")
             .exact_size(28.0)
             .frame(band.inner_margin(Margin::symmetric(10, 0)))
-            .show(ui, |ui| self.status_bar(ui));
+            .show_collapsible(ui, &mut !full, |ui| self.status_bar(ui));
         egui::Panel::left("vms")
             .resizable(true)
+            .drag_to_open(false)
             .default_size(320.0)
             .size_range(220.0..=560.0)
             .frame(Frame::NONE.fill(t.list_bg))
-            .show(ui, |ui| self.vm_list(ui, &mut out));
+            .show_collapsible(ui, &mut !full, |ui| self.vm_list(ui, &mut out));
         let mut screen = None;
+        let margin = if full { 0 } else { 4 };
         egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(t.bg).inner_margin(Margin::symmetric(4, 0)))
+            .frame(Frame::NONE.fill(t.bg).inner_margin(Margin::symmetric(margin, 0)))
             .show(ui, |ui| {
-                self.tab_strip(ui, &mut out);
-                screen = self.tab_body(ui, &mut out);
+                if full {
+                    screen = Some(self.screen_tab(ui));
+                } else {
+                    self.tab_strip(ui, &mut out);
+                    screen = self.tab_body(ui, &mut out);
+                }
             });
         self.dialogs(&ctx, &mut out);
         self.toasts(&ctx);
         widgets::focus_ring(&ctx, &t);
-        // design D3: the embedding layer places QEMU's window here and hides it under overlays.
-        let ppp = ctx.pixels_per_point();
-        let overlay_open = !self.modals.is_empty() || egui::Popup::is_any_open(&ctx);
-        // ponytail: any popup counts as covering the Screen tab; intersect popup rects if menus far from it matter.
-        let rect = screen.filter(|_| !self.detached).map(|r: Rect| {
-            let r = r * ppp;
-            [
-                r.min.x.round() as i32,
-                r.min.y.round() as i32,
-                r.width().round() as i32,
-                r.height().round() as i32,
-            ]
-        });
-        self.screen_area = ScreenArea { rect, overlay_open };
+        // design D3: QEMU's window is placed here and hidden under overlays (screen module).
+        self.screen_area = self.sync_screen(&ctx, screen);
         self.backend.set_screen_area(self.screen_area);
         for a in out {
             self.apply(&ctx, a);
@@ -422,15 +436,17 @@ impl App {
         let has_vm = self.current().is_some();
         let free = self.busy.is_none() && !running;
         let cfg = self.current().map(|v| &v.config);
-        let svga_app = cfg.is_some_and(|c| c.in_app() && !c.reims());
+        // Reims vGPU and in-app VMware SVGA screens are in the Screen tab (design D3, D4).
+        let in_app = cfg.is_some_and(|c| c.in_app());
+        let live = state != VmState::Stopped || self.current().is_some_and(|v| v.outside);
         Enabled {
             new: !running,
             settings: has_vm && !running,
             start: has_vm && free && self.cache.install.disk.is_some(),
             shutdown: state == VmState::Running,
             kill: running,
-            window: has_vm && svga_app,
-            full: svga_app && running,
+            window: in_app && live && !self.screen.full,
+            full: in_app && live,
         }
     }
 
@@ -1035,16 +1051,24 @@ impl App {
                 self.modals.push(Modal::preferences(self));
                 Ok(())
             }
-            Action::Import | Action::Export | Action::Move | Action::OfflineInstallers => {
-                // ponytail: needs the file chooser (rg-ops / portal) of the integration step.
-                let name = match a {
-                    Action::Import => "Import VM",
-                    Action::Export => "Export VM",
-                    Action::Move => "Move VM",
-                    _ => "Offline installers",
-                };
-                self.modals
-                    .push(Modal::info(name, "Not available in this build yet."));
+            Action::Import => {
+                self.modals.push(FileDialog::import());
+                Ok(())
+            }
+            Action::Export | Action::Move => {
+                let ws = self.backend.workspace_root();
+                if let Some(v) = self.current() {
+                    let m = if a == Action::Export {
+                        FileDialog::export(v, &ws)
+                    } else {
+                        FileDialog::move_vm(v, &ws)
+                    };
+                    self.modals.push(m);
+                }
+                Ok(())
+            }
+            Action::OfflineInstallers => {
+                self.modals.push(FileDialog::installers(self));
                 Ok(())
             }
             Action::Remove => {
@@ -1072,12 +1096,18 @@ impl App {
             }
             Action::ForceStopNow => id.map_or(Ok(()), |id| self.backend.force_stop(&id)),
             Action::ResetSettings => self.backend.reset_settings(),
-            Action::Window | Action::FullScreen => {
-                // ponytail: the embedder moves QEMU's window out; the tab then reports no rectangle.
+            Action::Window => {
+                // The embedded window goes back to the desktop; a VNC screen opens a window.
                 self.detached = true;
-                if a == Action::FullScreen {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                Ok(())
+            }
+            Action::FullScreen => {
+                self.screen.full = !self.screen.full;
+                if self.screen.full {
+                    self.detached = false;
+                    self.tab = Tab::Screen;
                 }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(self.screen.full));
                 Ok(())
             }
             Action::About => {
@@ -1210,7 +1240,8 @@ pub const HOME_LAB: &str = "For home lab use. macOS is Apple's software: its lic
 const SHUTDOWN_NOTE: &str = "The power button was sent to macOS. Many macOS versions treat it as Sleep, which does nothing in a VM.\n\nIf macOS keeps running, shut it down from the Apple menu (Apple › Shut Down) inside the VM: the app notices when it powers off. Use Force stop only if macOS is frozen.";
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
+        self.screen.attach(frame, self.backend.as_ref());
         self.show(ui);
     }
 }
