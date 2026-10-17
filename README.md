@@ -41,9 +41,9 @@ This repository has two apps that read the same VMs and settings:
 From the [latest release](https://github.com/jniltinho/macos-kvm-gui/releases/latest), take the package for your system and check it:
 
 ```sh
-sha256sum -c reims-gui_0.1.5_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.5_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
-sudo dnf install ./reims-gui-0.1.5-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
+sha256sum -c reims-gui_0.1.6_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.6_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
+sudo dnf install ./reims-gui-0.1.6-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
 ```
 
 It adds **Reims GUI** to the applications menu and pulls in QEMU (`qemu-system-x86`, `qemu-system-gui`, `qemu-utils`). Or unpack the `.tar.gz` and run `reims-gui` from it. Needs an x86_64 CPU with VT-x/AMD-V and KVM.

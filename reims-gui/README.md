@@ -44,9 +44,9 @@ Download from the project's [GitHub Releases](https://github.com/jniltinho/macos
 (tags `reims-gui-v*`) the package for your system, and check it against its `.sha256`:
 
 ```sh
-sha256sum -c reims-gui_0.1.5_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.5_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
-sudo dnf install ./reims-gui-0.1.5-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
+sha256sum -c reims-gui_0.1.6_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.6_amd64.deb          # Ubuntu 24.04, 26.04, Debian 13
+sudo dnf install ./reims-gui-0.1.6-1.x86_64.rpm       # Rocky Linux / RHEL / AlmaLinux 10, Fedora 40+
 ```
 
 The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
@@ -56,9 +56,9 @@ Or the `.tar.gz`, which holds the binary, the license texts and notices, a short
 desktop entry:
 
 ```sh
-tar xf reims-gui-0.1.5-x86_64.tar.gz
+tar xf reims-gui-0.1.6-x86_64.tar.gz
 sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
-./reims-gui-0.1.5-x86_64/reims-gui
+./reims-gui-0.1.6-x86_64/reims-gui
 ```
 
 The package is built against Ubuntu 24.04's libraries, the older of the two, so the same files install and run on 26.04 (the release checks run both).
