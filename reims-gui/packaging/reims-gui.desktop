@@ -8,4 +8,4 @@ Icon=reims-gui
 Terminal=false
 Categories=System;Emulator;
 Keywords=macos;vm;qemu;kvm;virtual machine;
-StartupWMClass=reims-gui
+StartupWMClass=io.github.jniltinho.reims-gui

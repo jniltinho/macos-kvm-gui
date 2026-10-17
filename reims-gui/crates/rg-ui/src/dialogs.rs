@@ -660,17 +660,22 @@ impl Settings {
     fn display(&mut self, ui: &mut Ui) {
         let reims = self.c.reims();
         form_row(ui, LABEL_W, "Shown", |ui| {
+            // "" and "app" both mean in the app (the Go app writes "app"): a bool, like the wizard.
+            let mut window = self.c.display == config::DISPLAY_WINDOW;
             ui.add_enabled_ui(!reims, |ui| {
-                widgets::combo(
+                if widgets::combo(
                     ui,
                     "shown",
-                    &mut self.c.display,
-                    &[
-                        (String::new(), DISPLAY_APP),
-                        (config::DISPLAY_WINDOW.to_owned(), "QEMU window"),
-                    ],
+                    &mut window,
+                    &[(false, DISPLAY_APP), (true, "QEMU window")],
                     320.0,
-                );
+                ) {
+                    self.c.display = if window {
+                        config::DISPLAY_WINDOW.into()
+                    } else {
+                        String::new()
+                    };
+                }
             });
         });
         form_row(ui, LABEL_W, "Graphics Controller", |ui| {

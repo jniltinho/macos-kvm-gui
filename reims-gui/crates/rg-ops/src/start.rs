@@ -175,7 +175,8 @@ impl Ops {
         let vm = Vm::new(rt, move |ev| {
             let _ = tx.send(ev);
         });
-        let (x11, sdl) = display(&c, x11_embed);
+        // QEMU's GTK window needs qemu-system-gui; without it SVGA uses the VNC screen.
+        let (x11, sdl) = display(&c, x11_embed && (c.reims() || rg_qemu::gtk_display(&qemu)));
         let exit_c = c.clone();
         let started = vm.start(StartSpec {
             qemu,
@@ -222,15 +223,57 @@ mod tests {
         Ok(c)
     }
 
-    /// A stand-in for QEMU that records its arguments and environment, then exits.
-    fn fake_qemu_bin(t: &tempfile::TempDir) -> std::io::Result<std::path::PathBuf> {
-        let p = t.path().join("fake-qemu");
+    /// A stand-in for QEMU that records its arguments and environment, then exits; `gtk`:
+    /// whether its `-display help` lists GTK (qemu-system-gui installed).
+    fn fake_qemu_bin(t: &tempfile::TempDir, gtk: bool) -> std::io::Result<std::path::PathBuf> {
+        let p = t
+            .path()
+            .join(if gtk { "fake-qemu" } else { "fake-qemu-nogtk" });
+        let displays = if gtk {
+            "none\\ngtk\\ncurses"
+        } else {
+            "none\\ncurses"
+        };
         std::fs::write(
             &p,
-            "#!/bin/sh\nprintf '%s\\n' \"$@\" > args.txt\necho \"SDL=$SDL_VIDEO_DRIVER\" > env.txt\n",
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = -display ] && [ \"$2\" = help ]; then printf '{displays}\\n'; exit 0; fi\n\
+                 printf '%s\\n' \"$@\" > args.txt\necho \"SDL=$SDL_VIDEO_DRIVER\" > env.txt\n"
+            ),
         )?;
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))?;
         Ok(p)
+    }
+
+    #[test]
+    fn svga_without_qemu_system_gui_uses_the_vnc_screen() -> TestResult {
+        let t = tempfile::tempdir()?;
+        let mut o = ops(&t)?;
+        let rt = runtime()?;
+        let no = AtomicBool::new(false);
+        let c = ready(&t, &o, "nogtk")?;
+        let dir = c.workspace_dir()?;
+        o.qemu = fake_qemu_bin(&t, false)?;
+        let mut run = None;
+        for _ in 0..5 {
+            match o.start_vm(rt.handle().clone(), c.clone(), true, &no, &mut |_| {}) {
+                Err(e) if e.to_string().contains("Text file busy") => {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                }
+                r => {
+                    run = Some(r?);
+                    break;
+                }
+            }
+        }
+        let mut run = run.ok_or("could not exec the fake QEMU")?;
+        run.wait_blocking(|_| {});
+        let args = std::fs::read_to_string(dir.join("args.txt"))?;
+        assert!(
+            !args.contains("show-menubar=off") && args.contains("-vnc"),
+            "no GTK display: the VNC screen, not QEMU's window: {args}"
+        );
+        Ok(())
     }
 
     fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
@@ -347,7 +390,7 @@ mod tests {
             disabled: vec!["WhateverGreen".into()],
             ..Default::default()
         });
-        o.qemu = fake_qemu_bin(&t)?;
+        o.qemu = fake_qemu_bin(&t, true)?;
         let mut lines = Vec::new();
         // Exec of a just-written script can race another test's fork (ETXTBSY): retry.
         let mut run = None;

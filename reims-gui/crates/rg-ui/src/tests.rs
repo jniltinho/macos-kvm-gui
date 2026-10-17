@@ -121,6 +121,19 @@ fn screen_area_is_reported_and_hidden_under_dialogs() {
 }
 
 #[test]
+fn settings_shows_in_the_app_for_the_go_app_s_display_value() {
+    let mut h = harness(ThemeMode::Light, settings_display);
+    if let Some(Modal::Settings(s)) = h.state_mut().modals.last_mut() {
+        s.c.display = "app".into();
+    }
+    h.run_steps(5);
+    assert!(
+        h.query_by_value("In the app (VNC on a private socket)")
+            .is_some()
+    );
+}
+
+#[test]
 fn settings_ok_saves_the_new_resolution() {
     let mut h = harness(ThemeMode::Light, settings_display);
     if let Some(Modal::Settings(s)) = h.state_mut().modals.last_mut() {

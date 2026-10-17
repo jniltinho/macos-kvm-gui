@@ -83,6 +83,26 @@ A VM on Reims vGPU runs the first `qemu-system-x86_64` found here:
 
 The binary must list `apple-gfx-pci` in `-device help`; the app checks it once per binary version.
 
+### Rocky Linux (RHEL family)
+
+The app does not install or build for Rocky Linux itself, but `Dockerfile.rocky` (next to the Ubuntu `Dockerfile`, in `internal/core/reims/` and `reims-gui/crates/rg-reims/reims/`) builds the same QEMU, at the same commit and with the same layout, on `rockylinux/rockylinux:10`, with the build packages from dnf (EPEL and CRB). Upstream's `install-ctl.sh` only knows apt and pacman; on Rocky it just warns, and the image already has everything. Verified on Rocky Linux 10.2; the first build took about 5.5 minutes on the reference host (image 2.5, QEMU 3):
+
+```sh
+docker build --build-arg ROCKY=10 -t reims-build:rocky10 - < internal/core/reims/Dockerfile.rocky
+mkdir -p ~/reims-rocky
+docker run --rm -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) -v ~/reims-rocky:/build reims-build:rocky10
+# optional: reims-qemu-<commit>-rocky10-x86_64.tar.gz and its .sha256
+scripts/reims-package.sh pkg "$(readlink -f ~/reims-rocky/share/reims-ctl/qemu/current)" rocky10 dist
+```
+
+On the Rocky host, QEMU needs these runtime packages (BaseOS and AppStream only, no EPEL):
+
+```sh
+sudo dnf install glib2 pixman libslirp libfdt gtk3 pipewire-libs pulseaudio-libs alsa-lib vulkan-loader mesa-libgbm
+```
+
+Then point `reims_qemu` at `~/reims-rocky/share/reims-ctl/qemu/current/bin/qemu-system-x86_64` (see the list above) and check it with `qemu-system-x86_64 -device help | grep apple-gfx-pci`. `reims-<commit>` releases made from now on also carry the `rocky10` package (`.github/workflows/reims-release.yml`); `reims-c099dd5` does not.
+
 ## Turn it on for a VM
 
 - **App:** Settings › Display › **Graphics**: **Reims vGPU (experimental)**. The page shows the `METAL_ERROR_MODE` commands below and, for versions other than macOS 26, that upstream has not measured them. While Reims vGPU is selected the GPU passthrough choice is disabled, and the reverse.

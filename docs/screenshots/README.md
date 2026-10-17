@@ -1,6 +1,53 @@
 # Screenshots
 
-Screens of macOS KVM with the light theme, and a few with the dark one at the end. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
+Screens of reims-gui (Rust, recommended) first, then of macOS KVM (Go) with the light theme, and a few with the dark one at the end. They were captured on the reference host (Ubuntu 24.04, Ryzen 9 9900X, QEMU 8.2.2). Back to the [documentation](../README.md).
+
+## reims-gui (Rust)
+
+![reims-gui: macOS on Reims vGPU inside the Screen tab](reims-gui-screen-desktop.png)
+
+`reims-gui`, the Rust app and the recommended one: a Sequoia VM on Reims vGPU drawn by the RTX 4070 inside the Screen tab (the login was typed there). See [reims-gui](../reims-gui.md). Captured with reims-gui 0.1.4 on Ubuntu 24.04 (KDE Plasma, X11).
+
+![reims-gui: the macOS login in the Screen tab](reims-gui-screen-login.png)
+
+The same VM at the login screen: click the guest to type, Ctrl+Alt+Super releases the keyboard.
+
+![reims-gui: Details](reims-gui-details.png)
+
+Details with the same sections as the Go app; the VM list shows memory, CPUs and the graphics adapter.
+
+![reims-gui: Details, dark theme](reims-gui-details-dark.png)
+
+![reims-gui: Settings › Display](reims-gui-settings-display.png)
+
+Settings › Display: Graphics Controller, Resolution and the one-time `METAL_ERROR_MODE` commands.
+
+![reims-gui: Settings › Display, dark theme](reims-gui-settings-display-dark.png)
+
+![reims-gui: a dialog hides the guest](reims-gui-dialog-hides-screen.png)
+
+While a dialog covers the Screen tab, the embedded guest is hidden, so clicks never reach macOS.
+
+![reims-gui: Install](reims-gui-install.png)
+
+The Install tab's steps, as in the Go app.
+
+![reims-gui: Host](reims-gui-host.png)
+
+![reims-gui: Host, dark theme](reims-gui-host-dark.png)
+
+![reims-gui: GPU](reims-gui-gpu.png)
+
+The GPU tab on a host with an RTX 4070 and an RX 6700 XT: neither is eligible for passthrough (no macOS driver; the 6700 XT needs a patch kext listed in settings.yaml).
+
+![reims-gui: New Virtual Machine](reims-gui-new-vm.png)
+
+![reims-gui: New Virtual Machine, dark theme](reims-gui-new-vm-dark.png)
+
+![reims-gui: Log](reims-gui-log.png)
+
+The Log tab: QEMU's command line and output, here Reims vGPU's metal2vulkan notes.
+
 
 ## Details
 
@@ -85,39 +132,3 @@ The Host tab's Reims vGPU section: whether this host is ready, the build in use 
 ![Details of a running Reims VM](reims-details.png)
 
 A Sequoia VM running on Reims vGPU: Details shows the graphics controller and the Preview follows the guest, which draws in its own Reims vGPU window on the host's GPU (RTX 4070 here).
-
-## reims-gui (Rust)
-
-![reims-gui: macOS on Reims vGPU inside the Screen tab](reims-gui-screen-desktop.png)
-
-`reims-gui`, the Rust app: a Sequoia VM on Reims vGPU drawn by the RTX 4070 inside the Screen tab (the login was typed there). See [reims-gui](../reims-gui.md).
-
-![reims-gui: Details](reims-gui-details.png)
-
-Details with the same sections as the Go app; the VM list shows memory, CPUs and the graphics adapter.
-
-![reims-gui: Details, dark theme](reims-gui-details-dark.png)
-
-![reims-gui: Settings › Display](reims-gui-settings-display.png)
-
-Settings › Display: Graphics Controller, Resolution and the one-time `METAL_ERROR_MODE` commands.
-
-![reims-gui: a dialog hides the guest](reims-gui-dialog-hides-screen.png)
-
-While a dialog covers the Screen tab, the embedded guest is hidden, so clicks never reach macOS.
-
-![reims-gui: Install](reims-gui-install.png)
-
-The Install tab's steps, as in the Go app.
-
-![reims-gui: Host](reims-gui-host.png)
-
-![reims-gui: Host, dark theme](reims-gui-host-dark.png)
-
-![reims-gui: GPU](reims-gui-gpu.png)
-
-The GPU tab on a host with an RTX 4070 and an RX 6700 XT: neither is eligible for passthrough (no macOS driver; the 6700 XT needs a patch kext listed in settings.yaml).
-
-![reims-gui: New Virtual Machine](reims-gui-new-vm.png)
-
-![reims-gui: New Virtual Machine, dark theme](reims-gui-new-vm-dark.png)

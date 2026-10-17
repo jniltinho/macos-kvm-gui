@@ -1,8 +1,9 @@
 name: Reims vGPU packages
 
 # Builds Reims vGPU's QEMU at the commit internal/core/reims/Dockerfile pins, for each Ubuntu
-# release the app supports, and publishes the packages `macos-kvm-gui reims install` downloads,
-# with their corresponding source, on a release of their own. Tag: reims-<7-digit commit>.
+# release the app supports, and for Rocky Linux 10 (Dockerfile.rocky), and publishes the packages
+# `macos-kvm-gui reims install` downloads (Ubuntu only), with their corresponding source, on a
+# release of their own. Tag: reims-<7-digit commit>.
 # After a release, internal/core/reims/manifest.json takes the published SHA-256 files.
 
 on:
@@ -16,7 +17,10 @@ jobs:
     timeout-minutes: 120
     strategy:
       matrix:
-        release: ['24.04', '26.04']
+        include:
+          - { release: '24.04', image: 'ubuntu:24.04', dockerfile: Dockerfile, arg: 'UBUNTU=24.04' }
+          - { release: '26.04', image: 'ubuntu:26.04', dockerfile: Dockerfile, arg: 'UBUNTU=26.04' }
+          - { release: rocky10, image: 'rockylinux/rockylinux:10', dockerfile: Dockerfile.rocky, arg: 'ROCKY=10' }
 
     steps:
       - name: Checkout Repository
@@ -35,7 +39,7 @@ jobs:
           df -h /
 
       - name: Build image
-        run: docker build --progress=plain --build-arg UBUNTU=${{ matrix.release }} -t reims-build:${{ matrix.release }} - < internal/core/reims/Dockerfile
+        run: docker build --progress=plain --build-arg ${{ matrix.arg }} -t reims-build:${{ matrix.release }} - < internal/core/reims/${{ matrix.dockerfile }}
 
       - name: Build QEMU
         run: |
@@ -45,13 +49,18 @@ jobs:
       - name: Package
         run: scripts/reims-package.sh pkg "$(readlink -f work/share/reims-ctl/qemu/current)" ${{ matrix.release }} dist
 
-      - name: Check the package in a clean ubuntu:${{ matrix.release }}
+      - name: Check the package in a clean ${{ matrix.image }}
         run: |
           mkdir check
           tar -xzf dist/*.tar.gz -C check
-          docker run --rm -v "$PWD/check:/q:ro" ubuntu:${{ matrix.release }} bash -c '
-            apt-get update -qq && apt-get install -y -qq --no-install-recommends libglib2.0-0t64 libpixman-1-0 \
-              libslirp0 libfdt1 libgtk-3-0t64 libpipewire-0.3-0t64 libpulse0 libasound2t64 libvulkan1 libgbm1 >/dev/null
+          docker run --rm -v "$PWD/check:/q:ro" ${{ matrix.image }} bash -c '
+            if command -v apt-get >/dev/null; then
+              apt-get update -qq && apt-get install -y -qq --no-install-recommends libglib2.0-0t64 libpixman-1-0 \
+                libslirp0 libfdt1 libgtk-3-0t64 libpipewire-0.3-0t64 libpulse0 libasound2t64 libvulkan1 libgbm1 >/dev/null
+            else
+              dnf -y -q install glib2 pixman libslirp libfdt gtk3 pipewire-libs pulseaudio-libs alsa-lib \
+                vulkan-loader mesa-libgbm >/dev/null
+            fi
             /q/bin/qemu-system-x86_64 -device help | grep -F "\"apple-gfx-pci\""'
 
       - name: Source archive
@@ -81,7 +90,7 @@ jobs:
           name: ${{ github.ref_name }}
           make_latest: false # the app's own releases stay "latest"
           body: |
-            Reims vGPU's QEMU (https://github.com/steelbrain/reims-vgpu) built for Ubuntu 24.04 and 26.04, which `macos-kvm-gui reims install` downloads. The source archive is the corresponding source of these binaries (GPL-2.0); see THIRD_PARTY_NOTICES.md.
+            Reims vGPU's QEMU (https://github.com/steelbrain/reims-vgpu) built for Ubuntu 24.04 and 26.04, which `macos-kvm-gui reims install` downloads, and for Rocky Linux 10 (manual install). The source archive is the corresponding source of these binaries (GPL-2.0); see THIRD_PARTY_NOTICES.md.
           files: |
             dist/*.tar.gz
             dist/*.sha256

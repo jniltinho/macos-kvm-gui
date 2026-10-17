@@ -1,11 +1,22 @@
 BIN     := dist/macos-kvm-gui
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X main.version=$(VERSION)
+# reims-gui (Rust) builds in Docker (Ubuntu 24.04 image), with the same target dir as its build.sh.
+RG_VERSION := $(shell sed -n 's/^version = "\(.*\)"$$/\1/p' reims-gui/Cargo.toml | head -n 1)
+RG_TARGET  := target/release-24.04
 
 # Binaries go to dist/, which is git-ignored: nothing built is ever committed.
-build:
+# `make build` leaves both apps there: dist/macos-kvm-gui (Go) and dist/reims-gui (Rust).
+build: build-go build-rust
+
+build-go:
 	mkdir -p dist
 	go build -o $(BIN) .
+
+build-rust:
+	mkdir -p dist
+	cd reims-gui && CARGO_TARGET_DIR=$(RG_TARGET) scripts/cargo-docker.sh 24.04 cargo build --release --locked -p reims-gui
+	cp reims-gui/$(RG_TARGET)/release/reims-gui dist/reims-gui
 
 # Stripped, reproducible-path binary with the version baked in (used by releases).
 build-prod:
@@ -25,14 +36,23 @@ test: internal/core/testdata/ocvalidate
 test-integration:
 	go test -race -tags integration -run Real ./internal/core
 
-# dist/: .tar.gz, .deb and SHA-256 files for VERSION.
-package: build-prod
+# dist/: both apps' packages and SHA-256 files.
+package: package-go package-rust
+
+# The Go app's .tar.gz, .deb and .rpm for VERSION.
+package-go: build-prod
 	scripts/package.sh $(VERSION) $(BIN)
 
-run: build
+# reims-gui's .deb and .tar.gz (one for Ubuntu 24.04 and 26.04), built in Docker.
+package-rust:
+	mkdir -p dist
+	reims-gui/scripts/build.sh
+	cp reims-gui/dist/reims-gui_$(RG_VERSION)_amd64.deb* reims-gui/dist/reims-gui-$(RG_VERSION)-x86_64.tar.gz* dist/
+
+run: build-go
 	./$(BIN)
 
 clean:
 	rm -rf dist
 
-.PHONY: build build-prod test test-integration package run clean
+.PHONY: build build-go build-rust build-prod test test-integration package package-go package-rust run clean

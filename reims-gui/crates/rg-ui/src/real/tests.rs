@@ -293,11 +293,24 @@ fn only_vms_started_here_are_embedded() -> TestResult {
         );
         b.screen_source("v")
     };
+    // A system QEMU whose `-display help` lists GTK (qemu-system-gui), or not.
+    let qemu = |name: &str, displays: &str| -> std::io::Result<PathBuf> {
+        use std::os::unix::fs::PermissionsExt;
+        let p = t.path().join(name);
+        std::fs::write(&p, format!("#!/bin/sh\nprintf '{displays}\\n'\n"))?;
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755))?;
+        Ok(p)
+    };
+    b.inner.ops.lock().1.qemu = qemu("qemu-gtk", "none\\ngtk")?;
     let window = |reims| Some(ScreenSource::Window { pid: 42, reims });
     assert_eq!(source(true, false), window(true));
     assert_eq!(source(false, false), window(false));
     // Started by the CLI, MCP or the Go app: their window stays theirs.
     assert_eq!(source(true, true), Some(ScreenSource::Standalone));
     assert_eq!(source(false, true), Some(ScreenSource::Vnc(vnc.clone())));
+    // Without qemu-system-gui, VMware SVGA started here is on the VNC screen.
+    b.inner.ops.lock().1.qemu = qemu("qemu-nogtk", "none\\ncurses")?;
+    assert_eq!(source(false, false), Some(ScreenSource::Vnc(vnc.clone())));
+    assert_eq!(source(true, false), window(true));
     Ok(())
 }

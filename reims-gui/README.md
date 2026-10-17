@@ -14,11 +14,11 @@ User guide: [docs/reims-gui.md](../docs/reims-gui.md).
 
 ## Screenshots
 
-To be added:
-
-![Main window](../docs/screenshots/reims-gui-main.png)
-![Reims vGPU in the Screen tab](../docs/screenshots/reims-gui-screen.png)
+![macOS on Reims vGPU in the Screen tab](../docs/screenshots/reims-gui-screen-desktop.png)
+![Details](../docs/screenshots/reims-gui-details.png)
 ![Host tab](../docs/screenshots/reims-gui-host.png)
+
+More in [docs/screenshots](../docs/screenshots/README.md).
 
 ## Features
 

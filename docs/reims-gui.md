@@ -82,7 +82,7 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 - No window at all: QEMU failed or is still loading; read the Log tab and [Reims vGPU troubleshooting](troubleshooting.md#reims-vgpu).
 - A window on the desktop with another PID: QEMU was started outside the app (`vm start`, the Go app, the MCP server). Only VMs started from this window are embedded; the others keep their own window.
 - The window opened on Wayland, not X11: QEMU gets `SDL_VIDEO_DRIVER=x11` (Reims) or `GDK_BACKEND=x11` (VMware SVGA) only when the app itself runs on X11; see the previous section.
-- VMware SVGA: QEMU's GTK display comes from the `qemu-system-gui` package (a dependency of the `.deb`); with the `.tar.gz`, install it.
+- VMware SVGA: QEMU's GTK window comes from the `qemu-system-gui` package (a dependency of the `.deb`; with the `.tar.gz`, install it). Without it, the app shows those VMs on its VNC screen instead (keyboard and mouse work the same; the app asks QEMU once, at the first start, so install it and restart the app to switch).
 
 ### Closing the app with a VM on screen
 

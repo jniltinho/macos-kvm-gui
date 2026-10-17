@@ -1276,8 +1276,13 @@ impl Backend for RealBackend {
             } else {
                 ScreenSource::Standalone
             }
-        } else if x11 && !s.outside && s.pid != 0 {
-            // VMware SVGA started here with QEMU's GTK window (rg-ops `start_vm` with x11_embed).
+        } else if x11
+            && !s.outside
+            && s.pid != 0
+            && rg_qemu::gtk_display(&self.inner.ops.lock().1.qemu)
+        {
+            // VMware SVGA started here with QEMU's GTK window (rg-ops `start_vm` with x11_embed;
+            // without qemu-system-gui it started with VNC, the branch below).
             ScreenSource::Window {
                 pid: s.pid,
                 reims: false,

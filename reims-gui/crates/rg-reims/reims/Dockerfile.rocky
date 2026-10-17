@@ -1,0 +1,52 @@
+# syntax=docker/dockerfile:1
+# Builds Reims vGPU's QEMU (github.com/steelbrain/reims-vgpu) for one Rocky Linux release (RHEL
+# family) with upstream's own scripts/install-ctl.sh, at the commit Dockerfile pins. The Rocky
+# twin of Dockerfile: install-ctl.sh only knows apt and pacman (it just warns elsewhere), so
+# the same packages come from dnf here, with EPEL and CRB.
+#
+#   docker build --build-arg ROCKY=10 -t reims-build:rocky10 - < Dockerfile.rocky
+#   docker run --rm -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) -v <dir>:/build reims-build:rocky10
+#
+# Output: <dir>/share/reims-ctl/qemu/<date>-<commit>/ (bin/qemu-system-x86_64 and its data,
+# stripped); <dir>/cache keeps the library's and QEMU's builds for the next run.
+ARG ROCKY=10
+FROM rockylinux/rockylinux:${ROCKY}
+ARG REIMS_COMMIT=c099dd5a4d61107a5527efc64cf1d1ab2f3a9b85
+ARG RUST=1.98.1
+# install-ctl.sh's apt package list in dnf names, plus what it calls (sudo, ps, cmp, strip).
+RUN dnf -y install epel-release dnf-plugins-core && dnf config-manager --set-enabled crb \
+    && dnf -y install gcc gcc-c++ make git curl ca-certificates pkgconf-pkg-config python3 \
+    ninja-build flex bison bzip2 cmake clang lld binutils diffutils findutils procps-ng which \
+    glib2-devel pixman-devel libslirp-devel zlib-ng-compat-devel libfdt-devel pipewire-devel \
+    pulseaudio-libs-devel alsa-lib-devel vulkan-loader libX11-devel libXext-devel \
+    libXrandr-devel libXcursor-devel libXi-devel libXfixes-devel libXScrnSaver-devel \
+    libXtst-devel libxkbcommon-devel wayland-devel libdecor-devel libglvnd-devel \
+    mesa-libEGL-devel mesa-libgbm-devel libdrm-devel dbus-devel systemd-devel gtk3-devel sudo \
+    && dnf clean all
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain ${RUST}
+# Upstream, QEMU's source (vendor/qemu) and the Rust crates, fetched once into the image.
+RUN git clone https://github.com/steelbrain/reims-vgpu /src && git -C /src checkout ${REIMS_COMMIT} \
+    && git -C /src submodule update --init --depth 1 vendor/qemu
+WORKDIR /src
+# Not --locked: the committed Cargo.lock leaves out the git sources, which cargo adds.
+RUN cargo fetch
+# install-ctl.sh up to its reims-ctl part (the app runs QEMU itself and needs neither reims-ctl
+# nor reims-util), with the library's build kept in the mounted cache, then stripped binaries.
+# Everything in /build is the caller's on any exit, a failed build's too.
+RUN cat > /usr/local/bin/build-reims <<'EOF'
+#!/bin/bash
+set -euo pipefail
+trap 'chown -R "${HOST_UID:-0}:${HOST_GID:-0}" /build' EXIT
+cd /src
+grep -q '^# -* reims-ctl$' scripts/install-ctl.sh || { echo "install-ctl.sh changed: no reims-ctl section" >&2; exit 1; }
+sed '/^# -* reims-ctl$/,$d' scripts/install-ctl.sh > scripts/install-qemu.sh
+mkdir -p /build/share /build/cache
+XDG_DATA_HOME=/build/share XDG_CACHE_HOME=/build/cache CARGO_TARGET_DIR=/build/cache/target \
+  bash scripts/install-qemu.sh --yes
+q="$(readlink -f /build/share/reims-ctl/qemu/current)"
+find "$q/bin" "$q/libexec" -type f -perm -u+x -exec strip --strip-unneeded {} + 2>/dev/null || true
+echo "Built $q"
+EOF
+RUN chmod +x /usr/local/bin/build-reims
+CMD ["build-reims"]

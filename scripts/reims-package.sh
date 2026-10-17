@@ -4,7 +4,9 @@
 #
 #   scripts/reims-package.sh pkg <qemu-dir> <release> <out-dir>
 #       <qemu-dir> is a build from internal/core/reims/Dockerfile (share/reims-ctl/qemu/<build>);
-#       writes reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz and its .sha256.
+#       writes reims-qemu-<commit>-ubuntu<release>-x86_64.tar.gz and its .sha256; a <release>
+#       that does not start with a digit (rocky10, from Dockerfile.rocky) is used as it is:
+#       reims-qemu-<commit>-rocky10-x86_64.tar.gz.
 #   scripts/reims-package.sh src <image> <out-dir>
 #       <image> is the Dockerfile's image (any release); writes reims-vgpu-src-<commit>.tar.gz
 #       and its .sha256: the corresponding source of the packages' binaries (GPL-2.0).
@@ -33,8 +35,9 @@ case "${1:-}" in
     qemu="$2" rel="$3" out="$4"
     [[ -x "$qemu/bin/qemu-system-x86_64" && -f "$qemu/share/qemu/ReimsVgpu.rom" ]] ||
       { echo "$qemu is not a Reims QEMU build" >&2; exit 1; }
+    case $rel in [0-9]*) rel="ubuntu$rel" ;; esac
     mkdir -p "$out"
-    pack "$qemu" "$(cd "$out" && pwd)/reims-qemu-$commit-ubuntu$rel-x86_64.tar.gz" .
+    pack "$qemu" "$(cd "$out" && pwd)/reims-qemu-$commit-$rel-x86_64.tar.gz" .
     ;;
   src)
     [[ $# == 3 ]] || { echo "usage: $0 src <image> <out-dir>" >&2; exit 2; }

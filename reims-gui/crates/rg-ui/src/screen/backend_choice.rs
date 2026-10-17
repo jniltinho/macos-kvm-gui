@@ -11,15 +11,23 @@ pub fn x11_available() -> bool {
     std::env::var_os("DISPLAY").is_some_and(|d| !d.is_empty()) && rg_x11::probe(None)
 }
 
+/// The window icon: `packaging/reims-gui.svg` rasterized to 256 px (`rsvg-convert -w 256`), for
+/// window managers that read `_NET_WM_ICON` rather than the desktop entry.
+const ICON_PNG: &[u8] = include_bytes!("../../assets/icon-256.png");
+
 /// The main window's options; `x11` opens it through X11 even where winit would pick Wayland
 /// (PhotoCraft's `event_loop_builder` pattern).
 pub fn native_options(x11: bool) -> eframe::NativeOptions {
+    let mut viewport = egui::ViewportBuilder::default()
+        .with_title("reims-gui")
+        .with_app_id(rg_host::APP_CLASS)
+        .with_inner_size([1280.0, 820.0])
+        .with_min_inner_size([960.0, 600.0]);
+    if let Ok(icon) = eframe::icon_data::from_png_bytes(ICON_PNG) {
+        viewport = viewport.with_icon(icon);
+    }
     let mut options = eframe::NativeOptions {
-        viewport: egui::ViewportBuilder::default()
-            .with_title("reims-gui")
-            .with_app_id(rg_host::APP_CLASS)
-            .with_inner_size([1280.0, 820.0])
-            .with_min_inner_size([960.0, 600.0]),
+        viewport,
         ..Default::default()
     };
     if x11 {
@@ -38,5 +46,14 @@ pub fn x11_window(frame: &eframe::Frame) -> Option<u32> {
         RawWindowHandle::Xlib(h) => u32::try_from(h.window).ok(),
         RawWindowHandle::Xcb(h) => Some(h.window.get()),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn the_window_has_the_app_icon() {
+        let icon = super::native_options(false).viewport.icon;
+        assert!(icon.is_some_and(|i| i.width == 256 && i.height == 256));
     }
 }
