@@ -106,14 +106,21 @@ pub struct Reims {
     roots: Option<Vec<Vec<u8>>>,
     /// `reims_qemu` / `MKG_REIMS_QEMU`, absolute.
     qemu_setting: Option<PathBuf>,
+    /// settings.yaml, named when the setting points nowhere.
+    settings_file: PathBuf,
     /// `$XDG_DATA_HOME`, for upstream reims-ctl's install.
     data_dir: Option<PathBuf>,
 }
 
 impl Reims {
     /// Reims packages in `dir` (`<Workspace>/.reims`, see `rg_core::config::reims_dir`). Reads the
-    /// `reims_qemu` setting and `$XDG_DATA_HOME` now.
+    /// user's `reims_qemu` setting and `$XDG_DATA_HOME` now.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
+        Self::for_app(dir, AppDir::user().as_ref())
+    }
+
+    /// [`Reims::new`] with the `reims_qemu` setting of the config folder `app` (`None`: unset).
+    pub fn for_app(dir: impl Into<PathBuf>, app: Option<&AppDir>) -> Self {
         Self {
             dir: dir.into(),
             os_release: "/etc/os-release".into(),
@@ -123,7 +130,8 @@ impl Reims {
             manifest_json: MANIFEST_JSON.into(),
             max_expanded: MAX_EXPANDED,
             roots: None,
-            qemu_setting: AppDir::user().and_then(|a| a.reims_qemu_setting()),
+            qemu_setting: app.and_then(AppDir::reims_qemu_setting),
+            settings_file: app.map(AppDir::settings_file).unwrap_or_default(),
             data_dir: dirs::data_dir(),
         }
     }
@@ -160,10 +168,8 @@ impl Reims {
     pub fn qemu(&self) -> Result<PathBuf> {
         let mut roots = vec![self.dir.clone()];
         roots.extend(self.data_dir.as_ref().map(|d| d.join("reims-ctl")));
-        let file = AppDir::user()
-            .map(|a| a.settings_file())
-            .unwrap_or_default();
-        find_reims_qemu(self.qemu_setting.as_deref(), &file, &roots).map_err(|e| msg(e.to_string()))
+        find_reims_qemu(self.qemu_setting.as_deref(), &self.settings_file, &roots)
+            .map_err(|e| msg(e.to_string()))
     }
 
     /// Describes the Reims QEMU a reims-vgpu VM would run.

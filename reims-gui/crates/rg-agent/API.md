@@ -16,8 +16,11 @@ parse errors also exit 1), with `reims-gui` where the Go app says `macos-kvm-gui
 | `Server::new(ctx)` | The `rmcp::ServerHandler`. |
 | `exchange(ctx, messages)`, `handshake(client)`, `self_test(ctx)` | In-memory JSON-RPC session (tests, `--self-test`). |
 
-The binary (`apps/reims-gui`) passes `Unwired` as `Ops` and a `run_gui` that fails until
-rg-ops and `rg_ui::run` exist; both are marked "Integration hook".
+The binary (`apps/reims-gui`) passes `AgentOps` (its `agent_ops.rs`: `Ops` on `rg_ops::Ops`,
+kept there so rg-ops never depends on rg-agent) and a `run_gui` that opens `rg_ui::run` on
+`RealBackend`. It handles `--demo` and `--self-test` itself: the self-test runs the MCP
+initialize + tools/list and then the GUI for a few frames, both on a temporary config folder and
+Workspace.
 
 ## `Ops`: what rg-ops provides
 

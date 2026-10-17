@@ -21,7 +21,7 @@ let ops = Ops::user(&reg)?;            // or Ops::new(app_dir, &reg.workspace_ro
 `Ops` (Clone) holds what the operations read from settings and the host, once:
 `app: AppDir`, `workspace_root` (absolute), `assets_dir` (`MKG_ASSETS_DIR`), `keyboard`
 (`recovery_keyboard()`), `http: rg_macos::Http`, `qemu` (SVGA QEMU, `qemu-system-x86_64`),
-`host: rg_host::Host` with `reims_qemu` wired to `rg_reims::Reims::new(<Workspace>/.reims).qemu()`
+`host: rg_host::Host` with `reims_qemu` wired to `rg_reims::Reims::for_app(<Workspace>/.reims, app).qemu()`
 and `extra_kexts` to `app`'s settings.yaml, and `proc_root`, `net_root`, `bridge_acl` (tests use
 fake trees). Helpers: `kext_cache()`, `installers_dir()`, `reims()`, `find_running(&c)`.
 

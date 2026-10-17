@@ -248,6 +248,9 @@ pub struct ScreenArea {
 
 /// The operations the GUI needs. Implementations must not block: anything slow is a [`Task`].
 pub trait Backend {
+    /// Called once the window exists: `ctx` wakes the UI when events arrive, `x11_embed` says
+    /// whether the app embeds QEMU's windows over X11 (design D3).
+    fn attach(&self, _ctx: &egui::Context, _x11_embed: bool) {}
     /// All VMs, in list order.
     fn vms(&self) -> Vec<VmEntry>;
     /// The VM selected at the last run.

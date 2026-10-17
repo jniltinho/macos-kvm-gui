@@ -12,9 +12,19 @@ workspace = true
 
 [dependencies]
 rg-core.workspace = true
+rg-assets.workspace = true
+rg-host.workspace = true
+rg-macos.workspace = true
+rg-ops.workspace = true
+rg-qemu.workspace = true
+rg-reims.workspace = true
+anyhow.workspace = true
+parking_lot.workspace = true
+tokio.workspace = true
 egui.workspace = true
 eframe.workspace = true
 egui_extras.workspace = true
 
 [dev-dependencies]
 egui_kittest.workspace = true
+tempfile.workspace = true

@@ -87,9 +87,12 @@ impl Ops {
         }
         .workspace_dir()?;
         let mut host = Host::system();
-        let reims_dir = root.join(".reims");
-        host.reims_qemu =
-            Arc::new(move || Reims::new(&reims_dir).qemu().map_err(|e| e.to_string()));
+        let (reims_dir, a) = (root.join(".reims"), app.clone());
+        host.reims_qemu = Arc::new(move || {
+            Reims::for_app(&reims_dir, Some(&a))
+                .qemu()
+                .map_err(|e| e.to_string())
+        });
         let a = app.clone();
         host.extra_kexts = Arc::new(move || {
             a.load_extra_kexts()
@@ -130,7 +133,7 @@ impl Ops {
 
     /// Reims packages in `<Workspace>/.reims`.
     pub fn reims(&self) -> Reims {
-        Reims::new(self.workspace_root.join(".reims"))
+        Reims::for_app(self.workspace_root.join(".reims"), Some(&self.app))
     }
 
     /// The QEMU using `c`'s disk, whoever started it.

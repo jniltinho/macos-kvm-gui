@@ -13,3 +13,11 @@ workspace = true
 rg-agent.workspace = true
 anyhow.workspace = true
 rg-ui.workspace = true
+rg-core.workspace = true
+rg-macos.workspace = true
+rg-ops.workspace = true
+rg-qemu.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

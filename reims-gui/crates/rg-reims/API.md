@@ -17,7 +17,7 @@ line, possibly from another thread.
 | `DOCKERFILE: &str` | `reimsDockerfile` |
 | `manifest() -> Result<Manifest>` (`tag`, `commit`, `packages[release] = Package { file, sha256 }`) | `loadReimsManifest` |
 | `rg_core::config::reims_dir(workspace_root) -> Result<PathBuf>` | `ReimsDir` |
-| `Reims::new(reims_dir)` | (globals) |
+| `Reims::new(reims_dir)`, `Reims::for_app(reims_dir, Option<&AppDir>)` (the `reims_qemu` setting of that config folder; `new` uses the user's) | (globals) |
 | `Reims::dir()` | |
 | `Reims::host_ubuntu_release() -> Result<String>` | `HostUbuntuRelease` |
 | `Reims::qemu() -> Result<PathBuf>` | `ReimsQEMU` |

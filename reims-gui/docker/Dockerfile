@@ -4,11 +4,11 @@ ARG UBUNTU=24.04
 FROM ubuntu:${UBUNTU}
 ARG RUST=1.99.0
 ENV DEBIAN_FRONTEND=noninteractive
-# rg-x11 tests: cmake/libx*-dev build SDL3 for the helper window, python3-gi runs GTK3's.
+# libxkbcommon-x11-0: winit on X11 (the GUI self-test). rg-x11 tests: cmake/libx*-dev build SDL3 for the helper window, python3-gi runs GTK3's.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git build-essential pkg-config python3 dpkg-dev fakeroot file \
         libxkbcommon-dev libwayland-dev libx11-dev libxcursor-dev libxrandr-dev libxi-dev \
-        libvulkan1 mesa-vulkan-drivers libegl1 libgl1 xvfb xauth \
+        libvulkan1 mesa-vulkan-drivers libegl1 libgl1 libxkbcommon-x11-0 xvfb xauth \
         cmake libxext-dev libxss-dev libxtst-dev python3-gi gir1.2-gtk-3.0 \
     && rm -rf /var/lib/apt/lists/*
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo PATH=/opt/cargo/bin:$PATH
