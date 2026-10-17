@@ -1,14 +1,14 @@
 # rg-x11 API
 
 Embeds QEMU's display window into the Screen tab by X11 reparenting (design D3): Reims vGPU's
-SDL3 window (`SDL_VIDEO_DRIVER=x11`) or QEMU's own SDL window (`-display sdl`,
-`SDL_VIDEO_DRIVER=x11`) for VMware SVGA. Pure Rust (`x11rb` `RustConnection`), no unsafe.
+SDL3 window (`SDL_VIDEO_DRIVER=x11`) or QEMU's own GTK window (`-display gtk`,
+`GDK_BACKEND=x11`) for VMware SVGA. Pure Rust (`x11rb` `RustConnection`), no unsafe.
 
 ```rust
 pub fn probe(display: Option<&str>) -> bool;               // None = $DISPLAY
 pub fn to_physical(x: f32, y: f32, w: f32, h: f32, pixels_per_point: f32) -> (i32, i32, u32, u32);
 
-pub enum WindowKind { Reims, QemuSdl }                       // .matches(title)
+pub enum WindowKind { Reims, Qemu }                       // .matches(title)
 
 impl Embedder {
     pub fn new(display: Option<&str>, parent: u32) -> Result<Self>;
@@ -39,8 +39,8 @@ impl Embedded {                                              // Drop = release()
    it off the UI thread (`spawn_blocking`). It matches a *viewable* window with
    `_NET_WM_PID == pid` anywhere in the tree (window-manager frames are fine, but never inside a
    window marked `_REIMS_GUI_CONTAINER`: another instance's embedding is off limits) and a title from
-   `_NET_WM_NAME`/`WM_NAME`: `Reims` = starts with `Reims vGPU`; `QemuSdl` = starts with `QEMU`
-   (QEMU's SDL UI sets `QEMU`, `QEMU (<-name>)`, plus ` [Stopped]` or a grab hint).
+   `_NET_WM_NAME`/`WM_NAME`: `Reims` = starts with `Reims vGPU`; `Qemu` = starts with `QEMU`
+   (QEMU's UI sets `QEMU`, `QEMU (<-name>)`, plus ` [Stopped]` or a grab hint).
    Errors: `Error::NotFound` on timeout.
 3. `embed(win)`: creates a container (child of the app window, background None so the server
    never clears it, marked `_REIMS_GUI_CONTAINER`), puts QEMU's window in the save-set (if the app dies it goes back to the

@@ -34,7 +34,7 @@ The **Preview** in Details, `screen_capture` and the MCP input tools keep using 
 
 ### VMware SVGA VMs
 
-VMs on VMware SVGA with **Display: In the app** show QEMU's VNC socket in the Screen tab, as the Go app does: click it to type, Ctrl+Alt releases the keyboard. Keys that egui merges (keypad Enter and Divide, ISO and JIS extra keys) cannot be told apart there; Reims VMs, embedded natively, are not affected. Embedding QEMU's own SDL window was tried and left out of 0.1.0: QEMU's SDL display withdraws its window when the VM has no text consoles, and paints "parallel0 console" over the guest when it has them. **Display: QEMU window** keeps QEMU's window on the desktop.
+VMs on VMware SVGA with **Display: In the app** embed QEMU's own GTK window (`-display gtk`, no tabs or menu bar, zoom to fit) in the Screen tab over X11, like Reims VMs: keys reach the guest as native scancodes (keypad, ISO and JIS keys included), click the screen to type. QEMU's VNC socket stays on for the Preview and MCP. Without X11 the Screen tab draws the VNC socket instead (keys egui merges, such as keypad Enter, cannot be told apart there). QEMU's SDL display was tried first and dropped: it withdraws its window when the VM has no text consoles. **Display: QEMU window** keeps QEMU's window on the desktop.
 
 ### Dialogs over the screen
 
@@ -45,7 +45,7 @@ VMs on VMware SVGA with **Display: In the app** show QEMU's VNC socket in the Sc
 | | `macos-kvm-gui` (Go) | `reims-gui` (Rust) |
 | --- | --- | --- |
 | Reims vGPU screen | Reims vGPU's own window | Inside the Screen tab (X11/XWayland), own window as fallback |
-| VMware SVGA screen | VNC drawn by the app | VNC drawn by the app |
+| VMware SVGA screen | QEMU's GTK window embedded | VNC drawn by the app |
 | New Sequoia and Tahoe VMs | Reims vGPU when installed and the host checks pass | The same |
 | MCP input | Over the VM's VNC socket | Over the VM's QMP control socket, so a VM in QEMU's own window can be driven too |
 | Switching VMs | Blocked while the current VM runs | Allowed: other VMs can be selected while one runs |
@@ -72,7 +72,7 @@ echo "$XDG_SESSION_TYPE $DISPLAY $WAYLAND_DISPLAY"
 
 ### QEMU's window was not found
 
-The Log tab shows `no Reims window for pid <pid> within 30s` (or `QemuGtk` for VMware SVGA). The app looks for a window whose `_NET_WM_PID` is QEMU's process and whose title starts with `Reims vGPU` (or `QEMU`). Check what QEMU opened:
+The Log tab shows `no Reims window for pid <pid> within 30s` (or `QEMU window` for VMware SVGA). The app looks for a window whose `_NET_WM_PID` is QEMU's process and whose title starts with `Reims vGPU` (or `QEMU`). Check what QEMU opened:
 
 ```sh
 xwininfo -root -tree | grep -iE 'reims vgpu|qemu'

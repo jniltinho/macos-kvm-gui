@@ -49,7 +49,7 @@ sha256sum -c reims-gui_0.1.0_ubuntu24.04_amd64.deb.sha256
 sudo apt install ./reims-gui_0.1.0_ubuntu24.04_amd64.deb
 ```
 
-The `.deb` pulls in `qemu-system-x86`, `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
+The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
 libraries the window needs, and adds `reims-gui` to the app grid.
 
 Or the `.tar.gz`, which holds the binary, the license texts and notices, a short README and the
@@ -57,7 +57,7 @@ desktop entry:
 
 ```sh
 tar xf reims-gui-0.1.0-ubuntu24.04-x86_64.tar.gz
-sudo apt install qemu-system-x86 qemu-utils
+sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
 ./reims-gui-0.1.0-ubuntu24.04-x86_64/reims-gui
 ```
 

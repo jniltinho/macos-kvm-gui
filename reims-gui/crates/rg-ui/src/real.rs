@@ -1268,9 +1268,14 @@ impl Backend for RealBackend {
             } else {
                 ScreenSource::Standalone
             }
+        } else if x11 && !s.outside && s.pid != 0 {
+            // VMware SVGA started here with QEMU's GTK window (rg-ops `start_vm` with x11_embed).
+            ScreenSource::Window {
+                pid: s.pid,
+                reims: false,
+            }
         } else {
-            // VMware SVGA: QEMU's VNC socket drawn in the tab (rg-ops never asks QEMU for its
-            // SDL window, see `display` in rg-ops' start.rs).
+            // Without X11, or started by the CLI/MCP: QEMU's VNC socket drawn in the tab.
             s.vnc.map_or(ScreenSource::Standalone, ScreenSource::Vnc)
         })
     }

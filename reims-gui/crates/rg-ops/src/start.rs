@@ -44,12 +44,12 @@ impl Running {
 
 /// Where the VM's screen goes, given the app embeds windows over X11 (design D3).
 fn display(c: &Config, x11_embed: bool) -> (bool, bool) {
-    // (SDL_VIDEO_DRIVER=x11 for the Reims window to embed, QEMU's own SDL window for VMware
-    // SVGA.) The SDL window is never used: QEMU's SDL display marks its only console hidden
-    // when there are no text consoles and withdraws the window whenever it is shown, and with
-    // text consoles it paints "parallel0 console" over the guest. VMware SVGA VMs use the
-    // in-app VNC screen instead. ponytail: revisit with QEMU's GTK display or a dma-buf sink.
-    (x11_embed && c.reims(), false)
+    // (SDL_VIDEO_DRIVER=x11 for the Reims window to embed; QEMU's own GTK window for VMware
+    // SVGA in the app. Not SDL: its display withdraws the window without text consoles.)
+    (
+        x11_embed && c.reims(),
+        x11_embed && !c.reims() && c.in_app(),
+    )
 }
 
 impl Ops {
@@ -183,7 +183,7 @@ impl Ops {
             installer_disc: disc.map(|d| d.path),
             gpu_funcs,
             x11_embed: x11,
-            sdl_window: sdl,
+            qemu_window: sdl,
             on_exit: Some(Box::new(move |ran| {
                 clear_root_patch_marker(&dir, &exit_c, ran);
                 drop(lease);
@@ -241,13 +241,13 @@ mod tests {
     }
 
     #[test]
-    fn display_embeds_only_the_reims_window_over_x11() {
+    fn display_embeds_qemu_gtk_for_svga_and_reims_window_over_x11() {
         let mut c = Config::defaults();
         assert_eq!(display(&c, false), (false, false));
         assert_eq!(
             display(&c, true),
-            (false, false),
-            "SVGA uses the VNC screen"
+            (false, true),
+            "SVGA in the app: QEMU's GTK window"
         );
         c.display = rg_core::config::DISPLAY_WINDOW.into();
         assert_eq!(
@@ -374,8 +374,8 @@ mod tests {
         assert!(lines.iter().any(|l| l.contains("verbose boot")));
         let args = std::fs::read_to_string(dir.join("args.txt"))?;
         assert!(
-            args.contains("BaseSystem.img") && !args.contains("\nsdl\n"),
-            "VMware SVGA uses the VNC screen, never QEMU's SDL window: {args}"
+            args.contains("BaseSystem.img") && args.contains("show-menubar=off"),
+            "VMware SVGA in the app gets QEMU's GTK window to embed: {args}"
         );
         assert_eq!(std::fs::read_to_string(dir.join("env.txt"))?, "SDL=\n");
         let plist = std::fs::read_to_string(

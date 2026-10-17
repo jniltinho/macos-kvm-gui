@@ -52,7 +52,7 @@ chmod -R u+rwX,go+rX,go-w "$root/usr"
 mkdir -p "$work/src/debian"
 printf 'Source: reims-gui\n\nPackage: reims-gui\nArchitecture: amd64\n' > "$work/src/debian/control"
 shlibs=$(cd "$work/src" && dpkg-shlibdeps -O "$root/usr/bin/reims-gui" | sed -n 's/^shlibs:Depends=//p')
-depends="$shlibs, $(echo "$runtime" | sed 's/  */, /g'), qemu-system-x86, qemu-utils"
+depends="$shlibs, $(echo "$runtime" | sed 's/  */, /g'), qemu-system-x86, qemu-system-gui, qemu-utils"
 
 cat > "$root/DEBIAN/control" <<EOF
 Package: reims-gui

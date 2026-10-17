@@ -1,4 +1,4 @@
-//! Embeds QEMU's display window (Reims vGPU's SDL3 window, or QEMU's SDL window for VMware SVGA)
+//! Embeds QEMU's display window (Reims vGPU's SDL3 window, or QEMU's GTK window for VMware SVGA)
 //! into the app's Screen tab by X11 reparenting (design D3). See `API.md`.
 //!
 //! Each [`Embedded`] owns its own X connection, so its events (the child's ConfigureNotify and
@@ -42,16 +42,16 @@ pub enum WindowKind {
     /// Reims vGPU's SDL3 window: title starts with "Reims vGPU" (the library changes the rest,
     /// ports append " (port N)").
     Reims,
-    /// QEMU's SDL window (`-display sdl`, VMware SVGA): "QEMU" or "QEMU (<vm name>)", with
+    /// QEMU's own window (`-display gtk`, VMware SVGA): "QEMU" or "QEMU (<vm name>)", with
     /// " [Stopped]" or grab hints appended.
-    QemuSdl,
+    Qemu,
 }
 
 impl WindowKind {
     pub fn matches(self, title: &str) -> bool {
         match self {
             WindowKind::Reims => title.starts_with("Reims vGPU"),
-            WindowKind::QemuSdl => title.starts_with("QEMU"),
+            WindowKind::Qemu => title.starts_with("QEMU"),
         }
     }
 }
@@ -74,7 +74,7 @@ pub struct Embedder {
 /// second instance of the app cannot take a window another instance holds.
 const CONTAINER_MARK: &[u8] = b"_REIMS_GUI_CONTAINER";
 
-/// How long `find_window` waits for a mapped `QemuSdl` window before taking an unmapped one.
+/// How long `find_window` waits for a mapped `Qemu` window before taking an unmapped one.
 const UNMAPPED_GRACE: Duration = Duration::from_secs(2);
 
 impl Embedder {
@@ -106,14 +106,14 @@ impl Embedder {
     /// Polls (every 50 ms, blocking the caller) for a mapped window with `_NET_WM_PID == pid`
     /// whose title matches `kind`. Searches the whole tree, so window-manager frames are fine,
     /// but never inside a container of an embedder (this app's or another instance's).
-    /// QEMU's SDL display keeps its window unmapped when it has no text consoles (the app runs
-    /// it with `-serial none -parallel none`), so after a short grace an unmapped `QemuSdl`
+    /// QEMU's display may keep its window unmapped when it has no text consoles (the app runs
+    /// it with `-serial none -parallel none`), so after a short grace an unmapped `Qemu`
     /// window is taken too: embedding maps it.
     pub fn find_window(&self, pid: u32, kind: WindowKind, timeout: Duration) -> Result<u32> {
         let start = Instant::now();
         let deadline = start + timeout;
         loop {
-            let unmapped_ok = kind == WindowKind::QemuSdl && start.elapsed() >= UNMAPPED_GRACE;
+            let unmapped_ok = kind == WindowKind::Qemu && start.elapsed() >= UNMAPPED_GRACE;
             if let Some(w) = self.scan(self.root, pid, kind, unmapped_ok)? {
                 return Ok(w);
             }
@@ -502,8 +502,8 @@ mod tests {
         assert!(WindowKind::Reims.matches("Reims vGPU"));
         assert!(WindowKind::Reims.matches("Reims vGPU — 60 fps (port 2)"));
         assert!(!WindowKind::Reims.matches("QEMU (mac)"));
-        assert!(WindowKind::QemuSdl.matches("QEMU (mac) [Stopped]"));
-        assert!(WindowKind::QemuSdl.matches("QEMU"));
-        assert!(!WindowKind::QemuSdl.matches("Reims vGPU"));
+        assert!(WindowKind::Qemu.matches("QEMU (mac) [Stopped]"));
+        assert!(WindowKind::Qemu.matches("QEMU"));
+        assert!(!WindowKind::Qemu.matches("Reims vGPU"));
     }
 }

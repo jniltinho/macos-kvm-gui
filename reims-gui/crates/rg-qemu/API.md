@@ -9,7 +9,7 @@ Async APIs are tokio; `blocking` wraps them for the CLI. Errors: `rg_qemu::Error
 ## Command line — `args`
 
 ```rust
-let env = ArgsEnv { with_media, installer_disc, gpu_funcs, sdl_window, ..ArgsEnv::host(dir, qmp_sock) };
+let env = ArgsEnv { with_media, installer_disc, gpu_funcs, qemu_window, ..ArgsEnv::host(dir, qmp_sock) };
 let args: Vec<String> = build_args(&config, &env);
 ```
 
@@ -17,7 +17,7 @@ let args: Vec<String> = build_args(&config, &env);
   `audio`) so the output is reproducible. `ArgsEnv::host` fills those from the host.
 - Defaults give the Go app's arguments byte for byte (`testdata/*.golden`, checked by
   `tests/golden.rs`): VMware SVGA, and Reims vGPU (`apple-gfx-pci`, memfd RAM, no S3, audio).
-- `sdl_window: true` (SVGA only): `-display sdl` (Ubuntu's QEMU ships ui-sdl) plus the VNC
+- `qemu_window: true` (SVGA only): `-display sdl` (Ubuntu's QEMU ships ui-sdl) plus the VNC
   socket, for the GUI to embed QEMU's own window; default off keeps the golden arguments.
 - `reims_audio()`, `qemu_path(p)` (comma escaping), `vnc_socket(qmp)`,
   `control_socket(qmp)`, `OSK`.
@@ -26,7 +26,7 @@ let args: Vec<String> = build_args(&config, &env);
 
 ```rust
 let vm = Vm::new(runtime_handle, |ev: VmEvent| { /* State(VmState, msg) | Log(line) */ });
-let started: Started = vm.start(StartSpec { config, qemu, x11_embed, sdl_window, on_exit: Some(Box::new(|ran| unlock())), .. })?;
+let started: Started = vm.start(StartSpec { config, qemu, x11_embed, qemu_window, on_exit: Some(Box::new(|ran| unlock())), .. })?;
 // started.pid, started.qmp_socket, started.vnc_socket
 vm.powerdown().await?;   // ACPI power button over QMP
 vm.kill()?;              // force stop
@@ -42,8 +42,9 @@ vm.state(); vm.pid(); vm.vnc_socket(); vm.qmp(); vm.disc_attached();
   dir) with `qmp.sock`, `qmp-control.sock` and `vnc.sock`: the Go app's layout, so either app
   attaches to the other's VMs.
 - Environment: Reims VMs lose `REIMS_VGPU_WINDOW` (the library opens its window); with
-  `x11_embed` they get `SDL_VIDEO_DRIVER=x11` (design D3); SVGA VMs with `sdl_window` get it
-  too; otherwise SDL chooses.
+  `x11_embed` they get `SDL_VIDEO_DRIVER=x11` (design D3); SVGA VMs with `qemu_window` get
+  `GDK_BACKEND=x11` for QEMU's GTK window (`-display gtk`, no tabs or menu bar, VNC kept for
+  the Preview); otherwise SDL chooses.
 - QEMU must not outlive the app. `unsafe` is forbidden, and both `prctl(PR_SET_PDEATHSIG)`
   via rustix and std's `pre_exec` would need it in the child, so QEMU is started through
   `setpriv --pdeathsig TERM --` (util-linux), which execs QEMU (same pid and comm). The spawn

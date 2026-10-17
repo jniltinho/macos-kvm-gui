@@ -25,7 +25,7 @@ impl Target {
         if self.reims {
             WindowKind::Reims
         } else {
-            WindowKind::QemuSdl
+            WindowKind::Qemu
         }
     }
 }
