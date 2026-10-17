@@ -50,12 +50,14 @@ impl Host {
 
     /// The host checks for a Reims vGPU VM with `ram_mib` of RAM.
     pub fn reims_checks(&self, ram_mib: u32) -> Vec<Check> {
-        vec![
+        let mut out = vec![
             self.check_reims_qemu(),
             self.check_vulkan(),
             self.check_map_count(ram_mib),
             self.check_udmabuf(),
-        ]
+        ];
+        out.extend(self.check_gnome_capture());
+        out
     }
 
     fn check_reims_qemu(&self) -> Check {

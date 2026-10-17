@@ -64,7 +64,11 @@ impl App {
         }
         let (shown, ctrl, remote) = if c.reims() {
             (
-                "Screen tab (Reims vGPU window, embedded)",
+                if self.screen.embedding() {
+                    "Screen tab (Reims vGPU window, embedded)"
+                } else {
+                    "Reims vGPU's own window (the app has no X server to hold it)"
+                },
                 "Reims vGPU (apple-gfx-pci)",
                 "VNC on a private socket (Preview only)",
             )

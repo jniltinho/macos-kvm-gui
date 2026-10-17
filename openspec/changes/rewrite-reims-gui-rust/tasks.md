@@ -34,6 +34,6 @@
 
 - [x] 5.1 Wire the UI to the real crates; `PARITY.md` fully checked.
 - [x] 5.2 Live tests on this host: the Nilton VM on Reims and on SVGA embedded in the Screen tab (overlay, mode change, restart, keyboard incl. ABNT2/keypad), frame rate ≥ 90% of standalone; Go and Rust apps at once; CLI and MCP start/stop; screenshots.
-- [ ] 5.2b Release gate: manual checks on GNOME Wayland sessions of Ubuntu 24.04 and 26.04, recorded in `PARITY.md`. (Automated part done: `scripts/check-gnome.sh` passes on both, also in CI.)
+- [x] 5.2b Release gate: checks on GNOME Wayland sessions of Ubuntu 24.04 and 26.04, recorded in `PARITY.md`: automated (`scripts/check-gnome.sh`, CI) and live in GNOME Shell 46/50 with the GPU and the VM (embedding, typing, capture and GNOME shortcuts, overlays, mode change, restart, scaling, monitor move, fallback). Left to a desktop install: GNOME's own shortcut-inhibit prompt in a logged-in session.
 - [x] 5.3 Docs (`reims-gui/README.md`, `docs/reims-gui.md`), Codex review, fixes.
 - [x] 5.4 Release `reims-gui-v0.1.0` with packages for 24.04 and 26.04.

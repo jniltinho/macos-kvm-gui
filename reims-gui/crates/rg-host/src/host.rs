@@ -126,6 +126,8 @@ pub struct Host {
     pub extra_kexts: ExtraKextsFn,
     /// settings.yaml's path, named in the patch-kext reason.
     pub settings_file: String,
+    /// A GNOME session on Wayland (the GNOME shortcuts check and setup).
+    pub gnome_wayland: bool,
 }
 
 impl Host {
@@ -181,6 +183,7 @@ impl Host {
             settings_file: AppDir::user()
                 .map(|a| a.settings_file().to_string_lossy().into_owned())
                 .unwrap_or_default(),
+            gnome_wayland: crate::gnome::gnome_wayland_session(),
         }
     }
 
@@ -410,6 +413,17 @@ impl Host {
             .filter(|(b, _)| (self.look_path)(b).is_none())
             .map(|(_, p)| *p)
             .collect();
+        // First, and as the user, not root (so it applies even if the password prompt is
+        // cancelled): GNOME's own settings (see gnome.rs).
+        let gnome = match self.enable_gnome_capture() {
+            Ok(true) => {
+                " GNOME now lets the guest keep Super and Alt+Tab while it has the keyboard."
+            }
+            Ok(false) => "",
+            Err(_) => {
+                " GNOME's shortcuts setting could not be changed (gsettings): see the Host tab."
+            }
+        };
         let pkgs = pkgs.join(" ");
         match (self.run)(
             "pkexec",
@@ -424,10 +438,10 @@ impl Host {
         }
         if self.check_kvm().status != Status::Ok {
             return Ok(format!(
-                "{user} was added to the kvm group: log out and back in (or reboot) so /dev/kvm opens."
+                "{user} was added to the kvm group: log out and back in (or reboot) so /dev/kvm opens.{gnome}"
             ));
         }
-        Ok("The host is ready for KVM.".into())
+        Ok(format!("The host is ready for KVM.{gnome}"))
     }
 
     /// Runs `script` as root via pkexec with `args` as $1...

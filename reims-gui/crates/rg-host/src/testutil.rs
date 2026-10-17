@@ -60,6 +60,7 @@ pub fn fake_host(cpu_flags: &str, msrs: &str, procs: &[&str]) -> io::Result<(Tem
             .join("config/settings.yaml")
             .to_string_lossy()
             .into_owned(),
+        gnome_wayland: false,
     };
     write(&h.share_root.join("vulkan/icd.d/nvidia_icd.json"), "{}")?;
     write(&h.proc_root.join("sys/vm/max_map_count"), "2097152\n")?;

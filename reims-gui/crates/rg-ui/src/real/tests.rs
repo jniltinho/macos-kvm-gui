@@ -35,6 +35,7 @@ fn fake_host(root: &Path) -> std::io::Result<Host> {
         reims_qemu: Arc::new(|| Err("not installed".into())),
         extra_kexts: Arc::new(|| Ok(0)),
         settings_file: root.join("settings.yaml").to_string_lossy().into_owned(),
+        gnome_wayland: false,
     };
     w(
         h.proc_root.join("cpuinfo"),
