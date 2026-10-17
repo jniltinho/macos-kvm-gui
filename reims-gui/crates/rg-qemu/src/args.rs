@@ -29,7 +29,7 @@ pub struct ArgsEnv {
     pub audio: String,
     /// VMware SVGA only: run QEMU's own SDL window (`-display sdl`) for the app to embed, plus
     /// the VNC socket. Off (the default) gives the Go app's arguments.
-    pub sdl_window: bool,
+    pub qemu_window: bool,
 }
 
 impl ArgsEnv {
@@ -191,17 +191,18 @@ pub fn build_args(c: &Config, env: &ArgsEnv) -> Vec<String> {
         }
     }
     args.extend(more_nics);
-    if env.sdl_window && !c.reims() {
-        // QEMU's own SDL window, for the app to embed (native scancodes); VNC still serves the
-        // Preview and screen capture. Without -serial/-parallel none, SDL adds text consoles
-        // for them, and "parallel0 console" stays painted over the guest's first frames.
+    if env.qemu_window && !c.reims() {
+        // QEMU's own GTK window, for the app to embed (native scancodes); VNC still serves the
+        // Preview and screen capture. GTK, not SDL: QEMU's SDL display withdraws its window
+        // when it has no text consoles and paints "parallel0 console" over the guest when it
+        // has them. No menu bar or tabs, and no serial/parallel consoles to switch to.
         args.extend([
             "-serial".into(),
             "none".into(),
             "-parallel".into(),
             "none".into(),
             "-display".into(),
-            "sdl".into(),
+            "gtk,show-tabs=off,show-menubar=off,zoom-to-fit=on".into(),
             "-vnc".into(),
             format!(
                 "unix:{},lock-key-sync=off",
@@ -452,11 +453,14 @@ mod tests {
     }
 
     #[test]
-    fn sdl_window_keeps_vnc_for_svga_only() {
+    fn qemu_window_keeps_vnc_for_svga_only() {
         let mut e = env(false);
-        e.sdl_window = true;
+        e.qemu_window = true;
         let args = build_args(&Config::defaults(), &e);
-        assert_eq!(arg_after(&args, "-display", ""), "sdl");
+        assert_eq!(
+            arg_after(&args, "-display", ""),
+            "gtk,show-tabs=off,show-menubar=off,zoom-to-fit=on"
+        );
         assert_eq!(arg_after(&args, "-serial", ""), "none");
         assert_eq!(arg_after(&args, "-parallel", ""), "none");
         assert!(arg_after(&args, "-vnc", "unix:").ends_with("vnc.sock,lock-key-sync=off"));

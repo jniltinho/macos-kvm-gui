@@ -85,9 +85,9 @@ pub struct StartSpec {
     /// Reims vGPU: an X11 display is usable and the app will embed the library's window, so
     /// QEMU gets `SDL_VIDEO_DRIVER=x11`. Off leaves SDL's own choice (native Wayland).
     pub x11_embed: bool,
-    /// VMware SVGA: QEMU's own SDL window for the app to embed (see [`ArgsEnv::sdl_window`]),
+    /// VMware SVGA: QEMU's own SDL window for the app to embed (see [`ArgsEnv::qemu_window`]),
     /// with `SDL_VIDEO_DRIVER=x11`.
-    pub sdl_window: bool,
+    pub qemu_window: bool,
     /// Runs once QEMU has exited (or failed to start), after the run directory is gone.
     pub on_exit: Option<OnExit>,
 }
@@ -202,9 +202,9 @@ impl Vm {
         env.with_media = spec.with_media;
         env.installer_disc = spec.installer_disc.clone();
         env.gpu_funcs = std::mem::take(&mut spec.gpu_funcs);
-        env.sdl_window = spec.sdl_window;
+        env.qemu_window = spec.qemu_window;
         let args = build_args(c, &env);
-        let serves_vnc = spec.sdl_window || c.in_app() || c.reims();
+        let serves_vnc = spec.qemu_window || c.in_app() || c.reims();
         self.log(format!("{} {}", spec.qemu.display(), args.join(" ")));
 
         let started = Started {
@@ -344,9 +344,13 @@ impl Vm {
             // The library opens its window only without REIMS_VGPU_WINDOW.
             cmd.env_remove("REIMS_VGPU_WINDOW");
         }
-        // An SDL window the app embeds must be an X11 one (design D3).
-        if (reims && spec.x11_embed) || (!reims && spec.sdl_window) {
+        // A window the app embeds must be an X11 one (design D3): Reims vGPU's SDL3 window,
+        // or QEMU's GTK window for VMware SVGA.
+        if reims && spec.x11_embed {
             cmd.env("SDL_VIDEO_DRIVER", "x11");
+        }
+        if !reims && spec.qemu_window {
+            cmd.env("GDK_BACKEND", "x11");
         }
         let (r, w) = std::io::pipe()?;
         cmd.stdout(w.try_clone()?).stderr(w);

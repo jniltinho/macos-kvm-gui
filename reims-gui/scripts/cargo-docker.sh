@@ -7,7 +7,8 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 rel=24.04
 case "${1:-}" in 24.04|26.04) rel=$1; shift ;; esac
 image=reims-gui-build:$rel
-docker image inspect "$image" >/dev/null 2>&1 || docker build --build-arg UBUNTU="$rel" -t "$image" "$root/docker"
+# Always through docker build: cached it is instant, and the image follows Dockerfile edits.
+docker build -q --build-arg UBUNTU="$rel" -t "$image" "$root/docker" >/dev/null
 [ $# -eq 0 ] && set -- cargo build --workspace
 tty=""; [ -t 0 ] && tty="-t"
 # RG_CARGO_HOME (a host folder) shares the crates registry between worktrees.

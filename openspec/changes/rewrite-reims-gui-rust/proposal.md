@@ -11,7 +11,7 @@ The app is Go/Fyne, while Reims vGPU (the GPU path the app is moving to) is Rust
 - It is focused on Reims vGPU: new VMs default to it when the host can run it, the Host tab installs or builds it, and **the Reims vGPU display is shown inside the app's Screen tab**:
   - Phase 1 (this change): QEMU's Reims window is embedded into the Screen tab by X11 reparenting (QEMU's SDL forced to X11; the app runs on X11 or XWayland, which both Ubuntu releases have), with GPU rendering unchanged and input through the library's own window.
   - Phase 2 (follow-up change): a remote frame sink in Reims vGPU's window crate that exports frames as dma-bufs to the app, for native Wayland.
-- VMware SVGA VMs keep the in-app VNC screen (rustXterm's VNC client and desktop widget).
+- VMware SVGA VMs embed QEMU's GTK window in the Screen tab over X11; the VNC client (rustXterm's VNC client and desktop widget) serves the Preview, MCP and sessions without X11.
 - Everything the Go app does is ported: VM registry and settings (SQLite and `settings.yaml`), workspace and disks, OpenCore EFI and OVMF assets (embedded), recovery download and verification, full installers and offline install, network adapters, GPU passthrough with VFIO reservation, root-patch mode, extra kexts, Reims packages/build/kext, host checks and setup, export/import, CLI and MCP.
 - The license of `reims-gui` is **GPL-2.0-or-later OR LGPL-3.0-or-later**, Reims vGPU's, because it starts from reims-ctl's code. The Go app stays BSD-3-Clause.
 - Builds run only in Docker (Ubuntu 24.04 and 26.04 images); outputs are a binary, a `.tar.gz` and a `.deb` per release; CI and a release workflow build them.

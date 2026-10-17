@@ -1,7 +1,7 @@
 //! Opening the main window: eframe's options, the backend's attachment and `--self-test`.
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::time::Duration;
 
 use crate::{App, Backend};
@@ -19,6 +19,8 @@ pub struct RunOptions {
 const SELF_TEST_FRAMES: u32 = 3;
 /// `--self-test` fails when the window draws nothing for this long.
 const SELF_TEST_TIMEOUT: Duration = Duration::from_secs(60);
+/// After SIGTERM, SIGINT or SIGHUP, how long the window gets to let go of QEMU's windows.
+const TERM_GRACE: Duration = Duration::from_secs(2);
 
 /// Opens the main window on `backend` and blocks until it closes.
 pub fn run(backend: Box<dyn Backend>, opts: RunOptions) -> anyhow::Result<()> {
@@ -36,15 +38,19 @@ pub fn run(backend: Box<dyn Backend>, opts: RunOptions) -> anyhow::Result<()> {
         });
     }
     let counter = frames.clone();
+    let term = Arc::new(AtomicBool::new(false));
+    let term_seen = term.clone();
     eframe::run_native(
         "reims-gui",
         options,
         Box::new(move |cc| {
             backend.attach(&cc.egui_ctx, x11_embed);
+            on_term_signal(cc.egui_ctx.clone(), term);
             Ok(Box::new(Window {
                 app: App::new(backend),
                 frames: counter,
                 self_test: opts.self_test,
+                term: term_seen,
             }))
         }),
     )
@@ -60,14 +66,49 @@ pub fn run(backend: Box<dyn Backend>, opts: RunOptions) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// On SIGTERM, SIGINT or SIGHUP, sets `term` for the next frame, which puts QEMU's windows
+/// back on the root and exits (QEMU follows through its death signal). Dying with them
+/// embedded leaves them to the X save-set, which crashes Xwayland 24.1 (Ubuntu 26.04) when
+/// the app's window is in a Mutter frame. If no frame comes, exits anyway.
+fn on_term_signal(ctx: egui::Context, term: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        let Ok(rt) = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .build()
+        else {
+            return;
+        };
+        rt.block_on(async {
+            use tokio::signal::unix::{SignalKind, signal};
+            let (Ok(mut t), Ok(mut i), Ok(mut h)) = (
+                signal(SignalKind::terminate()),
+                signal(SignalKind::interrupt()),
+                signal(SignalKind::hangup()),
+            ) else {
+                return;
+            };
+            tokio::select! { _ = t.recv() => {}, _ = i.recv() => {}, _ = h.recv() => {} }
+        });
+        term.store(true, Ordering::Relaxed);
+        ctx.request_repaint();
+        std::thread::sleep(TERM_GRACE);
+        std::process::exit(143);
+    });
+}
+
 struct Window {
     app: App,
     frames: Arc<AtomicU32>,
     self_test: bool,
+    term: Arc<AtomicBool>,
 }
 
 impl eframe::App for Window {
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+        if self.term.load(Ordering::Relaxed) {
+            self.app.screen.embeds.slots.clear(); // dropping each releases its window
+            std::process::exit(143);
+        }
         self.app.screen.attach(frame);
         self.app.show(ui);
         let n = self.frames.fetch_add(1, Ordering::Relaxed) + 1;

@@ -45,20 +45,20 @@ Download from the project's [GitHub Releases](https://github.com/jniltinho/macos
 
 ```sh
 # Ubuntu 24.04 (use ubuntu26.04 on 26.04)
-sha256sum -c reims-gui_0.1.0_ubuntu24.04_amd64.deb.sha256
-sudo apt install ./reims-gui_0.1.0_ubuntu24.04_amd64.deb
+sha256sum -c reims-gui_0.1.1_ubuntu24.04_amd64.deb.sha256
+sudo apt install ./reims-gui_0.1.1_ubuntu24.04_amd64.deb
 ```
 
-The `.deb` pulls in `qemu-system-x86`, `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
+The `.deb` pulls in `qemu-system-x86`, `qemu-system-gui` (QEMU's GTK window, embedded for VMware SVGA), `qemu-utils` and the X11, Wayland, Vulkan and OpenGL
 libraries the window needs, and adds `reims-gui` to the app grid.
 
 Or the `.tar.gz`, which holds the binary, the license texts and notices, a short README and the
 desktop entry:
 
 ```sh
-tar xf reims-gui-0.1.0-ubuntu24.04-x86_64.tar.gz
-sudo apt install qemu-system-x86 qemu-utils
-./reims-gui-0.1.0-ubuntu24.04-x86_64/reims-gui
+tar xf reims-gui-0.1.1-ubuntu24.04-x86_64.tar.gz
+sudo apt install qemu-system-x86 qemu-system-gui qemu-utils
+./reims-gui-0.1.1-ubuntu24.04-x86_64/reims-gui
 ```
 
 Take the package built for your release: each is linked against that release's libraries.
@@ -112,6 +112,7 @@ scripts/cargo-docker.sh 26.04 cargo build          # any cargo command, in the 2
 scripts/build.sh 24.04                             # release build and packages
 scripts/build.sh 26.04
 scripts/check-package.sh 24.04                     # install the .deb in a clean container, run --self-test under Xvfb
+scripts/check-gnome.sh 24.04                       # the .deb under Mutter (Wayland + XWayland): self-tests, SVGA embed
 ```
 
 `build.sh` leaves in `dist/` the binary (`reims-gui-<version>-ubuntu<release>-x86_64`), `reims-gui-<version>-ubuntu<release>-x86_64.tar.gz`,

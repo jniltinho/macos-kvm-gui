@@ -12,7 +12,7 @@ Each line: **Go feature** — Rust counterpart — how it is verified (a test na
 
 Status as of branch `feat/reims-gui-rust` after commit `8b9a6b9` (Screen embedding, VNC screen,
 file dialogs) and the Go-parity follow-up (close guard, disk size, offline install box, root-patch
-confirmations). What remains is the live and release-gate checks (tasks 5.2, 5.2b).
+confirmations). What remains is the rest of the live checks (task 5.2) and the manual GNOME session checks (task 5.2b; the automated part passes on both releases).
 
 ## 1. Command line (`cmd/` → `rg_agent::cli`)
 
@@ -126,7 +126,7 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 - [x] Details: General, System, Display, Storage, Audio, Network, USB, GPU sections — `tabs::details` — `snapshot_main_light`
 - [x] Details: Preview over the VNC socket — `RealBackend::preview`, `rg_qemu::vnc` — `preview_rects_are_cut_from_the_frame`, `capture_waits_for_pixels_then_quiet`
 - [x] Screen: Reims vGPU window embedded by X11 reparenting (design D3) — `rg_ui::screen` (`embed.rs`) on `rg_x11::Embedder`, found by pid off the UI thread — `sdl3_reims_window`, `release_puts_child_back_on_root`, `snapshot_screen_embedding_light`, `snapshot_screen_not_found_dark`, test target `xvfb_embed` (a real SDL window inside the real eframe window); live: task 5.2
-- [x] Screen: VMware SVGA on the in-app VNC screen (as the Go app) — `ScreenSource::Vnc` — `display_embeds_only_the_reims_window_over_x11`; SDL window embedding deferred: QEMU's SDL display withdraws its window when it has no text consoles and paints "parallel0 console" over the guest when it has them (measured live on this host, 2026-10-16)
+- [x] Screen: VMware SVGA embeds QEMU's GTK window over X11 (`ScreenSource::Window { reims: false }`), VNC without X11 (`ScreenSource::Vnc`) — `display_embeds_qemu_gtk_for_svga_and_reims_window_over_x11`, `qemu_window_keeps_vnc_for_svga_only`; live 2026-10-16: Nilton (Sequoia 15.8.1) on SVGA embedded, login typed in the tab, desktop shown, shutdown over SSH detected. QEMU's SDL display was dropped (withdraws its window without text consoles)
 - [x] Screen: X11/XWayland backend choice at startup — `screen::backend_choice::{x11_available, native_options}` used by `run.rs` — `no_x_server`; live on GNOME Wayland: task 5.2b
 - [x] Screen: VNC texture fallback without X11, with keyboard and pointer (Go `screen.go`) — `screen/vnc.rs` (dirty rects, letterbox, Ctrl+Alt grab, absolute pointer) — `snapshot_screen_vnc_dark`, `vnc_screen_grabs_the_keyboard_on_click`, `ctrl_alt_releases_every_key`, `keys_map_by_position`
 - [x] Screen: overlay rule (rectangle reported, hidden under dialogs and menus) — `ScreenArea`, `Backend::set_screen_area` — `screen_area_is_reported_and_hidden_under_dialogs` (the embedder hides QEMU's window under them: `screen::embed`)
@@ -260,12 +260,12 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 
 Unchecked until run and recorded here (date, result). Host: this X11 KDE machine, the Nilton VM.
 
-- [ ] **Reims embedded.** Select the Nilton VM on Reims vGPU, Start. Expect: no separate "Reims vGPU" window on the desktop; the Screen tab shows macOS; `xwininfo -root -tree | grep -i "reims vgpu"` lists the window as a child of the app's window.
-- [ ] **SVGA in-app screen.** Set the Nilton VM to VMware SVGA, Display: In the app, Start. Expect: the VNC screen inside the Screen tab, typing works; the Preview in Details updates.
+- [x] **Reims embedded.** Select the Nilton VM on Reims vGPU, Start. Expect: no separate "Reims vGPU" window on the desktop; the Screen tab shows macOS; `xwininfo -root -tree | grep -i "reims vgpu"` lists the window as a child of the app's window. (2026-10-16, 0.1.1 `.deb`: embedded, login typed in the tab, Preview in Details live, Help menu hides the guest.)
+- [x] **SVGA in-app screen.** Set the Nilton VM to VMware SVGA, Display: In the app, Start. Expect: QEMU's GTK window inside the Screen tab, typing works; the Preview in Details updates. (2026-10-16, this host: embed and typing passed; Preview to re-check with 0.1.1.)
 - [ ] **Overlay.** With the VM running and the Screen tab shown, open File (menu), Machine › Settings… is disabled, open Help › About, and a combo popup in Preferences. Expect: the guest disappears while each is open and comes back when closed; clicks on the dialog never reach macOS (watch the pointer in the guest).
 - [ ] **Mode change.** In macOS, System Settings › Displays, pick another resolution (Reims: also change it in Settings › Display after a stop). Expect: the guest stays the size of the tab, no window outside the app.
 - [ ] **Resize.** Resize the app window and toggle the Log tab and back. Expect: the guest follows the tab; switching tab hides it.
-- [ ] **Restart.** Shut down macOS from the Apple menu, Start again. Expect: the Screen tab gets the new window; no stale window.
+- [x] **Restart.** Shut down macOS from the Apple menu, Start again. Expect: the Screen tab gets the new window; no stale window. (2026-10-16, 0.1.1: shut down over SSH, Start again, re-embedded.)
 - [ ] **Keyboard (ABNT2).** Host layout `br(abnt2)`, macOS layout Brazilian ABNT2. Click the screen, type `ç ´ ~ / ?` with the ABNT2 keys, keypad Enter and keypad `/` in TextEdit. Expect: each key arrives as itself. Ctrl+Alt+Super releases the keyboard (Reims).
 - [ ] **Frame rate.** Run the VM standalone (`reims-gui vm start --display window`) and embedded, each with `REIMS_VGPU_STATS=1` in the environment, playing the same animation for 60 s. Expect: embedded ≥ 90% of the standalone frames per second (record both numbers).
 - [ ] **Both apps at once.** Start the VM from `macos-kvm-gui`, open `reims-gui`. Expect: it shows the VM running, Shut down works over the control socket, Start is refused ("already running" / disk in use).
@@ -274,6 +274,18 @@ Unchecked until run and recorded here (date, result). Host: this X11 KDE machine
 - [ ] **Screenshots.** Capture `docs/screenshots/reims-gui-*.png` (main, Screen with a running Reims VM, Install, Host, Settings, wizard; light and dark).
 
 ## 7. Release gate: GNOME Wayland (task 5.2b, design D3 risks)
+
+### Automated: GNOME's compositor in a container (`scripts/check-gnome.sh <release>`)
+
+Mutter headless (Wayland + XWayland, the compositor of GNOME's session) in a clean
+`ubuntu:<release>` container with the release `.deb` and `/dev/kvm`; no GPU (lavapipe), so the
+Reims window is stood in by an SDL3 window titled like it.
+
+- [x] 24.04 (Mutter 46.2, Xwayland 23.2) / [x] 26.04 (Mutter 50.1, Xwayland 24.1.10), 0.1.1, 2026-10-16: `--self-test` on XWayland and on native Wayland; a VMware SVGA VM started from the GUI on XWayland gets QEMU's GTK window embedded in the Screen tab (window tree: app › container › QEMU, inside Mutter's frame); SIGTERM to the GUI puts the window back first and Xwayland survives.
+- [x] Both releases, same date: an SDL3 window titled `Reims vGPU (port 2)` found by PID and embedded into another X11 window under Mutter, alive for 10 s (`rg-x11` examples `sdl_window` and `find_window`).
+- Found and fixed by these runs: Mutter (XWayland) lets go of a framed window asynchronously and took QEMU's window back out of the container; `embed` now waits for the window to return to the root before reparenting. Xwayland 24.1.10 crashes (SIGSEGV) when a client dies with a foreign window in its save-set inside a Mutter frame; the app now releases embedded windows on SIGTERM, SIGINT and SIGHUP. A SIGKILL or crash of the app with a VM on screen still hits that Xwayland bug on 26.04 (upstream).
+
+### Manual: real GNOME sessions
 
 Run on a fresh install of **Ubuntu 24.04** and again on **Ubuntu 26.04**, logged in to the default
 GNOME session (Wayland), with the release `.deb` installed (`sudo apt install ./reims-gui_*.deb`)

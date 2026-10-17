@@ -34,7 +34,7 @@ The **Preview** in Details, `screen_capture` and the MCP input tools keep using 
 
 ### VMware SVGA VMs
 
-VMs on VMware SVGA with **Display: In the app** show QEMU's VNC socket in the Screen tab, as the Go app does: click it to type, Ctrl+Alt releases the keyboard. Keys that egui merges (keypad Enter and Divide, ISO and JIS extra keys) cannot be told apart there; Reims VMs, embedded natively, are not affected. Embedding QEMU's own SDL window was tried and left out of 0.1.0: QEMU's SDL display withdraws its window when the VM has no text consoles, and paints "parallel0 console" over the guest when it has them. **Display: QEMU window** keeps QEMU's window on the desktop.
+VMs on VMware SVGA with **Display: In the app** embed QEMU's own GTK window (`-display gtk`, no tabs or menu bar, zoom to fit) in the Screen tab over X11, like Reims VMs: keys reach the guest as native scancodes (keypad, ISO and JIS keys included), click the screen to type. QEMU's VNC socket stays on for the Preview and MCP. Without X11 the Screen tab draws the VNC socket instead (keys egui merges, such as keypad Enter, cannot be told apart there). QEMU's SDL display was tried first and dropped: it withdraws its window when the VM has no text consoles. **Display: QEMU window** keeps QEMU's window on the desktop.
 
 ### Dialogs over the screen
 
@@ -45,7 +45,7 @@ VMs on VMware SVGA with **Display: In the app** show QEMU's VNC socket in the Sc
 | | `macos-kvm-gui` (Go) | `reims-gui` (Rust) |
 | --- | --- | --- |
 | Reims vGPU screen | Reims vGPU's own window | Inside the Screen tab (X11/XWayland), own window as fallback |
-| VMware SVGA screen | VNC drawn by the app | VNC drawn by the app |
+| VMware SVGA screen | QEMU's GTK window embedded | VNC drawn by the app |
 | New Sequoia and Tahoe VMs | Reims vGPU when installed and the host checks pass | The same |
 | MCP input | Over the VM's VNC socket | Over the VM's QMP control socket, so a VM in QEMU's own window can be driven too |
 | Switching VMs | Blocked while the current VM runs | Allowed: other VMs can be selected while one runs |
@@ -72,7 +72,7 @@ echo "$XDG_SESSION_TYPE $DISPLAY $WAYLAND_DISPLAY"
 
 ### QEMU's window was not found
 
-The Log tab shows `no Reims window for pid <pid> within 30s` (or `QemuGtk` for VMware SVGA). The app looks for a window whose `_NET_WM_PID` is QEMU's process and whose title starts with `Reims vGPU` (or `QEMU`). Check what QEMU opened:
+The Log tab shows `no Reims window for pid <pid> within 30s` (or `QEMU window` for VMware SVGA). The app looks for a window whose `_NET_WM_PID` is QEMU's process and whose title starts with `Reims vGPU` (or `QEMU`). Check what QEMU opened:
 
 ```sh
 xwininfo -root -tree | grep -iE 'reims vgpu|qemu'
@@ -81,7 +81,12 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 
 - No window at all: QEMU failed or is still loading; read the Log tab and [Reims vGPU troubleshooting](troubleshooting.md#reims-vgpu).
 - A window on the desktop with another PID: QEMU was started outside the app (`vm start`, the Go app, the MCP server). Only VMs started from this window are embedded; the others keep their own window.
-- The window opened on Wayland, not X11: QEMU gets `SDL_VIDEO_DRIVER=x11` only when the app itself runs on X11; see the previous section.
+- The window opened on Wayland, not X11: QEMU gets `SDL_VIDEO_DRIVER=x11` (Reims) or `GDK_BACKEND=x11` (VMware SVGA) only when the app itself runs on X11; see the previous section.
+- VMware SVGA: QEMU's GTK display comes from the `qemu-system-gui` package (a dependency of the `.deb`); with the `.tar.gz`, install it.
+
+### Closing the app with a VM on screen
+
+Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop before the app exits, and QEMU stops with the app. If the app is killed (SIGKILL) or crashes while a VM is on screen, the X server moves QEMU's window itself; on Ubuntu 26.04's GNOME Wayland session, Xwayland 24.1 crashes doing that (an upstream bug), taking the session's X11 windows with it. Avoid `kill -9` on the app while a VM runs.
 
 ### Keyboard or focus
 
@@ -92,7 +97,7 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 ### Docker build
 
 - `permission denied ... /var/run/docker.sock`: add yourself to the `docker` group (`sudo usermod -aG docker "$USER"`) and log in again, or use rootless Docker.
-- The first `scripts/cargo-docker.sh` or `scripts/build.sh` run builds the `reims-gui-build:<release>` image; it needs network access. After a change to `reims-gui/docker/Dockerfile`, remove the image (`docker rmi reims-gui-build:24.04`) so it is rebuilt.
+- The first `scripts/cargo-docker.sh` or `scripts/build.sh` run builds the `reims-gui-build:<release>` image; it needs network access. Every run goes through `docker build`, so the image follows changes to `reims-gui/docker/Dockerfile` (cached, it takes a fraction of a second).
 - Builds go to `reims-gui/target/`, owned by your user. If a run as root left files there, `sudo chown -R "$USER": reims-gui/target`.
 - Always build packages with `scripts/build.sh <release>`: a binary built in the 24.04 image may not run on 26.04 and the reverse.
 
@@ -101,5 +106,6 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 - `apt` cannot resolve dependencies: the package is for the other Ubuntu release (`ubuntu24.04` vs `ubuntu26.04` in the file name).
 - The window does not open on a machine without a GPU driver: install `mesa-vulkan-drivers` (software Vulkan); `reims-gui --self-test` draws a few frames and exits 0 when the window works.
 - `scripts/check-package.sh <release>` installs the built `.deb` in a clean `ubuntu:<release>` container and runs `--self-test` under Xvfb; run it before publishing.
+- `scripts/check-gnome.sh <release>` runs GNOME's compositor (Mutter, headless, Wayland + XWayland) in a clean container with the `.deb` and `/dev/kvm`: self-tests on XWayland and Wayland, a VMware SVGA VM's QEMU window embedded in the Screen tab, and SIGTERM releasing it with Xwayland still up.
 
 For messages shared with the Go app (KVM, disks, recovery, network, GPU), see [Troubleshooting](troubleshooting.md).

@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pid: u32 = args.next().ok_or("pid")?.parse()?;
     let kind = match args.next().as_deref() {
         Some("reims") => rg_x11::WindowKind::Reims,
-        _ => rg_x11::WindowKind::QemuSdl,
+        _ => rg_x11::WindowKind::Qemu,
     };
     let secs: u64 = args.next().map_or(Ok(10), |s| s.parse())?;
     let do_embed = args.next().as_deref() == Some("embed");

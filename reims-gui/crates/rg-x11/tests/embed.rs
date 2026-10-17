@@ -152,7 +152,7 @@ fn scenario(kind: WindowKind, spawn: fn(&str, &str) -> Kill, title: &str) {
         .find_window(child.0.id(), kind, Duration::from_secs(30))
         .unwrap();
     let other = if kind == WindowKind::Reims {
-        WindowKind::QemuSdl
+        WindowKind::Qemu
     } else {
         WindowKind::Reims
     };
@@ -239,7 +239,7 @@ fn sdl3_reims_window() {
 
 #[test]
 fn sdl_qemu_window() {
-    scenario(WindowKind::QemuSdl, sdl_window, "QEMU (mac-test)");
+    scenario(WindowKind::Qemu, sdl_window, "QEMU (mac-test)");
 }
 
 #[test]
