@@ -81,7 +81,12 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 
 - No window at all: QEMU failed or is still loading; read the Log tab and [Reims vGPU troubleshooting](troubleshooting.md#reims-vgpu).
 - A window on the desktop with another PID: QEMU was started outside the app (`vm start`, the Go app, the MCP server). Only VMs started from this window are embedded; the others keep their own window.
-- The window opened on Wayland, not X11: QEMU gets `SDL_VIDEO_DRIVER=x11` only when the app itself runs on X11; see the previous section.
+- The window opened on Wayland, not X11: QEMU gets `SDL_VIDEO_DRIVER=x11` (Reims) or `GDK_BACKEND=x11` (VMware SVGA) only when the app itself runs on X11; see the previous section.
+- VMware SVGA: QEMU's GTK display comes from the `qemu-system-gui` package (a dependency of the `.deb`); with the `.tar.gz`, install it.
+
+### Closing the app with a VM on screen
+
+Quit, SIGTERM, SIGINT (Ctrl+C) and SIGHUP put QEMU's window back on the desktop before the app exits, and QEMU stops with the app. If the app is killed (SIGKILL) or crashes while a VM is on screen, the X server moves QEMU's window itself; on Ubuntu 26.04's GNOME Wayland session, Xwayland 24.1 crashes doing that (an upstream bug), taking the session's X11 windows with it. Avoid `kill -9` on the app while a VM runs.
 
 ### Keyboard or focus
 
@@ -92,7 +97,7 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 ### Docker build
 
 - `permission denied ... /var/run/docker.sock`: add yourself to the `docker` group (`sudo usermod -aG docker "$USER"`) and log in again, or use rootless Docker.
-- The first `scripts/cargo-docker.sh` or `scripts/build.sh` run builds the `reims-gui-build:<release>` image; it needs network access. After a change to `reims-gui/docker/Dockerfile`, remove the image (`docker rmi reims-gui-build:24.04`) so it is rebuilt.
+- The first `scripts/cargo-docker.sh` or `scripts/build.sh` run builds the `reims-gui-build:<release>` image; it needs network access. Every run goes through `docker build`, so the image follows changes to `reims-gui/docker/Dockerfile` (cached, it takes a fraction of a second).
 - Builds go to `reims-gui/target/`, owned by your user. If a run as root left files there, `sudo chown -R "$USER": reims-gui/target`.
 - Always build packages with `scripts/build.sh <release>`: a binary built in the 24.04 image may not run on 26.04 and the reverse.
 
@@ -101,5 +106,6 @@ xprop _NET_WM_PID WM_NAME     # then click the window
 - `apt` cannot resolve dependencies: the package is for the other Ubuntu release (`ubuntu24.04` vs `ubuntu26.04` in the file name).
 - The window does not open on a machine without a GPU driver: install `mesa-vulkan-drivers` (software Vulkan); `reims-gui --self-test` draws a few frames and exits 0 when the window works.
 - `scripts/check-package.sh <release>` installs the built `.deb` in a clean `ubuntu:<release>` container and runs `--self-test` under Xvfb; run it before publishing.
+- `scripts/check-gnome.sh <release>` runs GNOME's compositor (Mutter, headless, Wayland + XWayland) in a clean container with the `.deb` and `/dev/kvm`: self-tests on XWayland and Wayland, a VMware SVGA VM's QEMU window embedded in the Screen tab, and SIGTERM releasing it with Xwayland still up.
 
 For messages shared with the Go app (KVM, disks, recovery, network, GPU), see [Troubleshooting](troubleshooting.md).

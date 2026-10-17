@@ -76,6 +76,8 @@ const CONTAINER_MARK: &[u8] = b"_REIMS_GUI_CONTAINER";
 
 /// How long `find_window` waits for a mapped `Qemu` window before taking an unmapped one.
 const UNMAPPED_GRACE: Duration = Duration::from_secs(2);
+/// How long `embed` waits for a reparenting window manager to give an unmapped window back.
+const WM_RELEASE: Duration = Duration::from_secs(1);
 
 impl Embedder {
     /// Connects to `display` (`None` = `$DISPLAY`) and checks that `parent` exists.
@@ -233,11 +235,32 @@ impl Embedder {
         .check()?;
         // Unmap first so a window manager lets go of it (its frame goes away), and drop any
         // fullscreen/maximized state it set, so a later release does not bring it back.
+        let framed = conn.query_tree(child)?.reply()?.parent != self.root;
         conn.unmap_window(child)?;
         conn.delete_property(child, self.atoms[3])?;
+        conn.flush()?;
+        // A reparenting window manager (Mutter frames XWayland windows) puts the window back on
+        // the root when it lets go, asynchronously: reparenting before that, it would take the
+        // window back out of the container.
+        let deadline = Instant::now() + WM_RELEASE;
+        while framed
+            && conn.query_tree(child)?.reply()?.parent != self.root
+            && Instant::now() < deadline
+        {
+            std::thread::sleep(Duration::from_millis(10));
+        }
         conn.reparent_window(child, container, 0, 0)?.check()?;
         conn.map_window(child)?.check()?;
         conn.map_window(container)?.check()?;
+        // Events so far come from the move into the container, not from the child's life.
+        let mut alive = true;
+        while let Some(ev) = conn.poll_for_event()? {
+            match ev {
+                Event::DestroyNotify(e) if e.window == child => alive = false,
+                Event::ReparentNotify(e) if e.window == child => alive = e.parent == container,
+                _ => {}
+            }
+        }
         Ok(Embedded {
             conn,
             active_atom: self.atoms[5],
@@ -249,7 +272,7 @@ impl Embedder {
             size: (1, 1),
             sent: None,
             latency: None,
-            alive: true,
+            alive,
             released: false,
         })
     }
