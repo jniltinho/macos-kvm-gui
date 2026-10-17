@@ -78,11 +78,7 @@ impl Modal {
     }
     pub fn settings(app: &App) -> Option<Self> {
         let v = app.current()?;
-        let mut s = Settings::new(
-            v,
-            app.backend.host_info(),
-            app.cache.reims_status.installed,
-        );
+        let mut s = Settings::new(v, app.backend.host_info(), app.cache.reims_status.installed);
         let i = &app.cache.install;
         s.disk = i.disk.clone().unwrap_or_else(|| "not created yet".into());
         s.media = i.recovery.clone();

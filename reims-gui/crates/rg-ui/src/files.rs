@@ -173,7 +173,11 @@ async fn portal(
     name: String,
 ) -> Result<Option<PathBuf>, String> {
     let id = parent
-        .and_then(|p| format!("x11:{p:x}").parse::<ashpd::WindowIdentifierType>().ok())
+        .and_then(|p| {
+            format!("x11:{p:x}")
+                .parse::<ashpd::WindowIdentifierType>()
+                .ok()
+        })
         .map(ashpd::WindowIdentifier::from);
     let folder = folder.is_dir().then_some(folder);
     let request = async {
@@ -321,7 +325,10 @@ impl App {
                     Some("Import"),
                     Some("Cancel"),
                     |ui| {
-                        note(ui, "A settings file (.json) adds the VM with its folder as it was. A full bundle (.tar) is unpacked into a new folder, with its disk, NVRAM, identity and install media.");
+                        note(
+                            ui,
+                            "A settings file (.json) adds the VM with its folder as it was. A full bundle (.tar) is unpacked into a new folder, with its disk, NVRAM, identity and install media.",
+                        );
                         ui.add_space(6.0);
                         if path_field(ui, "File", path, picker, "/path/to/vm.tar or vm.json") {
                             browse = Some(PickFor::ImportFile);
@@ -341,11 +348,15 @@ impl App {
                     let (p, dir) = (path.trim().to_owned(), folder.trim().to_owned());
                     let tar = is_tar(&p);
                     if p.is_empty() || !Path::new(&p).is_file() {
-                        o.modals
-                            .push(Modal::error("Import VM", "File: choose a .json or .tar file"));
+                        o.modals.push(Modal::error(
+                            "Import VM",
+                            "File: choose a .json or .tar file",
+                        ));
                     } else if tar && dir.is_empty() {
-                        o.modals
-                            .push(Modal::error("Import VM", "Folder: choose where to unpack it"));
+                        o.modals.push(Modal::error(
+                            "Import VM",
+                            "Folder: choose where to unpack it",
+                        ));
                     } else {
                         if tar {
                             o.modals.push(busy("Importing", &format!("{p} → {dir}")));
@@ -360,11 +371,7 @@ impl App {
                     o.close = f == Footer::Cancel;
                 }
             }
-            FileDialog::Export {
-                name,
-                full,
-                path,
-            } => {
+            FileDialog::Export { name, full, path } => {
                 let picker = &self.picker;
                 let title = format!("Export {name}");
                 let f = modal(
@@ -383,22 +390,36 @@ impl App {
                         );
                         ui.radio_value(full, false, "Settings only (.json)");
                         if *full != before {
-                            let (from, to) = if *full { (".json", ".tar") } else { (".tar", ".json") };
+                            let (from, to) = if *full {
+                                (".json", ".tar")
+                            } else {
+                                (".tar", ".json")
+                            };
                             if let Some(stem) = path.strip_suffix(from) {
                                 *path = format!("{stem}{to}");
                             }
                         }
-                        note(ui, if *full {
-                            "The full bundle has everything the VM needs to run on another host; it is about as big as the disk. OpenCore and OVMF are rebuilt by the app at start."
-                        } else {
-                            "The settings only: import them on another host to add the VM with the same hardware."
-                        });
+                        note(
+                            ui,
+                            if *full {
+                                "The full bundle has everything the VM needs to run on another host; it is about as big as the disk. OpenCore and OVMF are rebuilt by the app at start."
+                            } else {
+                                "The settings only: import them on another host to add the VM with the same hardware."
+                            },
+                        );
                         ui.add_space(6.0);
                         if path_field(ui, "Save to", path, picker, "") {
-                            browse = Some(if *full { PickFor::ExportFolder } else { PickFor::ExportFile });
+                            browse = Some(if *full {
+                                PickFor::ExportFolder
+                            } else {
+                                PickFor::ExportFile
+                            });
                         }
                         if Path::new(path.trim()).exists() {
-                            warning(ui, "This file exists: it is replaced once the new export is complete.");
+                            warning(
+                                ui,
+                                "This file exists: it is replaced once the new export is complete.",
+                            );
                         }
                         portal_note(ui);
                     },
@@ -406,12 +427,16 @@ impl App {
                 if f == Footer::Ok {
                     let p = path.trim().to_owned();
                     if p.is_empty() || p.ends_with('/') {
-                        o.modals.push(Modal::error("Export VM", "Save to: choose a file"));
+                        o.modals
+                            .push(Modal::error("Export VM", "Save to: choose a file"));
                     } else {
                         if *full {
                             o.modals.push(busy(&format!("Exporting {name}"), &p));
                         }
-                        o.actions.push(Action::Run(Task::Export { path: p, full: *full }));
+                        o.actions.push(Action::Run(Task::Export {
+                            path: p,
+                            full: *full,
+                        }));
                         o.close = true;
                     }
                 } else {
@@ -432,20 +457,29 @@ impl App {
                     Some("Move"),
                     Some("Cancel"),
                     |ui| {
-                        form_row(ui, LABEL_W, "Current folder", |ui| ui.label(current.as_str()));
+                        form_row(ui, LABEL_W, "Current folder", |ui| {
+                            ui.label(current.as_str())
+                        });
                         if path_field(ui, "New folder", folder, picker, "") {
                             browse = Some(PickFor::MoveFolder);
                         }
-                        note(ui, "The disk, firmware variables, boot files and install media move into the new folder (new or empty, on the same file system). If anything fails, everything is put back.");
+                        note(
+                            ui,
+                            "The disk, firmware variables, boot files and install media move into the new folder (new or empty, on the same file system). If anything fails, everything is put back.",
+                        );
                         portal_note(ui);
                     },
                 );
                 if f == Footer::Ok {
                     let dst = folder.trim().to_owned();
                     if dst.is_empty() {
-                        o.modals.push(Modal::error("Move VM", "New folder: choose a folder"));
+                        o.modals
+                            .push(Modal::error("Move VM", "New folder: choose a folder"));
                     } else if dst.trim_end_matches('/') == current.trim_end_matches('/') {
-                        o.modals.push(Modal::error("Move VM", "New folder: the VM is already there"));
+                        o.modals.push(Modal::error(
+                            "Move VM",
+                            "New folder: the VM is already there",
+                        ));
                     } else {
                         o.actions.push(Action::Run(Task::Move { folder: dst }));
                         o.close = true;
@@ -461,9 +495,17 @@ impl App {
                 }
                 let free = self.busy.is_none();
                 let mut delete = None;
-                let f = modal(ctx, id, "Offline installers", vec2(640.0, 0.0), None, Some("Close"), |ui| {
-                    installers_ui(ui, list, dir, free, &mut delete);
-                });
+                let f = modal(
+                    ctx,
+                    id,
+                    "Offline installers",
+                    vec2(640.0, 0.0),
+                    None,
+                    Some("Close"),
+                    |ui| {
+                        installers_ui(ui, list, dir, free, &mut delete);
+                    },
+                );
                 if let Some(i) = delete {
                     *stale = true;
                     o.modals.push(Modal::confirm(
@@ -480,20 +522,32 @@ impl App {
             FileDialog::Busy { title, detail } => {
                 let progress = self.progress.clone();
                 let f = modal(ctx, id, title, vec2(520.0, 0.0), None, Some("Hide"), |ui| {
-                    ui.add(egui::Label::new(RichText::new(detail.as_str()).monospace().size(11.5)).wrap());
+                    ui.add(
+                        egui::Label::new(RichText::new(detail.as_str()).monospace().size(11.5))
+                            .wrap(),
+                    );
                     ui.add_space(6.0);
                     let (stage, frac) = progress.unwrap_or_else(|| ("Starting…".into(), None));
                     ui.horizontal(|ui| {
                         ui.add(egui::Spinner::new().size(14.0));
                         ui.label(&stage);
                         if let Some(f) = frac {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(format!("{:.0}%", f * 100.0)).color(widgets::tokens(ui).text_muted));
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        RichText::new(format!("{:.0}%", f * 100.0))
+                                            .color(widgets::tokens(ui).text_muted),
+                                    );
+                                },
+                            );
                         }
                     });
                     widgets::progress_line(ui, egui::Id::new(id).with("bar"), frac.unwrap_or(0.0));
-                    caption(ui, "Hide keeps it running; the status bar shows its progress.");
+                    caption(
+                        ui,
+                        "Hide keeps it running; the status bar shows its progress.",
+                    );
                 });
                 // It closes on its own when the task ends (a result or an error dialog follows).
                 o.close = f == Footer::Cancel || (self.busy.is_none() && !cfg!(test));

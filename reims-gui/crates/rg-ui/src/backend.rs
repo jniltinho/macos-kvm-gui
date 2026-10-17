@@ -291,11 +291,13 @@ pub enum ScreenSource {
 
 /// The operations the GUI needs. Implementations must not block: anything slow is a [`Task`].
 ///
-/// Added for the Screen tab and the file dialogs (the real backend implements them at merge):
-/// [`Backend::set_x11_embed`], [`Backend::screen_source`] (both with defaults that keep the
-/// placeholder), the [`Task`]s `Import`, `Export`, `Move` and `RemoveInstaller`, and
-/// [`Installer::used_by`]. Settings › Storage "Remove…" reuses [`Task::RemoveMedia`].
+/// The Screen tab asks [`Backend::screen_source`]; the file dialogs run the [`Task`]s `Import`,
+/// `Export`, `Move` and `RemoveInstaller`; Settings › Storage "Remove…" runs
+/// [`Task::RemoveMedia`].
 pub trait Backend {
+    /// Called once the window exists: `ctx` wakes the UI when events arrive, `x11_embed` says
+    /// whether the app embeds QEMU's windows over X11 (design D3).
+    fn attach(&self, _ctx: &egui::Context, _x11_embed: bool) {}
     /// All VMs, in list order.
     fn vms(&self) -> Vec<VmEntry>;
     /// The VM selected at the last run.
@@ -336,10 +338,6 @@ pub trait Backend {
     /// Where the Screen tab is this frame (design D3). The UI embeds QEMU's window itself
     /// (`screen` module); this is informational.
     fn set_screen_area(&self, area: ScreenArea);
-    /// The app window is on X11 and embeds QEMU's windows: start VMs with
-    /// `x11_embed = true` (rg-ops `start_vm`). Called once, on the first frame that has the
-    /// window handle; never called on Wayland.
-    fn set_x11_embed(&self, _on: bool) {}
     /// Where the screen of the running VM `id` is shown; None when it is not running. Called
     /// every frame while the Screen tab shows a running VM: keep it cheap (cache the start
     /// result and the running detection).

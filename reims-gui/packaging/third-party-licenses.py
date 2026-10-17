@@ -26,6 +26,8 @@ while todo:
 
 crates = sorted((packages[i] for i in seen if packages[i]["source"]), key=lambda p: (p["name"], p["version"]))
 LICENSE_FILE = re.compile(r"^(licen[sc]e|copying|notice|unlicense|copyright)", re.I)
+# Crates whose package ships no license file: the text from their repository, in licenses/.
+KNOWN_TEXTS = {"include_dir": "include_dir-MIT.txt", "include_dir_macros": "include_dir-MIT.txt"}
 
 
 def license_files(pkg):
@@ -39,6 +41,8 @@ def license_files(pkg):
                       and (LICENSE_FILE.match(f) if sub == "" else f.endswith(".txt") if sub == "fonts" else True)]
     if pkg.get("license_file"):
         found.append(os.path.join(top, pkg["license_file"]))
+    if not found and pkg["name"] in KNOWN_TEXTS:
+        found.append(os.path.join(os.path.dirname(__file__), "licenses", KNOWN_TEXTS[pkg["name"]]))
     return sorted(set(found))
 
 

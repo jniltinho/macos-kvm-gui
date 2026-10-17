@@ -156,22 +156,20 @@ impl Embeds {
         for (id, s) in &mut self.slots {
             let here = w.current.is_some_and(|(c, _)| c == id);
             match &mut s.state {
-                State::Embedded { win, shown } => {
-                    match w.rect.filter(|_| here) {
-                        Some([x, y, wd, h]) => {
-                            let _ = win.set_rect(x, y, wd.max(1) as u32, h.max(1) as u32);
-                            if !*shown {
-                                *shown = win.show().is_ok();
-                            }
-                            if w.app_pressed {
-                                let _ = win.unfocus();
-                            }
-                            busy = true;
+                State::Embedded { win, shown } => match w.rect.filter(|_| here) {
+                    Some([x, y, wd, h]) => {
+                        let _ = win.set_rect(x, y, wd.max(1) as u32, h.max(1) as u32);
+                        if !*shown {
+                            *shown = win.show().is_ok();
                         }
-                        None if *shown => *shown = win.hide().is_err(),
-                        None => {}
+                        if w.app_pressed {
+                            let _ = win.unfocus();
+                        }
+                        busy = true;
                     }
-                }
+                    None if *shown => *shown = win.hide().is_err(),
+                    None => {}
+                },
                 State::Finding(_) => busy = true,
                 State::Standalone(_) => {}
             }

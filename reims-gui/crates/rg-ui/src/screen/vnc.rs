@@ -236,9 +236,7 @@ impl VncView {
             vec2(fb[0] as f32 * scale, fb[1] as f32 * scale),
         );
         let area = ui.interact(rect, id, Sense::click_and_drag());
-        area.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "VM screen")
-        });
+        area.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, "VM screen"));
         ui.painter().image(
             tex,
             image,

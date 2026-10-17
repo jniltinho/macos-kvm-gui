@@ -3,8 +3,8 @@
 //! the app has an X11 window to embed QEMU's into; otherwise winit's choice (native Wayland),
 //! and QEMU's windows stay standalone (SVGA VMs use the VNC screen).
 //!
-//! `run()` calls `native_options(x11_available())`; the app then tells the backend to start
-//! VMs for embedding (`Backend::set_x11_embed`) once it sees its X11 window handle.
+//! `run()` calls `native_options(x11)` with `x11 = x11_available()` and passes the same choice
+//! to `Backend::attach`, so VMs start for embedding exactly when the window is on X11.
 
 /// Whether an X server is reachable on `$DISPLAY`.
 pub fn x11_available() -> bool {

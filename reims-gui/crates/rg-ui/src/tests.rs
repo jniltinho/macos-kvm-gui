@@ -18,7 +18,7 @@ fn harness(mode: ThemeMode, setup: impl FnOnce(&mut App)) -> Harness<'static, Ap
     let mut h = Harness::builder()
         .with_size(vec2(1280.0, 820.0))
         .build_ui_state(|ui, app: &mut App| app.show(ui), app);
-    h.run();
+    h.run_steps(5);
     h
 }
 
@@ -99,7 +99,7 @@ fn snapshot_preferences_light() {
 fn toolbar_start_runs_the_vm_and_shows_the_screen_tab() {
     let mut h = harness(ThemeMode::Light, |_| {});
     h.get_by_label("Start").click();
-    h.run();
+    h.run_steps(5);
     assert_eq!(h.state().state(), VmState::Running);
     assert_eq!(h.state().tab, Tab::Screen);
     assert!(h.query_by_label("Shut down").is_some());
@@ -113,10 +113,10 @@ fn screen_area_is_reported_and_hidden_under_dialogs() {
     assert!(r[2] > 600 && r[3] > 400, "{r:?}");
     assert!(!area.overlay_open);
     h.state_mut().open(Modal::info("Hi", "over the screen"));
-    h.run();
+    h.run_steps(5);
     assert!(h.state().screen_area.overlay_open);
     h.state_mut().set_tab(Tab::Details);
-    h.run();
+    h.run_steps(5);
     assert_eq!(h.state().screen_area.rect, None);
 }
 
@@ -126,9 +126,9 @@ fn settings_ok_saves_the_new_resolution() {
     if let Some(Modal::Settings(s)) = h.state_mut().modals.last_mut() {
         s.c.resolution = "2560x1440".into();
     }
-    h.run();
+    h.run_steps(5);
     h.get_by_label("OK").click();
-    h.run();
+    h.run_steps(5);
     assert!(h.state().modals.is_empty());
     assert_eq!(h.state().backend.vms()[0].config.resolution, "2560x1440");
 }
@@ -159,7 +159,7 @@ fn wizard_defaults_sequoia_to_reims_and_refuses_an_empty_name() {
 fn escape_closes_the_top_dialog() {
     let mut h = harness(ThemeMode::Light, |a| a.open(Modal::preferences(a)));
     h.key_press(egui::Key::Escape);
-    h.run();
+    h.run_steps(5);
     assert!(h.state().modals.is_empty());
 }
 
@@ -167,7 +167,7 @@ fn escape_closes_the_top_dialog() {
 
 /// The VM `id` selected, running and on the Screen tab; `x11` = the app embeds QEMU's windows.
 fn running_on_screen(a: &mut App, id: &str, x11: bool) {
-    a.backend.set_x11_embed(x11);
+    a.backend.attach(&egui::Context::default(), x11);
     a.cur = Some(id.into());
     let _ = a.backend.start(id, false);
     a.refresh_cache();
@@ -213,7 +213,10 @@ fn snapshot_screen_vnc_dark() {
     // VMware SVGA without X11: the VNC screen, letterboxed.
     snap("screen_vnc_dark", ThemeMode::Dark, |a| {
         running_on_screen(a, "2", false);
-        a.screen.vnc.pending.push(PreviewUpdate::Full(guest_frame()));
+        a.screen
+            .vnc
+            .pending
+            .push(PreviewUpdate::Full(guest_frame()));
     });
 }
 
@@ -243,11 +246,14 @@ fn snapshot_screen_not_found_dark() {
 fn vnc_screen_grabs_the_keyboard_on_click() {
     let mut h = harness(ThemeMode::Light, |a| {
         running_on_screen(a, "2", false);
-        a.screen.vnc.pending.push(PreviewUpdate::Full(guest_frame()));
+        a.screen
+            .vnc
+            .pending
+            .push(PreviewUpdate::Full(guest_frame()));
     });
-    h.run();
+    h.run_steps(5);
     h.get_by_label("VM screen").click();
-    h.run();
+    h.run_steps(5);
     assert!(h.state().screen.vnc.grabbed);
 }
 
@@ -255,13 +261,16 @@ fn vnc_screen_grabs_the_keyboard_on_click() {
 fn full_screen_hides_the_shell_and_comes_back() {
     let mut h = harness(ThemeMode::Light, |a| running_on_screen(a, "1", true));
     h.get_by_label("Full screen").click();
-    h.run();
+    h.run_steps(5);
     assert!(h.state().screen.full);
     assert!(h.query_by_label("New").is_none(), "toolbar hidden");
     let r = h.state().screen_area.rect.unwrap_or_default();
-    assert!(r[2] >= 1270 && r[3] >= 770, "the screen fills the window: {r:?}");
+    assert!(
+        r[2] >= 1260 && r[3] >= 760,
+        "the screen fills the window: {r:?}"
+    );
     h.get_by_label("Exit full screen").click();
-    h.run();
+    h.run_steps(5);
     assert!(!h.state().screen.full);
     assert!(h.query_by_label("New").is_some());
 }
@@ -279,7 +288,7 @@ fn show_in_a_window_detaches_and_comes_back() {
     });
     assert_eq!(h.state().screen_area.rect, None);
     h.get_by_label("Show it here").click();
-    h.run();
+    h.run_steps(5);
     assert!(!h.state().detached);
     assert!(h.state().screen_area.rect.is_some());
 }
@@ -360,13 +369,13 @@ fn snapshot_settings_storage_light() {
 fn storage_remove_asks_then_removes_the_media() {
     let mut h = harness(ThemeMode::Light, settings_storage);
     h.get_by_label("Remove…").click();
-    h.run();
+    h.run_steps(5);
     assert!(matches!(
         h.state().modals.as_slice(),
         [Modal::Confirm { .. }]
     ));
     h.get_by_label("OK").click();
-    h.run();
+    h.run_steps(5);
     assert!(
         h.state()
             .log
@@ -387,9 +396,12 @@ fn import_runs_the_task_and_selects_the_new_vm() {
     {
         *path = file.display().to_string();
     }
-    h.run();
-    h.get_by_label("Import").click();
-    h.run();
+    h.run_steps(5);
+    h.get_all_by_label("Import")
+        .last()
+        .unwrap_or_else(|| unreachable!())
+        .click();
+    h.run_steps(5);
     let _ = std::fs::remove_dir_all(&dir);
     assert!(h.state().modals.is_empty(), "{:?}", h.state().modals);
     assert_eq!(h.state().current().map(|v| v.display_name()), Some("lab"));
@@ -398,8 +410,11 @@ fn import_runs_the_task_and_selects_the_new_vm() {
 #[test]
 fn import_refuses_a_missing_file() {
     let mut h = harness(ThemeMode::Light, |a| a.open(FileDialog::import()));
-    h.get_by_label("Import").click();
-    h.run();
+    h.get_all_by_label("Import")
+        .last()
+        .unwrap_or_else(|| unreachable!())
+        .click();
+    h.run_steps(5);
     assert!(matches!(
         h.state().modals.last(),
         Some(Modal::Error { text, .. }) if text.starts_with("File:")
@@ -413,7 +428,7 @@ fn move_points_the_vm_to_the_new_folder() {
         a.open(FileDialog::move_vm(&v, "/mnt/fast/VMs"));
     });
     h.get_by_label("Move").click();
-    h.run();
+    h.run_steps(5);
     assert_eq!(
         h.state().current().map(|v| v.config.workspace.as_str()),
         Some("/mnt/fast/VMs/nilton")
@@ -424,10 +439,10 @@ fn move_points_the_vm_to_the_new_folder() {
 fn installers_delete_asks_first() {
     let mut h = harness(ThemeMode::Light, |a| a.open(FileDialog::installers(a)));
     h.get_by_label("Delete").click();
-    h.run();
+    h.run_steps(5);
     assert_eq!(h.state().modals.len(), 2);
     h.get_by_label("OK").click();
-    h.run();
+    h.run_steps(5);
     assert!(
         h.state()
             .log

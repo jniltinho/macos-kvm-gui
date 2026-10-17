@@ -257,6 +257,9 @@ impl App {
                     match result {
                         Ok(msg) => {
                             self.append_log(format!("ok: {}", task.title()));
+                            if matches!(task, Task::Import { .. }) {
+                                self.cur = None; // the backend selected the imported VM
+                            }
                             let text = if msg.is_empty() {
                                 format!("{}: done", task.title())
                             } else {
@@ -371,7 +374,11 @@ impl App {
         let mut screen = None;
         let margin = if full { 0 } else { 4 };
         egui::CentralPanel::default()
-            .frame(Frame::NONE.fill(t.bg).inner_margin(Margin::symmetric(margin, 0)))
+            .frame(
+                Frame::NONE
+                    .fill(t.bg)
+                    .inner_margin(Margin::symmetric(margin, 0)),
+            )
             .show(ui, |ui| {
                 if full {
                     screen = Some(self.screen_tab(ui));
@@ -1241,7 +1248,7 @@ const SHUTDOWN_NOTE: &str = "The power button was sent to macOS. Many macOS vers
 
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
-        self.screen.attach(frame, self.backend.as_ref());
+        self.screen.attach(frame);
         self.show(ui);
     }
 }

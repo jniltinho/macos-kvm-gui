@@ -14,10 +14,12 @@ pub(crate) mod vnc;
 use egui::{Color32, Id, Order, Rect, Sense, Ui, vec2};
 
 use crate::app::App;
-use crate::backend::{Backend, ScreenArea, ScreenSource, VmEntry, VmId, VmState};
+use crate::backend::{ScreenArea, ScreenSource, VmEntry, VmId, VmState};
 use crate::icons;
 use crate::widgets::{self, bold};
-pub(crate) use embed::{Slot, State as EmbedState, Target, Why};
+#[cfg(test)]
+pub(crate) use embed::Slot;
+pub(crate) use embed::{State as EmbedState, Target, Why};
 
 /// The Screen tab's state, owned by the app.
 #[derive(Default)]
@@ -37,16 +39,12 @@ pub(crate) struct Screen {
 }
 
 impl Screen {
-    /// Reads the app's X11 window id once (eframe's frame); on X11 the backend starts VMs for
-    /// embedding.
-    pub fn attach(&mut self, frame: &eframe::Frame, backend: &dyn Backend) {
+    /// Reads the app's X11 window id once (eframe's frame); without one, nothing is embedded.
+    pub fn attach(&mut self, frame: &eframe::Frame) {
         if std::mem::replace(&mut self.attached, true) {
             return;
         }
         self.parent = backend_choice::x11_window(frame);
-        if self.parent.is_some() {
-            backend.set_x11_embed(true);
-        }
     }
 }
 
@@ -217,7 +215,11 @@ impl App {
     fn screen_waiting(&self, ui: &mut Ui, rect: Rect, text: &str) {
         ui.painter().rect_filled(rect, 0, Color32::BLACK);
         vnc::centered(ui, rect, |ui| {
-            ui.add(egui::Spinner::new().size(22.0).color(Color32::from_gray(200)));
+            ui.add(
+                egui::Spinner::new()
+                    .size(22.0)
+                    .color(Color32::from_gray(200)),
+            );
             ui.label(egui::RichText::new(text).color(Color32::from_gray(220)));
         });
     }
@@ -258,8 +260,7 @@ impl App {
     /// After the frame is drawn: where the tab is, whether something covers it, and the
     /// embedding and VNC connection that follow (design D3).
     pub(crate) fn sync_screen(&mut self, ctx: &egui::Context, screen: Option<Rect>) -> ScreenArea {
-        let overlay_open =
-            !self.modals.is_empty() || screen.is_some_and(|r| overlay_over(ctx, r));
+        let overlay_open = !self.modals.is_empty() || screen.is_some_and(|r| overlay_over(ctx, r));
         let ppp = ctx.pixels_per_point();
         let rect = screen.filter(|_| !self.detached).map(|r| {
             let (x, y, w, h) = rg_x11::to_physical(r.min.x, r.min.y, r.width(), r.height(), ppp);

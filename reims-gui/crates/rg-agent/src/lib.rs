@@ -73,38 +73,6 @@ pub trait RunningVm: Send {
     fn kill(&self) -> Result<()>;
 }
 
-/// [`Ops`] before rg-ops is wired: every operation fails with a clear message.
-pub struct Unwired;
-
-fn unwired<T>() -> Result<T> {
-    anyhow::bail!("this build has no VM operations wired in (rg-ops)")
-}
-
-impl Ops for Unwired {
-    fn prepare_workspace(&self, _: &Config) -> Result<()> {
-        unwired()
-    }
-
-    fn download_media(
-        &self,
-        _: &Config,
-        _: &str,
-        _: &AtomicBool,
-        _: &mut dyn FnMut(rg_macos::Progress),
-        _: &mut dyn FnMut(&str),
-    ) -> Result<()> {
-        unwired()
-    }
-
-    fn start_vm(
-        &self,
-        _: Config,
-        _: Box<dyn Fn(VmEvent) + Send + Sync>,
-    ) -> Result<Box<dyn RunningVm>> {
-        unwired()
-    }
-}
-
 impl Ctx {
     /// The user's config folder and `ops`.
     pub fn user(version: impl Into<String>, ops: Arc<dyn Ops>) -> Result<Self> {
@@ -136,7 +104,10 @@ impl Ctx {
     }
 
     fn reims(&self) -> Result<rg_reims::Reims> {
-        Ok(rg_reims::Reims::new(self.workspace_root()?.join(".reims")))
+        Ok(rg_reims::Reims::for_app(
+            self.workspace_root()?.join(".reims"),
+            Some(&self.app),
+        ))
     }
 
     /// The host with the Reims QEMU lookup and settings.yaml's kexts wired in.

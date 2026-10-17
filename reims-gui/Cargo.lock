@@ -3584,7 +3584,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "rg-agent",
+ "rg-core",
+ "rg-macos",
+ "rg-ops",
+ "rg-qemu",
  "rg-ui",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -3738,17 +3744,26 @@ dependencies = [
 name = "rg-ui"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ashpd",
  "eframe",
  "egui",
  "egui_extras",
  "egui_kittest",
+ "parking_lot",
  "raw-window-handle",
+ "rg-assets",
  "rg-core",
+ "rg-host",
+ "rg-macos",
+ "rg-ops",
  "rg-qemu",
+ "rg-reims",
  "rg-x11",
+ "tempfile",
  "tokio",
  "winit",
+ "x11rb",
 ]
 
 [[package]]

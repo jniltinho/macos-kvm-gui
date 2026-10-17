@@ -5,6 +5,7 @@
 
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
+use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use rg_x11::{Embedder, WindowKind, probe};
@@ -23,8 +24,29 @@ impl Drop for Kill {
     }
 }
 
-/// Starts Xvfb on a free display; returns it and ":N".
-fn xvfb() -> (Kill, String) {
+/// One X test at a time: parallel Xvfb starts on a slow runner drop the first connections.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+/// A running Xvfb; the test lock is released after the server is killed.
+struct Xvfb {
+    _server: Kill,
+    _serial: MutexGuard<'static, ()>,
+}
+
+/// Connects, retrying while the server finishes starting (up to 5 s).
+fn connect(display: &str) -> (RustConnection, usize) {
+    for _ in 0..50 {
+        if let Ok(c) = x11rb::connect(Some(display)) {
+            return c;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    x11rb::connect(Some(display)).expect("X server")
+}
+
+/// Starts Xvfb on a free display and waits until it accepts connections; returns it and ":N".
+fn xvfb() -> (Xvfb, String) {
+    let serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
     let mut c = Command::new("Xvfb")
         .args([
             "-displayfd",
@@ -43,12 +65,20 @@ fn xvfb() -> (Kill, String) {
     BufReader::new(c.stdout.take().unwrap())
         .read_line(&mut line)
         .unwrap();
-    (Kill(c), format!(":{}", line.trim()))
+    let display = format!(":{}", line.trim());
+    drop(connect(&display));
+    (
+        Xvfb {
+            _server: Kill(c),
+            _serial: serial,
+        },
+        display,
+    )
 }
 
 /// The app's top-level window.
 fn app_window(display: &str) -> (RustConnection, u32) {
-    let (conn, screen) = x11rb::connect(Some(display)).unwrap();
+    let (conn, screen) = connect(display);
     let root = conn.setup().roots[screen].root;
     let w = conn.generate_id().unwrap();
     conn.create_window(

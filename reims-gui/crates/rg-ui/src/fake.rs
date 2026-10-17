@@ -20,7 +20,7 @@ pub struct FakeBackend {
     /// The Screen area the UI reported last (tests read it).
     pub screen: Cell<ScreenArea>,
     preview_sent: Cell<bool>,
-    /// What [`Backend::set_x11_embed`] was told.
+    /// The `x11_embed` that [`Backend::attach`] was given.
     pub x11: Cell<bool>,
     /// QEMU's pid in [`ScreenSource::Window`]; 0 = a made-up one per VM.
     pub screen_pid: Cell<u32>,
@@ -323,7 +323,12 @@ impl Backend for FakeBackend {
                 }
             }
             Task::Move { folder } => {
-                if let Some(v) = self.vms.borrow_mut().iter_mut().find(|v| Some(v.id.as_str()) == id) {
+                if let Some(v) = self
+                    .vms
+                    .borrow_mut()
+                    .iter_mut()
+                    .find(|v| Some(v.id.as_str()) == id)
+                {
                     v.config.workspace = folder.clone();
                 }
                 self.push(Event::VmsChanged);
@@ -365,8 +370,8 @@ impl Backend for FakeBackend {
     fn set_screen_area(&self, area: ScreenArea) {
         self.screen.set(area);
     }
-    fn set_x11_embed(&self, on: bool) {
-        self.x11.set(on);
+    fn attach(&self, _ctx: &egui::Context, x11_embed: bool) {
+        self.x11.set(x11_embed);
     }
     fn screen_source(&self, id: &str) -> Option<ScreenSource> {
         let vms = self.vms.borrow();
@@ -377,11 +382,13 @@ impl Backend for FakeBackend {
             0 => 4000 + id.parse::<u32>().unwrap_or(0),
             p => p,
         };
-        Some(match (v.config.reims(), v.config.in_app(), self.x11.get()) {
-            (_, false, _) | (true, _, false) => ScreenSource::Standalone,
-            (reims, true, true) => ScreenSource::Window { pid, reims },
-            (false, true, false) => ScreenSource::Vnc("/nonexistent/vnc.sock".into()),
-        })
+        Some(
+            match (v.config.reims(), v.config.in_app(), self.x11.get()) {
+                (_, false, _) | (true, _, false) => ScreenSource::Standalone,
+                (reims, true, true) => ScreenSource::Window { pid, reims },
+                (false, true, false) => ScreenSource::Vnc("/nonexistent/vnc.sock".into()),
+            },
+        )
     }
 
     fn workspace_root(&self) -> String {
