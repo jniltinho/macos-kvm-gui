@@ -72,7 +72,15 @@ pub(crate) struct Want<'a> {
     pub app_pressed: bool,
 }
 
+/// `RG_DEBUG=1` traces the embedding on stderr.
+fn debug(msg: impl FnOnce() -> String) {
+    if std::env::var_os("RG_DEBUG").is_some() {
+        eprintln!("[embed] {}", msg());
+    }
+}
+
 fn find(ctx: &egui::Context, parent: u32, t: Target) -> State {
+    debug(|| format!("find {t:?} in parent {parent:#x}"));
     let (tx, rx) = channel();
     let ctx = ctx.clone();
     let spawned = std::thread::Builder::new()
@@ -81,6 +89,7 @@ fn find(ctx: &egui::Context, parent: u32, t: Target) -> State {
             let r = Embedder::new(None, parent)
                 .and_then(|e| e.find_window(t.pid, t.kind(), FIND_TIMEOUT))
                 .map_err(|e| e.to_string());
+            debug(|| format!("find {t:?} -> {r:?}"));
             let _ = tx.send(r); // the slot may be gone already
             ctx.request_repaint();
         });
@@ -91,12 +100,16 @@ fn find(ctx: &egui::Context, parent: u32, t: Target) -> State {
 }
 
 fn embed(parent: u32, win: u32) -> State {
+    debug(|| format!("embed {win:#x} into {parent:#x}"));
     match Embedder::new(None, parent).and_then(|e| e.embed(win)) {
         Ok(win) => State::Embedded {
             win: Box::new(win),
             shown: true,
         },
-        Err(e) => State::Standalone(Why::Failed(e.to_string())),
+        Err(e) => {
+            debug(|| format!("embed failed: {e}"));
+            State::Standalone(Why::Failed(e.to_string()))
+        }
     }
 }
 
@@ -118,6 +131,7 @@ impl Embeds {
             if let State::Embedded { win, .. } = &mut s.state {
                 let _ = win.pump(); // a broken connection shows as !is_alive
                 if !win.is_alive() {
+                    debug(|| "embedded window died: Closed".into());
                     s.state = State::Standalone(Why::Closed);
                 }
             }
@@ -128,6 +142,7 @@ impl Embeds {
                 state: find(w.ctx, w.parent, target),
             });
             if slot.target != target {
+                debug(|| format!("target changed {:?} -> {target:?}", slot.target));
                 // Restarted: a new QEMU, a new window (the old slot releases on drop).
                 *slot = Slot {
                     target,
@@ -137,7 +152,10 @@ impl Embeds {
             match &mut slot.state {
                 State::Finding(rx) => match rx.try_recv() {
                     Ok(Ok(win)) => slot.state = embed(w.parent, win),
-                    Ok(Err(e)) => slot.state = State::Standalone(Why::Failed(e)),
+                    Ok(Err(e)) => {
+                        debug(|| format!("find failed: {e}"));
+                        slot.state = State::Standalone(Why::Failed(e))
+                    }
                     Err(TryRecvError::Empty) => {}
                     Err(TryRecvError::Disconnected) => {
                         slot.state = State::Standalone(Why::Failed("the search stopped".into()))

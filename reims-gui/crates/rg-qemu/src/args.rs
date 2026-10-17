@@ -193,8 +193,13 @@ pub fn build_args(c: &Config, env: &ArgsEnv) -> Vec<String> {
     args.extend(more_nics);
     if env.sdl_window && !c.reims() {
         // QEMU's own SDL window, for the app to embed (native scancodes); VNC still serves the
-        // Preview and screen capture.
+        // Preview and screen capture. Without -serial/-parallel none, SDL adds text consoles
+        // for them, and "parallel0 console" stays painted over the guest's first frames.
         args.extend([
+            "-serial".into(),
+            "none".into(),
+            "-parallel".into(),
+            "none".into(),
             "-display".into(),
             "sdl".into(),
             "-vnc".into(),
@@ -452,6 +457,8 @@ mod tests {
         e.sdl_window = true;
         let args = build_args(&Config::defaults(), &e);
         assert_eq!(arg_after(&args, "-display", ""), "sdl");
+        assert_eq!(arg_after(&args, "-serial", ""), "none");
+        assert_eq!(arg_after(&args, "-parallel", ""), "none");
         assert!(arg_after(&args, "-vnc", "unix:").ends_with("vnc.sock,lock-key-sync=off"));
         let mut c = Config::defaults();
         c.graphics = rg_core::config::GRAPHICS_REIMS.into();

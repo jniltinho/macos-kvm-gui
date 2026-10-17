@@ -10,9 +10,9 @@ Each line: **Go feature** — Rust counterpart — how it is verified (a test na
 - `[x]`: the Rust code exists (read in the crates) and the named test or manual check covers it.
 - `[ ]`: missing or pending; the line says what is left.
 
-Status as of branch `feat/reims-gui-rust` at commit `7f1f014`. The Screen tab embedding and the
-Import, Export, Move, Offline installers and Remove media dialogs are being finished in `rg-ui`
-now and are listed as pending.
+Status as of branch `feat/reims-gui-rust` after commit `8b9a6b9` (Screen embedding, VNC screen,
+file dialogs) and the Go-parity follow-up (close guard, disk size, offline install box, root-patch
+confirmations). What remains is the live and release-gate checks (tasks 5.2, 5.2b).
 
 ## 1. Command line (`cmd/` → `rg_agent::cli`)
 
@@ -94,24 +94,24 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 - [x] Preferences: Workspace, Theme, settings.yaml (Open, Reset to default with confirmation) — `dialogs::Prefs`, `RealBackend::{set_workspace_root, set_theme, open_settings_file, reset_settings}` — `snapshot_preferences_light`, `preferences_live_in_the_database_and_settings_yaml`
 - [x] VMs started elsewhere (CLI, MCP, the Go app) shown as running — `real::scan_loop`, `rg_qemu::running::find_running` — `running_detection`; manual: start a VM with `macos-kvm-gui vm start`, the list shows it running
 - [x] VM stop with a message opens a dialog (`VM: Stopped`) — `App::poll` (`Event::State`) — `tasks_and_starts_report_through_events`
-- [ ] Closing the window while a VM runs asks to shut it down first (Go: "Shut down the VM before closing the app") — missing: the window closes and QEMU, started with `--pdeathsig`, goes with it
+- [x] Closing the window while a VM runs asks to shut it down first (Go: "Shut down the VM before closing the app") — `App::refuse_close` cancels the close (`ViewportCommand::CancelClose`) while any VM this app started runs — `closing_is_refused_while_a_vm_runs`; manual: close the window with a VM running
 - [ ] Go blocks switching to another VM while the current one runs or a task is busy — `reims-gui` allows it on purpose (several VMs); manual: confirm switching while one VM runs keeps its state and log
 
 ### Menus
 
 - [x] File › Preferences… — `Action::Preferences` — `snapshot_preferences_light`
-- [ ] File › Offline installers… — `Action::OfflineInstallers` shows "Not available in this build yet": pending dialog (list, delete with confirmation) on `rg_macos::cached_installers` / `remove_installer`
-- [ ] File › Import VM… — `Action::Import` pending (file chooser, `.json` or `.tar` with folder and progress)
-- [ ] File › Export VM… — `Action::Export` pending (settings JSON or full bundle with progress, replace confirmation)
+- [x] File › Offline installers… (list, delete with confirmation) — `FileDialog::installers`, `Task::RemoveInstaller` — `snapshot_installers_light`, `snapshot_installers_dark`, `installers_delete_asks_first`
+- [x] File › Import VM… (portal file chooser or typed path, `.json` or `.tar` with folder and progress) — `FileDialog::import`, `Task::Import` — `snapshot_import_light`, `import_refuses_a_missing_file`, `import_runs_the_task_and_selects_the_new_vm`
+- [x] File › Export VM… (settings JSON or full bundle with progress) — `FileDialog::export`, `Task::Export` — `snapshot_export_dark`, `snapshot_export_progress_light`
 - [x] Machine › New… — `Action::New` — `snapshot_wizard_light`
 - [x] Machine › Settings… — `Action::Settings` — `snapshot_settings_display_light`
-- [ ] Machine › Move… — `Action::Move` pending (folder dialog on `rg_ops::Ops::move_vm`)
+- [x] Machine › Move… — `FileDialog::move_vm`, `Task::Move` on `rg_ops::Ops::move_vm` — `snapshot_move_light`, `move_points_the_vm_to_the_new_folder`
 - [x] Machine › Remove… (with "also delete files" and its confirmation) — `Modal::Remove`, `RealBackend::remove_vm` — `creates_lists_saves_and_removes_vms`
 - [x] Machine › Start — `Action::Start { verbose: false }` — `toolbar_start_runs_the_vm_and_shows_the_screen_tab`
 - [x] Machine › Start with verbose boot (debug) — `Action::Start { verbose: true }` — `install_verbose_gpu_matches_go` (boot-args); manual: the menu item boots with the log on screen
 - [x] Machine › Shut down (ACPI power button, Sleep explanation) — `Action::Shutdown`, `SHUTDOWN_NOTE` — manual: the note appears and the VM gets the power button
 - [x] Machine › Force stop (confirmation) — `Modal::confirm_force_stop`, `Action::ForceStopNow` — `escape_closes_the_top_dialog`; manual: confirm, QEMU exits
-- [ ] Machine › Show in a window / Full screen — `Action::Window`/`FullScreen` only set a flag (Full screen makes the whole app full screen): pending, the embedder must move QEMU's window out and back
+- [x] Machine › Show in a window / Full screen — the embedded window is released to the desktop (VNC: own viewport) and comes back; Full screen slides the shell away — `show_in_a_window_detaches_and_comes_back`, `full_screen_hides_the_shell_and_comes_back`; live: task 5.2
 - [x] Help › Online Documentation, Web Site, Bug Tracker — `Action::Url` — manual: each opens the browser
 - [x] Help › About (version, boot files) — `Action::About`, `RealBackend::about` — manual: shows the version and `asset_versions`
 
@@ -125,34 +125,34 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 
 - [x] Details: General, System, Display, Storage, Audio, Network, USB, GPU sections — `tabs::details` — `snapshot_main_light`
 - [x] Details: Preview over the VNC socket — `RealBackend::preview`, `rg_qemu::vnc` — `preview_rects_are_cut_from_the_frame`, `capture_waits_for_pixels_then_quiet`
-- [ ] Screen: Reims vGPU window embedded by X11 reparenting (design D3) — `rg_x11::Embedder` exists (`sdl3_reims_window`, `release_puts_child_back_on_root`) but `rg-ui` does not use it yet (`tabs::screen` draws a placeholder): pending
-- [ ] Screen: VMware SVGA QEMU window embedded (`-display sdl`, `SDL_VIDEO_DRIVER=x11`) — args and environment done (`sdl_window_keeps_vnc_for_svga_only`, `display_embeds_sdl_for_svga_and_reims_window_over_x11`); embedding in the tab pending. Note: `rg_x11::WindowKind::QemuGtk` matches titles starting with `QEMU`, which also fits QEMU's SDL window; the name should follow
-- [ ] Screen: X11/XWayland backend choice at startup — `run.rs` only checks `$DISPLAY` (marked `ponytail:`); pending `rg_x11::probe` and winit `with_x11()`
-- [ ] Screen: VNC texture fallback without X11, with keyboard and pointer (Go `screen.go`) — `rg_qemu::vnc::Vnc` and `keys::key_for` exist; the tab does not draw or send input yet: pending
-- [x] Screen: overlay rule (rectangle reported, hidden under dialogs and menus) — `ScreenArea`, `Backend::set_screen_area` — `screen_area_is_reported_and_hidden_under_dialogs` (the embedder acting on it is pending)
+- [x] Screen: Reims vGPU window embedded by X11 reparenting (design D3) — `rg_ui::screen` (`embed.rs`) on `rg_x11::Embedder`, found by pid off the UI thread — `sdl3_reims_window`, `release_puts_child_back_on_root`, `snapshot_screen_embedding_light`, `snapshot_screen_not_found_dark`, test target `xvfb_embed` (a real SDL window inside the real eframe window); live: task 5.2
+- [x] Screen: VMware SVGA on the in-app VNC screen (as the Go app) — `ScreenSource::Vnc` — `display_embeds_only_the_reims_window_over_x11`; SDL window embedding deferred: QEMU's SDL display withdraws its window when it has no text consoles and paints "parallel0 console" over the guest when it has them (measured live on this host, 2026-10-16)
+- [x] Screen: X11/XWayland backend choice at startup — `screen::backend_choice::{x11_available, native_options}` used by `run.rs` — `no_x_server`; live on GNOME Wayland: task 5.2b
+- [x] Screen: VNC texture fallback without X11, with keyboard and pointer (Go `screen.go`) — `screen/vnc.rs` (dirty rects, letterbox, Ctrl+Alt grab, absolute pointer) — `snapshot_screen_vnc_dark`, `vnc_screen_grabs_the_keyboard_on_click`, `ctrl_alt_releases_every_key`, `keys_map_by_position`
+- [x] Screen: overlay rule (rectangle reported, hidden under dialogs and menus) — `ScreenArea`, `Backend::set_screen_area` — `screen_area_is_reported_and_hidden_under_dialogs` (the embedder hides QEMU's window under them: `screen::embed`)
 - [x] Install: 5-step stepper (VM folder, recovery, disk, install, clean up) with progress — `tabs::install`, `Task::{PrepareFolder, DownloadRecovery, CreateDisk, RemoveMedia}` — `snapshot_install_light`, `tasks_and_starts_report_through_events`
-- [ ] Install: disk size field (Go: editable, default 80) — Rust always creates 80 GB; and "Disk created with a warning" is logged instead of a dialog
+- [x] Install: disk size field (Go: editable, default 80, at least 40) and the "Disk created with a warning" dialog — `tabs::disk_task`, `Event::Notice` from `Task::{CreateDisk, CreateVmFiles}` — `disk_size_must_be_a_whole_number`; the 40 GB minimum is `rg_core::Workspace::create_disk`'s
 - [x] Install: Download full installer / Delete installer (confirmation) — `Task::{DownloadInstaller, DeleteInstaller}` — `snapshot_install_light`
-- [ ] Install: "Install from the full installer" box (Unattended check, command, Copy, Type it in the VM) — missing in the tab; the backend has `rg_ops::Ops::install_offline` and the start logs `installer_command`
-- [ ] Install: Remove install media confirmation then "N GB freed" dialog — the confirmation exists; the freed size goes to a toast; the Storage page "Remove…" button is pending (listed with the dialogs being finished)
+- [x] Install: "Install from the full installer" box (Unattended check, command, Copy, Type it in the VM, then the Screen tab), shown while a VM started here has the OFFLINE disc — `Backend::installer_command`, `Task::InstallOffline` on `rg_ops::Ops::install_offline` — `offline_install_box_types_the_line_and_shows_the_screen`, `offline_install_box_is_hidden_without_the_disc`; live: an offline install on the test machine
+- [x] Install: Remove install media confirmation then "N GB freed" dialog; Settings › Storage "Remove…" — `Task::RemoveMedia` result as a dialog — `removing_install_media_says_how_much_was_freed`, `storage_remove_asks_then_removes_the_media`
 - [x] Install: Start the VM / Start with verbose boot — `tabs::install` — `snapshot_install_light`
 - [x] Host: checks with Check again and Set up host — `tabs::host`, `Task::SetupHost` — `snapshot_host_light`, `snapshot_host_dark`, `host_facts_load_in_the_background`
 - [x] Host: Reims vGPU section (status, Install Reims vGPU, Build from source in Docker with confirmation) — `tabs::host`, `Task::{InstallReims, BuildReims}` — `snapshot_host_light`
 - [x] GPU: adapters with eligibility and reason, Reserve for VFIO (confirmation), Release reservation — `tabs::gpu`, `Task::{ReserveGpu, ReleaseGpu}` — `snapshot_gpu_light`
-- [ ] GPU: Root-patch mode switch — the checkbox saves the setting, but Go's two confirmations are missing (turn on: SIP 0x803 and kexts, download OCLP's kexts now; turn off: "did you revert the root patch in OCLP?"). The kexts are downloaded at the next start (`rg_ops::Ops::start_vm` step 2)
+- [x] GPU: Root-patch mode switch with Go's two confirmations (turn on: SIP 0x803 and kexts, OCLP's kexts downloaded now; turn off: "did you revert the root patch in OCLP?"); saved only once confirmed — `Task::RootPatch` — `root_patch_mode_changes_only_once_confirmed`
 - [x] Log: the task and QEMU output — `tabs::log_tab` — `tasks_and_starts_report_through_events`
 
 ### Dialogs
 
 - [x] Settings › General (name, OS, folder) — `dialogs::Settings::general` — `snapshot_settings_display_light`
-- [ ] Settings › General › Move… button — pending with the Move dialog
+- [x] Settings › General › Move… button (closes Settings, opens Move, as Go) — `Settings::general`, `Action::Move` — `settings_move_opens_the_move_dialog`
 - [x] Settings › System (RAM, CPUs, threads, Recommended for this host) — `Settings::system` — `cores_must_be_a_power_of_two`, manual: QA.md
 - [x] Settings › Display (Shown, Graphics controller, Reims resolution, wide-resolution warning, METAL_ERROR_MODE commands with Copy) — `Settings::display`, `reims_box` — `snapshot_settings_display_light`, `snapshot_settings_display_dark`, `settings_ok_saves_the_new_resolution`
 - [x] Settings › Storage, Audio, USB (read-only facts) — `Settings::ui` — manual: QA.md
 - [x] Settings › Network (Adapter 1–4, NAT/bridged, bridge, model, MAC with regenerate, driver warnings) — `Settings::network`, `nic_form` — `nic_driver_matrix`, `validate_nics_refuses_bad_adapters`
 - [x] New VM wizard (identity, hardware, network, disk; Reims by default for Sequoia/Tahoe when installed) — `dialogs::Wizard`, `Task::CreateVmFiles` — `snapshot_wizard_light`, `snapshot_wizard_dark`, `wizard_defaults_sequoia_to_reims_and_refuses_an_empty_name`
 - [x] Confirmations and error dialogs; Esc and Enter — `Modal::{Confirm, Error, Info}` — `escape_closes_the_top_dialog`
-- [ ] Import, Export (with progress), Move, Offline installers dialogs — pending (see Menus)
+- [x] Import, Export (with progress), Move, Offline installers dialogs — see Menus
 
 ## 4. Core behavior (`internal/core` → crates)
 
@@ -216,7 +216,7 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 
 - [x] OCLP 2.5.1 kexts with pinned SHA-256, config on/off/clear, marker cleared after 60 s — `rg_assets::{download_root_patch_kexts, clear_root_patch_marker}` — `root_patch_kexts_download_and_transitions`, `root_patch_config_on_off_and_clear`, `root_patch_on_matches_go`, `root_patch_clear_matches_go`, `unpack_refuses_escapes_and_size_mismatches`
 - [x] Refused without cached kexts — `prepare_boot` — `root_patch_without_cached_kexts_is_refused`
-- [ ] GUI confirmations — see GPU tab above
+- [x] GUI confirmations — see GPU tab above
 
 ### Extra kexts (settings.yaml)
 
@@ -261,7 +261,7 @@ Visual checks: `crates/rg-ui/QA.md`; snapshots in `crates/rg-ui/tests/snapshots/
 Unchecked until run and recorded here (date, result). Host: this X11 KDE machine, the Nilton VM.
 
 - [ ] **Reims embedded.** Select the Nilton VM on Reims vGPU, Start. Expect: no separate "Reims vGPU" window on the desktop; the Screen tab shows macOS; `xwininfo -root -tree | grep -i "reims vgpu"` lists the window as a child of the app's window.
-- [ ] **SVGA embedded.** Set the Nilton VM to VMware SVGA, Display: In the app, Start. Expect: QEMU's window inside the Screen tab; the Preview in Details still updates (VNC socket).
+- [ ] **SVGA in-app screen.** Set the Nilton VM to VMware SVGA, Display: In the app, Start. Expect: the VNC screen inside the Screen tab, typing works; the Preview in Details updates.
 - [ ] **Overlay.** With the VM running and the Screen tab shown, open File (menu), Machine › Settings… is disabled, open Help › About, and a combo popup in Preferences. Expect: the guest disappears while each is open and comes back when closed; clicks on the dialog never reach macOS (watch the pointer in the guest).
 - [ ] **Mode change.** In macOS, System Settings › Displays, pick another resolution (Reims: also change it in Settings › Display after a stop). Expect: the guest stays the size of the tab, no window outside the app.
 - [ ] **Resize.** Resize the app window and toggle the Log tab and back. Expect: the guest follows the tab; switching tab hides it.

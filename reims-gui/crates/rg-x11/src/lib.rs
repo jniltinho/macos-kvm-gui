@@ -70,6 +70,9 @@ pub struct Embedder {
     atoms: [u32; 4],
 }
 
+/// How long `find_window` waits for a mapped `QemuSdl` window before taking an unmapped one.
+const UNMAPPED_GRACE: Duration = Duration::from_secs(2);
+
 impl Embedder {
     /// Connects to `display` (`None` = `$DISPLAY`) and checks that `parent` exists.
     pub fn new(display: Option<&str>, parent: u32) -> Result<Self> {
@@ -96,10 +99,15 @@ impl Embedder {
 
     /// Polls (every 50 ms, blocking the caller) for a mapped window with `_NET_WM_PID == pid`
     /// whose title matches `kind`. Searches the whole tree, so window-manager frames are fine.
+    /// QEMU's SDL display keeps its window unmapped when it has no text consoles (the app runs
+    /// it with `-serial none -parallel none`), so after a short grace an unmapped `QemuSdl`
+    /// window is taken too: embedding maps it.
     pub fn find_window(&self, pid: u32, kind: WindowKind, timeout: Duration) -> Result<u32> {
-        let deadline = Instant::now() + timeout;
+        let start = Instant::now();
+        let deadline = start + timeout;
         loop {
-            if let Some(w) = self.scan(self.root, pid, kind)? {
+            let unmapped_ok = kind == WindowKind::QemuSdl && start.elapsed() >= UNMAPPED_GRACE;
+            if let Some(w) = self.scan(self.root, pid, kind, unmapped_ok)? {
                 return Ok(w);
             }
             if Instant::now() >= deadline {
@@ -109,23 +117,29 @@ impl Embedder {
         }
     }
 
-    fn scan(&self, w: Window, pid: u32, kind: WindowKind) -> Result<Option<Window>> {
+    fn scan(
+        &self,
+        w: Window,
+        pid: u32,
+        kind: WindowKind,
+        unmapped_ok: bool,
+    ) -> Result<Option<Window>> {
         // Windows may vanish between QueryTree and the next request: treat errors as "not it".
         let Ok(tree) = self.conn.query_tree(w)?.reply() else {
             return Ok(None);
         };
         for &c in &tree.children {
-            if self.is_target(c, pid, kind)? {
+            if self.is_target(c, pid, kind, unmapped_ok)? {
                 return Ok(Some(c));
             }
-            if let Some(found) = self.scan(c, pid, kind)? {
+            if let Some(found) = self.scan(c, pid, kind, unmapped_ok)? {
                 return Ok(Some(found));
             }
         }
         Ok(None)
     }
 
-    fn is_target(&self, w: Window, pid: u32, kind: WindowKind) -> Result<bool> {
+    fn is_target(&self, w: Window, pid: u32, kind: WindowKind, unmapped_ok: bool) -> Result<bool> {
         let Ok(p) = self
             .conn
             .get_property(false, w, self.atoms[0], AtomEnum::CARDINAL, 0, 1)?
@@ -139,7 +153,9 @@ impl Embedder {
         let Ok(attrs) = self.conn.get_window_attributes(w)?.reply() else {
             return Ok(false);
         };
-        Ok(attrs.map_state == MapState::VIEWABLE && kind.matches(&self.title(w)?))
+        let shown = attrs.map_state == MapState::VIEWABLE
+            || (unmapped_ok && attrs.map_state == MapState::UNMAPPED);
+        Ok(shown && kind.matches(&self.title(w)?))
     }
 
     fn title(&self, w: Window) -> Result<String> {
@@ -192,8 +208,8 @@ impl Embedder {
         // fullscreen/maximized state it set, so a later release does not bring it back.
         conn.unmap_window(child)?;
         conn.delete_property(child, self.atoms[3])?;
-        conn.reparent_window(child, container, 0, 0)?;
-        conn.map_window(child)?;
+        conn.reparent_window(child, container, 0, 0)?.check()?;
+        conn.map_window(child)?.check()?;
         conn.map_window(container)?.check()?;
         Ok(Embedded {
             conn,
@@ -350,6 +366,12 @@ impl Embedded {
     fn do_release(&mut self) -> Result<()> {
         if std::mem::replace(&mut self.released, true) {
             return Ok(());
+        }
+        if std::env::var_os("RG_DEBUG").is_some() {
+            eprintln!(
+                "[rg-x11] release child {:#x} (alive {})",
+                self.child, self.alive
+            );
         }
         self.pump()?;
         if self.alive {

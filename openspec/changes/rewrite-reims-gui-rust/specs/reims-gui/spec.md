@@ -70,11 +70,11 @@ For a Reims vGPU VM started by the app, the guest display SHALL appear inside th
 - **THEN** the app runs on Wayland, the Reims window opens on its own with SDL's native backend and the Screen tab says so
 
 ### Requirement: Screen for VMware SVGA
-VMs on VMware SVGA SHALL show their screen in the Screen tab: with X11, QEMU's own SDL window embedded like Reims (native scancodes for any layout); without X11, QEMU's VNC socket drawn by the app. The VNC socket SHALL always exist for the Preview and MCP.
+VMs on VMware SVGA SHALL show their screen in the Screen tab through QEMU's VNC socket drawn by the app, with keyboard, pointer, full screen and detach; the same socket SHALL serve the Preview and MCP.
 
 #### Scenario: SVGA VM
-- **WHEN** a VMware SVGA VM starts with display in the app on an X11 or XWayland session
-- **THEN** the Screen tab shows QEMU's window, and an ABNT2 key, keypad Enter and keypad Divide reach macOS as their own keys
+- **WHEN** a VMware SVGA VM starts with display in the app
+- **THEN** the Screen tab shows it over VNC and keys typed there reach macOS
 
 ### Requirement: Reims-first defaults
 New VMs SHALL default to Reims vGPU for macOS Sequoia and Tahoe when its QEMU is installed and the host checks pass, and the Host tab SHALL install the prebuilt Reims package or build it in Docker, as the Go app does.
