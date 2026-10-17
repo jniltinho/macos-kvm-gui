@@ -58,6 +58,20 @@ Both add "macOS KVM" to the applications menu, and a `.tar.gz` is there for othe
 
 Full walkthrough: [getting started](docs/getting-started.md).
 
+## reims-gui (Rust, preview)
+
+[reims-gui](reims-gui/README.md) is this app rewritten in Rust for Ubuntu 24.04 and 26.04, built around Reims vGPU: macOS's Metal display runs inside the app's window, and VMware SVGA VMs show QEMU's own screen there too. It reads the same Workspace and settings, so both apps can be installed side by side.
+
+```sh
+sudo apt install ./reims-gui_0.1.3_ubuntu24.04_amd64.deb   # or the ubuntu26.04 package
+```
+
+Packages are on the [reims-gui releases](https://github.com/jniltinho/macos-kvm-gui/releases?q=reims-gui&expanded=true), built in Docker (`reims-gui/scripts/build.sh 24.04|26.04`). Guide and known limits: [docs/reims-gui.md](docs/reims-gui.md) and [PARITY.md](reims-gui/PARITY.md).
+
+<p align="center">
+  <img src="docs/screenshots/reims-gui-screen-desktop.png" width="860" alt="reims-gui with macOS on the Reims vGPU display">
+</p>
+
 ## Documentation
 
 [Overview](docs/overview.md) · [Getting started](docs/getting-started.md) · [Command line](docs/cli.md) · [MCP server](docs/mcp.md) · [Architecture](docs/architecture.md) · [GPU passthrough](docs/gpu-passthrough.md) · [Reims vGPU](docs/reims-vgpu.md) · [reims-gui (Rust)](docs/reims-gui.md) · [Troubleshooting](docs/troubleshooting.md) · [Development](docs/development.md) · [Screenshots](docs/screenshots/README.md) · [References](docs/references.md)
