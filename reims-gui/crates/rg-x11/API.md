@@ -23,6 +23,7 @@ impl Embedded {                                              // Drop = release()
     pub fn show(&self) -> Result<()>;
     pub fn focus(&self) -> Result<()>;
     pub fn unfocus(&self) -> Result<()>;
+    pub fn app_active(&self) -> bool;
     pub fn is_alive(&self) -> bool;
     pub fn last_latency(&self) -> Option<Duration>;
     pub fn child(&self) -> u32;
@@ -36,12 +37,13 @@ impl Embedded {                                              // Drop = release()
    raw-window-handle (`Xlib`/`Xcb` handle), then `Embedder::new(None, id)`.
 2. After the VM starts: `find_window(qemu_pid, kind, 30 s)` **blocks** (polls every 50 ms) — run
    it off the UI thread (`spawn_blocking`). It matches a *viewable* window with
-   `_NET_WM_PID == pid` anywhere in the tree (window-manager frames are fine) and a title from
+   `_NET_WM_PID == pid` anywhere in the tree (window-manager frames are fine, but never inside a
+   window marked `_REIMS_GUI_CONTAINER`: another instance's embedding is off limits) and a title from
    `_NET_WM_NAME`/`WM_NAME`: `Reims` = starts with `Reims vGPU`; `QemuSdl` = starts with `QEMU`
    (QEMU's SDL UI sets `QEMU`, `QEMU (<-name>)`, plus ` [Stopped]` or a grab hint).
    Errors: `Error::NotFound` on timeout.
 3. `embed(win)`: creates a container (child of the app window, background None so the server
-   never clears it), puts QEMU's window in the save-set (if the app dies it goes back to the
+   never clears it, marked `_REIMS_GUI_CONTAINER`), puts QEMU's window in the save-set (if the app dies it goes back to the
    root instead of being destroyed), removes its `_NET_WM_STATE`, unmaps, reparents at (0,0),
    maps. `Embedded` owns its own X connection, so its events reach only it.
 4. Every frame: `set_rect(to_physical(rect, ctx.pixels_per_point()))` then `pump()`.
@@ -49,10 +51,12 @@ impl Embedded {                                              // Drop = release()
    when the rect is unchanged. `pump` never blocks: it drains the queue, coalesces the child's
    ConfigureNotify storm to the last one and, if the child moved/resized itself (the library
    calls `SDL_SetWindowSize` on a guest mode change), configures it back once. DestroyNotify
-   (QEMU exited) makes `is_alive()` false; call `release()` (or drop) and re-embed on restart.
+   (QEMU exited) or a ReparentNotify to another parent (another client took it; it is not taken
+   back) makes `is_alive()` false; call `release()` (or drop) and re-embed on restart.
 5. Overlay over the tab, tab switch, minimize: `hide()` (focus reverts to the app); `show()`
-   after. The pointer entering QEMU's window gives it the keyboard (EnterNotify, handled by
-   `pump`: SDL's ButtonPress selection is exclusive, so clicks on it cannot be watched);
+   after. The pointer entering QEMU's window gives it the keyboard while the app is active
+   (`app_active()`: `_NET_ACTIVE_WINDOW` is the app window, or without a WM the focus is inside
+   it; never while another application is in front) (EnterNotify, handled by `pump`: SDL's ButtonPress selection is exclusive, so clicks on it cannot be watched);
    `focus()` does the same explicitly (`SetInputFocus`; errors if the child is not viewable) and
    `unfocus()` gives the keyboard back to the app window (a click elsewhere in the app).
 6. `last_latency()`: time from the last child configure to its ConfigureNotify (diagnostics).

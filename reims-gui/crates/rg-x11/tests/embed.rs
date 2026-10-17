@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use rg_x11::{Embedder, WindowKind, probe};
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{
-    ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, MapState, WindowClass,
+    AtomEnum, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux, InputFocus, MapState,
+    PropMode, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
@@ -265,6 +266,123 @@ fn release_puts_child_back_on_root() {
             == MapState::VIEWABLE
     };
     wait("standalone again", viewable);
+}
+
+#[test]
+fn second_instance_cannot_take_an_embedded_window() {
+    let (_x, display) = xvfb();
+    let (conn, app1) = app_window(&display);
+    let (_conn2, app2) = app_window(&display);
+    let child = sdl_window(&display, "Reims vGPU");
+    let pid = child.0.id();
+    let first = Embedder::new(Some(&display), app1).unwrap();
+    let win = first
+        .find_window(pid, WindowKind::Reims, Duration::from_secs(30))
+        .unwrap();
+    let mut e = first.embed(win).unwrap();
+    e.set_rect(0, 0, 200, 100).unwrap();
+
+    let second = Embedder::new(Some(&display), app2).unwrap();
+    assert!(
+        second
+            .find_window(pid, WindowKind::Reims, Duration::from_millis(300))
+            .is_err(),
+        "found the window the first instance holds"
+    );
+
+    // Another client takes it anyway: the first lets go and does not take it back.
+    conn.reparent_window(win, app2, 0, 0).unwrap();
+    conn.sync().unwrap();
+    wait("ownership lost", || {
+        e.pump().unwrap();
+        !e.is_alive()
+    });
+    e.release().unwrap();
+    assert_eq!(geometry(&conn, win).1, app2);
+}
+
+#[test]
+fn enter_gives_focus_only_while_the_app_is_active() {
+    let (_x, display) = xvfb();
+    let (conn, app) = app_window(&display);
+    let root = conn.setup().roots[0].root;
+    // Another application's window, beside the app's.
+    let other = conn.generate_id().unwrap();
+    conn.create_window(
+        x11rb::COPY_DEPTH_FROM_PARENT,
+        other,
+        root,
+        1100,
+        0,
+        100,
+        100,
+        0,
+        WindowClass::INPUT_OUTPUT,
+        x11rb::COPY_FROM_PARENT,
+        &CreateWindowAux::new(),
+    )
+    .unwrap();
+    conn.map_window(other).unwrap();
+    conn.sync().unwrap();
+    let child = sdl_window(&display, "Reims vGPU");
+    let embedder = Embedder::new(Some(&display), app).unwrap();
+    let win = embedder
+        .find_window(child.0.id(), WindowKind::Reims, Duration::from_secs(30))
+        .unwrap();
+    let mut e = embedder.embed(win).unwrap();
+    e.set_rect(0, 0, 640, 360).unwrap();
+    wait("child configured", || {
+        e.pump().unwrap();
+        e.last_latency().is_some()
+    });
+    let focus = || conn.get_input_focus().unwrap().reply().unwrap().focus;
+    let set_focus = |w| {
+        conn.set_input_focus(InputFocus::PARENT, w, x11rb::CURRENT_TIME)
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    // The pointer leaves the child and comes back over it.
+    let reenter = |e: &mut rg_x11::Embedded| {
+        conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, 900, 600)
+            .unwrap();
+        conn.warp_pointer(x11rb::NONE, root, 0, 0, 0, 0, 100, 100)
+            .unwrap();
+        conn.sync().unwrap();
+        let until = Instant::now() + Duration::from_millis(400);
+        while Instant::now() < until {
+            e.pump().unwrap();
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    };
+
+    // No window manager: the other application holds the keyboard.
+    set_focus(other);
+    reenter(&mut e);
+    assert_eq!(focus(), other, "focus stolen from another application");
+
+    // A window manager says the app is active.
+    let active = conn
+        .intern_atom(false, b"_NET_ACTIVE_WINDOW")
+        .unwrap()
+        .reply()
+        .unwrap()
+        .atom;
+    let set_active = |w: u32| {
+        conn.change_property32(PropMode::REPLACE, root, active, AtomEnum::WINDOW, &[w])
+            .unwrap()
+            .check()
+            .unwrap();
+    };
+    set_active(app);
+    reenter(&mut e);
+    assert_eq!(focus(), win, "the active app gives QEMU the keyboard");
+
+    // ... and then that another application is.
+    set_active(other);
+    set_focus(other);
+    reenter(&mut e);
+    assert_eq!(focus(), other, "focus stolen from the active application");
 }
 
 #[test]

@@ -10,7 +10,7 @@ use x11rb::connection::Connection;
 use x11rb::protocol::Event;
 use x11rb::protocol::xproto::{
     AtomEnum, ChangeWindowAttributesAux, ConfigureWindowAux, ConnectionExt as _, CreateWindowAux,
-    EventMask, InputFocus, MapState, SetMode, Window, WindowClass,
+    EventMask, InputFocus, MapState, PropMode, SetMode, Window, WindowClass,
 };
 use x11rb::rust_connection::RustConnection;
 use x11rb::wrapper::ConnectionExt as _;
@@ -67,8 +67,12 @@ pub struct Embedder {
     conn: RustConnection,
     root: Window,
     parent: Window,
-    atoms: [u32; 4],
+    atoms: [u32; 6],
 }
+
+/// Set on every container the embedder creates: `find_window` never looks inside one, so a
+/// second instance of the app cannot take a window another instance holds.
+const CONTAINER_MARK: &[u8] = b"_REIMS_GUI_CONTAINER";
 
 /// How long `find_window` waits for a mapped `QemuSdl` window before taking an unmapped one.
 const UNMAPPED_GRACE: Duration = Duration::from_secs(2);
@@ -79,12 +83,14 @@ impl Embedder {
         let (conn, screen) = x11rb::connect(display)?;
         let root = conn.setup().roots[screen].root;
         conn.get_window_attributes(parent)?.reply()?;
-        let mut atoms = [0; 4];
+        let mut atoms = [0; 6];
         for (a, name) in atoms.iter_mut().zip([
             &b"_NET_WM_PID"[..],
             b"_NET_WM_NAME",
             b"UTF8_STRING",
             b"_NET_WM_STATE",
+            CONTAINER_MARK,
+            b"_NET_ACTIVE_WINDOW",
         ]) {
             *a = conn.intern_atom(false, name)?.reply()?.atom;
         }
@@ -98,7 +104,8 @@ impl Embedder {
     }
 
     /// Polls (every 50 ms, blocking the caller) for a mapped window with `_NET_WM_PID == pid`
-    /// whose title matches `kind`. Searches the whole tree, so window-manager frames are fine.
+    /// whose title matches `kind`. Searches the whole tree, so window-manager frames are fine,
+    /// but never inside a container of an embedder (this app's or another instance's).
     /// QEMU's SDL display keeps its window unmapped when it has no text consoles (the app runs
     /// it with `-serial none -parallel none`), so after a short grace an unmapped `QemuSdl`
     /// window is taken too: embedding maps it.
@@ -129,6 +136,9 @@ impl Embedder {
             return Ok(None);
         };
         for &c in &tree.children {
+            if self.is_container(c)? {
+                continue;
+            }
             if self.is_target(c, pid, kind, unmapped_ok)? {
                 return Ok(Some(c));
             }
@@ -137,6 +147,14 @@ impl Embedder {
             }
         }
         Ok(None)
+    }
+
+    fn is_container(&self, w: Window) -> Result<bool> {
+        Ok(self
+            .conn
+            .get_property(false, w, self.atoms[4], AtomEnum::ANY, 0, 0)?
+            .reply()
+            .is_ok_and(|p| p.type_ != u32::from(AtomEnum::NONE)))
     }
 
     fn is_target(&self, w: Window, pid: u32, kind: WindowKind, unmapped_ok: bool) -> Result<bool> {
@@ -193,6 +211,14 @@ impl Embedder {
             &CreateWindowAux::new().background_pixmap(x11rb::NONE),
         )?
         .check()?;
+        conn.change_property32(
+            PropMode::REPLACE,
+            container,
+            self.atoms[4],
+            AtomEnum::CARDINAL,
+            &[std::process::id()],
+        )?
+        .check()?;
         // Save-set: if the app dies, the server puts the child back on the root instead of
         // destroying it with the container.
         conn.change_save_set(SetMode::INSERT, child)?.check()?;
@@ -200,6 +226,7 @@ impl Embedder {
             child,
             // EnterWindow: the pointer entering QEMU's window gives it the keyboard (see `pump`);
             // ButtonPress cannot be shared with SDL, so a click cannot be watched instead.
+            // StructureNotify also reports another client reparenting it away (ownership lost).
             &ChangeWindowAttributesAux::new()
                 .event_mask(EventMask::STRUCTURE_NOTIFY | EventMask::ENTER_WINDOW),
         )?
@@ -213,6 +240,7 @@ impl Embedder {
         conn.map_window(container)?.check()?;
         Ok(Embedded {
             conn,
+            active_atom: self.atoms[5],
             root: self.root,
             parent: self.parent,
             container,
@@ -230,6 +258,7 @@ impl Embedder {
 /// QEMU's window inside the app. Dropping it releases the child (see [`Embedded::release`]).
 pub struct Embedded {
     conn: RustConnection,
+    active_atom: u32,
     root: Window,
     parent: Window,
     container: Window,
@@ -283,7 +312,10 @@ impl Embedded {
     /// Processes pending X events without blocking: a child that moved or resized itself (the
     /// library on a guest mode change) is configured back; DestroyNotify marks it dead; the
     /// pointer entering the child gives it the keyboard (no window manager does it for a child
-    /// window, and SDL's ButtonPress selection is exclusive, so clicks cannot be watched).
+    /// window, and SDL's ButtonPress selection is exclusive, so clicks cannot be watched), but
+    /// only while the app is the active window ([`Embedded::app_active`]), so hovering it while
+    /// another application is in front never steals the keyboard. A child that another client
+    /// reparented away is lost: marked not alive and never taken back.
     /// A storm of ConfigureNotify events is coalesced: only the last one counts.
     pub fn pump(&mut self) -> Result<()> {
         let mut last = None;
@@ -300,7 +332,14 @@ impl Embedded {
                     last = Some(geom);
                 }
                 Event::DestroyNotify(e) if e.window == self.child => self.alive = false,
-                Event::EnterNotify(e) if e.event == self.child && self.alive => {
+                Event::ReparentNotify(e)
+                    if e.window == self.child && e.parent != self.container =>
+                {
+                    self.alive = false;
+                }
+                Event::EnterNotify(e)
+                    if e.event == self.child && self.alive && self.app_active() =>
+                {
                     // Best effort: it may be unmapping right now.
                     let _ = self
                         .conn
@@ -317,6 +356,40 @@ impl Embedded {
             self.conn.flush()?;
         }
         Ok(())
+    }
+
+    /// Whether the app's window is the active one: `_NET_ACTIVE_WINDOW` on the root when a
+    /// window manager sets it, else the keyboard focus being inside the app's window.
+    pub fn app_active(&self) -> bool {
+        let active = self
+            .conn
+            .get_property(false, self.root, self.active_atom, AtomEnum::WINDOW, 0, 1)
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .filter(|p| p.type_ != u32::from(AtomEnum::NONE));
+        if let Some(p) = active {
+            return p.value32().and_then(|mut v| v.next()) == Some(self.parent);
+        }
+        let Some(mut w) = self
+            .conn
+            .get_input_focus()
+            .ok()
+            .and_then(|c| c.reply().ok())
+            .map(|f| f.focus)
+        else {
+            return false;
+        };
+        // 0 = None, 1 = PointerRoot: no window of the app holds the keyboard.
+        while w > 1 && w != self.root {
+            if w == self.parent {
+                return true;
+            }
+            let Some(t) = self.conn.query_tree(w).ok().and_then(|c| c.reply().ok()) else {
+                return false;
+            };
+            w = t.parent;
+        }
+        false
     }
 
     /// Unmaps the container (dialogs over the tab, tab switch); focus reverts to the app.
@@ -353,7 +426,8 @@ impl Embedded {
         self.latency
     }
 
-    /// False once QEMU's window is destroyed (QEMU exited). Updated by [`Embedded::pump`].
+    /// False once QEMU's window is destroyed (QEMU exited) or another client took it (reparented
+    /// it elsewhere). Updated by [`Embedded::pump`].
     pub fn is_alive(&self) -> bool {
         self.alive
     }

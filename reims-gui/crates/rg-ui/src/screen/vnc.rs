@@ -184,7 +184,12 @@ pub(crate) struct VncView {
     buttons: u8,
     /// Keys sent down, so their release matches.
     down: Vec<(Key, KeyCode)>,
+    /// The last pointer position sent, for releasing the buttons.
+    at: (u32, u32),
     hint_since: Option<f64>,
+    /// Everything `show` returned (tests: the fake VNC sink).
+    #[cfg(test)]
+    pub sent: Vec<Input>,
 }
 
 impl VncView {
@@ -217,8 +222,30 @@ impl VncView {
     }
 
     /// Paints the screen into `rect` and returns the guest's input. `waiting` is the text shown
-    /// before the first frame.
-    pub fn show(&mut self, ui: &mut Ui, rect: Rect, id: Id, waiting: &str) -> Vec<Input> {
+    /// before the first frame. `covered`: a modal, menu or popup is over the screen; it owns the
+    /// pointer and keyboard, so nothing reaches the guest and what is held down is released.
+    pub fn show(
+        &mut self,
+        ui: &mut Ui,
+        rect: Rect,
+        id: Id,
+        waiting: &str,
+        covered: bool,
+    ) -> Vec<Input> {
+        let out = self.draw(ui, rect, id, waiting, covered);
+        #[cfg(test)]
+        self.sent.extend_from_slice(&out);
+        out
+    }
+
+    fn draw(
+        &mut self,
+        ui: &mut Ui,
+        rect: Rect,
+        id: Id,
+        waiting: &str,
+        covered: bool,
+    ) -> Vec<Input> {
         let mut out = Vec::new();
         self.upload(ui.ctx());
         ui.painter().rect_filled(rect, 0, Color32::BLACK);
@@ -243,6 +270,13 @@ impl VncView {
             Rect::from_min_max(Pos2::ZERO, egui::pos2(1.0, 1.0)),
             Color32::WHITE,
         );
+        if covered {
+            if self.grabbed || self.buttons != 0 {
+                self.release(&mut out);
+                area.surrender_focus();
+            }
+            return out;
+        }
         self.keyboard(ui, &area, &mut out);
         self.pointer(ui, &area, rect, fb, &mut out);
         let area = if self.grabbed {
@@ -342,6 +376,10 @@ impl VncView {
         for (_, k) in self.down.drain(..) {
             out.push(Input::Key(false, k));
         }
+        if std::mem::take(&mut self.buttons) != 0 {
+            let (x, y) = self.at;
+            out.push(Input::Pointer { buttons: 0, x, y });
+        }
         self.grabbed = false;
         self.hint_since = None;
     }
@@ -386,10 +424,14 @@ impl VncView {
             let (x, y) = (p.x - rect.min.x, p.y - rect.min.y);
             to_frame(fb[0], fb[1], rect.width(), rect.height(), x, y)
         };
+        // The screen's own layer has the pointer: nothing (a window, a popup) is over it here.
+        let ours = area.contains_pointer();
         let mut moved = None;
         for e in ui.input(|i| i.events.clone()) {
             match e {
-                Event::PointerMoved(p) if rect.contains(p) => moved = at(p),
+                Event::PointerMoved(p) if rect.contains(p) && (ours || self.buttons != 0) => {
+                    moved = at(p)
+                }
                 Event::PointerButton {
                     pos,
                     button,
@@ -402,7 +444,9 @@ impl VncView {
                         PointerButton::Secondary => BUTTON_RIGHT,
                         _ => continue,
                     };
-                    if pressed && !rect.contains(pos) || !pressed && self.buttons & bit == 0 {
+                    if pressed && !(ours && rect.contains(pos))
+                        || !pressed && self.buttons & bit == 0
+                    {
                         continue;
                     }
                     if let Some((x, y)) = moved.take().or_else(|| at(pos)) {
@@ -411,6 +455,7 @@ impl VncView {
                         } else {
                             self.buttons & !bit
                         };
+                        self.at = (x, y);
                         out.push(Input::Pointer {
                             buttons: self.buttons,
                             x,
@@ -450,6 +495,7 @@ impl VncView {
             }
         }
         if let Some((x, y)) = moved {
+            self.at = (x, y);
             out.push(Input::Pointer {
                 buttons: self.buttons,
                 x,

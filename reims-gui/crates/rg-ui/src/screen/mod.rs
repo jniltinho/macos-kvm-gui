@@ -114,10 +114,14 @@ impl App {
                     }
                     _ => format!("Connecting to {name}'s screen…"),
                 };
-                let input = self
-                    .screen
-                    .vnc
-                    .show(ui, rect, Id::new("vnc-screen"), &waiting);
+                // Last frame's overlay flag, plus what opened since (a modal, a menu).
+                let covered = self.screen_area.overlay_open
+                    || !self.modals.is_empty()
+                    || overlay_over(ui.ctx(), rect);
+                let input =
+                    self.screen
+                        .vnc
+                        .show(ui, rect, Id::new("vnc-screen"), &waiting, covered);
                 if let Some(s) = &self.screen.session {
                     s.send(input);
                 }
@@ -331,6 +335,7 @@ impl App {
                             rect,
                             Id::new("vnc-window-screen"),
                             "Connecting to the VM's screen…",
+                            false,
                         );
                         if let Some(x) = &s.session {
                             x.send(input);
@@ -360,5 +365,79 @@ impl App {
             });
         });
         exit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use egui::{Event, Modifiers, PointerButton, pos2, vec2};
+    use egui_kittest::Harness;
+
+    use super::vnc::Input;
+    use crate::app::{App, Tab};
+    use crate::backend::PreviewUpdate;
+    use crate::dialogs::Modal;
+    use crate::fake::FakeBackend;
+    use crate::theme::ThemeMode;
+
+    /// A VMware SVGA VM on the VNC screen with a frame; `modal` opens a dialog over it.
+    fn vnc_screen(modal: bool) -> Harness<'static, App> {
+        let mut app = App::new(Box::new(FakeBackend::with_theme(ThemeMode::Light)));
+        app.backend.attach(&egui::Context::default(), false);
+        app.cur = Some("2".into());
+        let _ = app.backend.start("2", false);
+        app.refresh_cache();
+        app.set_tab(Tab::Screen);
+        let img = egui::ColorImage::filled([640, 400], egui::Color32::DARK_BLUE);
+        app.screen.vnc.pending.push(PreviewUpdate::Full(img));
+        if modal {
+            app.modals
+                .push(Modal::info("Settings", "A dialog over the screen."));
+        }
+        let mut h = Harness::builder()
+            .with_size(vec2(1280.0, 820.0))
+            .build_ui_state(|ui, app: &mut App| app.show(ui), app);
+        h.run_steps(5);
+        h
+    }
+
+    /// Clicks in the middle of the screen; returns the button presses the guest got.
+    fn click_screen(h: &mut Harness<'static, App>) -> Vec<Input> {
+        let [x, y, w, ht] = h.state().screen_area.rect.unwrap_or_default();
+        let pos = pos2((x + w / 2) as f32, (y + ht / 2) as f32);
+        h.state_mut().screen.vnc.sent.clear();
+        h.event(Event::PointerMoved(pos));
+        h.run_steps(2);
+        for pressed in [true, false] {
+            h.event(Event::PointerButton {
+                pos,
+                button: PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+            h.run_steps(2);
+        }
+        h.state()
+            .screen
+            .vnc
+            .sent
+            .iter()
+            .filter(|i| matches!(i, Input::Pointer { buttons, .. } if *buttons != 0))
+            .copied()
+            .collect()
+    }
+
+    #[test]
+    fn click_reaches_the_guest_without_a_dialog() {
+        let mut h = vnc_screen(false);
+        assert!(!click_screen(&mut h).is_empty());
+    }
+
+    #[test]
+    fn click_under_a_modal_never_reaches_the_guest() {
+        let mut h = vnc_screen(true);
+        assert!(h.state().screen.vnc.has_frame());
+        let presses = click_screen(&mut h);
+        assert!(presses.is_empty(), "{presses:?}");
     }
 }
