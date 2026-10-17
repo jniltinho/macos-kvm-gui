@@ -5,7 +5,7 @@ description: Create a version tag and a GitHub Release for macos-kvm-gui with po
 
 # Releasing macos-kvm-gui
 
-`.github/workflows/release.yml` is manual: after pushing a `v*` tag, run `gh workflow run release.yml --ref vX.Y.Z`. It tests, builds the binary (with Reims vGPU window embedding, so the runner builds reims-gui's rg-x11 library in Docker) with the tag as its version, packages it and creates the GitHub Release, not marked latest: reims-gui is the recommended app. This skill covers the tag and the release notes.
+`.github/workflows/go-release.yml` is manual: after pushing a `v*` tag, run `gh workflow run go-release.yml --ref vX.Y.Z`. It tests, builds the binary (with Reims vGPU window embedding, so the runner builds reims-gui's rg-x11 library in Docker) with the tag as its version, packages it and creates the GitHub Release, not marked latest: reims-gui is the recommended app. This skill covers the tag and the release notes.
 
 ## Before you start
 
@@ -60,8 +60,8 @@ git push origin "$NEXT"
 ### 3. Watch the workflow
 
 ```bash
-gh run list --workflow release.yml --limit 3
-gh run watch "$(gh run list --workflow release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh run list --workflow go-release.yml --limit 3
+gh run watch "$(gh run list --workflow go-release.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
 gh release view "$NEXT"
 ```
 

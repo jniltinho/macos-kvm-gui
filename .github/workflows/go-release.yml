@@ -1,6 +1,6 @@
 name: macos-kvm-gui (Go) release
 
-# Manual only: run it on a v* tag (gh workflow run release.yml --ref vX.Y.Z). reims-gui (Rust),
+# Manual only: run it on a v* tag (gh workflow run go-release.yml --ref vX.Y.Z). reims-gui (Rust),
 # the recommended app, releases on reims-gui-v* tags and stays the latest release.
 on:
   workflow_dispatch:

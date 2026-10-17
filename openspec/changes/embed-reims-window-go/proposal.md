@@ -43,7 +43,7 @@ In the Go app (`macos-kvm-gui`, Fyne), a Reims vGPU VM's screen is a separate SD
   - `main.go`: signal handling that releases the window before exit;
   - `internal/gui/layout.go`: the app-owned menu bar;
   - `reims-gui/crates/rg-x11/src/lib.rs`: the `app_active()` guard on FocusIn;
-  - `Makefile`, `scripts/package.sh`, `.github/workflows/ci.yml` and `release.yml` (manual-only).
+  - `Makefile`, `scripts/package.sh`, `.github/workflows/go-ci.yml` and `release.yml` (manual-only).
 - **Dependencies:**
   - no new Go modules;
   - the Go build gains a static library built from the existing Rust workspace (`x11rb`, pure Rust, no libX11);
