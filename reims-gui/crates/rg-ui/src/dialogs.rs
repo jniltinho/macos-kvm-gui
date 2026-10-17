@@ -5,6 +5,7 @@
 use egui::{Align, Layout, RichText, Ui, vec2};
 use rg_core::Nic;
 use rg_core::config::{self, Config};
+use rg_core::network::random_mac;
 
 use crate::app::{Action, App, Tab, VERSIONS, version_label, version_title};
 use crate::backend::{HostInfo, Status, Task, VmEntry, VmId};
@@ -207,12 +208,11 @@ impl App {
                     },
                 );
                 if f == Footer::Ok {
-                    match self.backend.remove_vm(vm, *delete_files) {
-                        Ok(()) => o.actions.push(Action::Recheck),
-                        Err(e) => o.modals.push(Modal::error("Remove VM", &e)),
-                    }
-                    self.cur = None;
-                    self.reload_vms();
+                    // Off the UI thread: a purge scans /proc and deletes the whole folder.
+                    o.actions.push(Action::Run(Task::RemoveVm {
+                        id: vm.clone(),
+                        delete_files: *delete_files,
+                    }));
                 }
                 o.close = f != Footer::None;
             }
@@ -373,12 +373,15 @@ pub struct Settings {
     pub id: VmId,
     pub name: String,
     pub c: Config,
-    original_networks: Option<Vec<Nic>>,
+    /// The VM had no `networks` (Go's implicit legacy adapter).
+    legacy: bool,
+    /// The adapters as loaded ([`Config::adapters`]).
+    current: Vec<Nic>,
     pub page: Page,
     system_tab: usize,
-    adapter: usize,
+    pub(crate) adapter: usize,
     threads: u32,
-    nics: Vec<Nic>,
+    pub(crate) nics: Vec<Nic>,
     host: HostInfo,
     reims_installed: bool,
     /// Storage: the disk and the install media, as the Install tab shows them.
@@ -434,14 +437,9 @@ fn wide(res: &str) -> bool {
 
 impl Settings {
     pub fn new(v: &VmEntry, host: HostInfo, reims_installed: bool) -> Self {
-        let mut nics = v.config.networks.clone().unwrap_or_else(|| {
-            vec![Nic {
-                enabled: true,
-                mode: "nat".into(),
-                model: default_nic_model(&v.config.version).into(),
-                ..Nic::default()
-            }]
-        });
+        // Like Go: a legacy VM (`networks = null`) edits its implicit adapter, legacy MAC included.
+        let current = v.config.adapters();
+        let mut nics = current.clone();
         nics.resize(
             4,
             Nic {
@@ -454,7 +452,8 @@ impl Settings {
             id: v.id.clone(),
             name: v.display_name().into(),
             c: v.config.clone(),
-            original_networks: v.config.networks.clone(),
+            legacy: v.config.networks.is_none(),
+            current,
             page: Page::General,
             system_tab: 0,
             adapter: 0,
@@ -484,7 +483,7 @@ impl Settings {
         if !n.reims() {
             n.resolution.clear();
         }
-        let used = self.original_networks.as_ref().map_or(1, Vec::len);
+        let used = self.current.len();
         let last = self
             .nics
             .iter()
@@ -493,11 +492,11 @@ impl Settings {
             .map(|(i, _)| i + 1)
             .max()
             .unwrap_or(0);
-        let nics: Vec<Nic> = self.nics[..last].to_vec();
-        n.networks = match &self.original_networks {
-            None if nics.len() == 1 && nics[0].enabled && nics[0].mac.is_empty() => None, // untouched legacy VM
-            _ => Some(nics),
-        };
+        let mut nics: Vec<Nic> = self.nics[..last].to_vec();
+        for x in nics.iter_mut().filter(|x| x.mac.trim().is_empty()) {
+            x.mac = random_mac(); // an adapter that was never enabled
+        }
+        n.networks = (!(self.legacy && nics == self.current)).then_some(nics); // untouched legacy VM keeps None
         Ok(n)
     }
 
@@ -738,12 +737,6 @@ impl Settings {
         ui.separator();
         let version = self.c.version.clone();
         let (bridges, helper) = (self.host.bridges.clone(), self.host.bridge_helper);
-        let mac = format!(
-            "52:54:00:{:02x}:{:02x}:{:02x}",
-            self.adapter * 17 + 3,
-            self.c.ssh_port % 256,
-            self.adapter + 1
-        );
         let Some(n) = self.nics.get_mut(self.adapter) else {
             return;
         };
@@ -753,7 +746,7 @@ impl Settings {
             && n.enabled
             && n.mac.is_empty()
         {
-            n.mac = mac; // a new adapter gets its own address
+            n.mac = random_mac(); // a new adapter gets its own address
         }
         ui.add_enabled_ui(n.enabled, |ui| {
             nic_form(ui, n, &bridges, &format!("nic{}", self.adapter))

@@ -200,6 +200,12 @@ pub enum Task {
     Move {
         folder: String,
     },
+    /// Remove VM: `id` off the list, with its folder when `delete_files` (rg-ops `delete_vm`,
+    /// refused while it runs). [`Event::VmsChanged`] follows.
+    RemoveVm {
+        id: VmId,
+        delete_files: bool,
+    },
     /// File › Offline installers › Delete: the cached installer `build` (rg-macos
     /// `remove_installer`, refused while a VM uses its disc).
     RemoveInstaller {
@@ -237,6 +243,7 @@ impl Task {
             Self::Export { full: true, .. } => "Export VM bundle".into(),
             Self::Export { .. } => "Export VM settings".into(),
             Self::Move { .. } => "Move VM".into(),
+            Self::RemoveVm { .. } => "Remove VM".into(),
             Self::RemoveInstaller { .. } => "Delete offline installer".into(),
             Self::InstallOffline { .. } => "Type the install line in the VM".into(),
             Self::RootPatch { on: true } => "Download OCLP's kexts for root-patch mode".into(),
@@ -325,7 +332,6 @@ pub trait Backend {
     fn save_config(&self, id: &str, config: &Config) -> Result<(), String>;
     /// Adds a VM (the wizard's Finish); its files come from [`Task::CreateVmFiles`].
     fn create_vm(&self, config: &Config) -> Result<VmId, String>;
-    fn remove_vm(&self, id: &str, delete_files: bool) -> Result<(), String>;
     /// Defaults recommended for this host (memory, processors).
     fn recommended(&self) -> Config;
     fn host_info(&self) -> HostInfo;

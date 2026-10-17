@@ -49,8 +49,9 @@ struct Inner {
     reg: Mutex<Registry>,
     /// `--config <file.json>`: the only VM, stored in that file.
     single: Option<Mutex<rg_core::VmEntry>>,
-    /// Rebuilt when the Workspace changes (its paths come from it).
-    ops: Mutex<rg_ops::Ops>,
+    /// The Workspace root (as the registry stores it) and the operations on it; rebuilt when it
+    /// changes, here or in the shared database (the Go app, the CLI).
+    ops: Mutex<(String, rg_ops::Ops)>,
     /// Tests swap the host for a fake one.
     host: Option<Host>,
     rt: Handle,
@@ -219,6 +220,15 @@ fn xdg_open(target: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The operations on the Workspace `root`, with `host` instead of the system's (tests).
+fn new_ops(app: &AppDir, root: &str, host: Option<&Host>) -> rg_ops::Result<rg_ops::Ops> {
+    let mut ops = rg_ops::Ops::new(app.clone(), root)?;
+    if let Some(h) = host {
+        ops.host = h.clone();
+    }
+    Ok(ops)
+}
+
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
@@ -255,10 +265,8 @@ impl RealBackend {
                 None
             }
         };
-        let mut ops = rg_ops::Ops::new(app.clone(), &reg.workspace_root())?;
-        if let Some(h) = &host {
-            ops.host = h.clone();
-        }
+        let root = reg.workspace_root();
+        let ops = new_ops(&app, &root, host.as_ref())?;
         let rt = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("reims-gui-backend")
@@ -269,7 +277,7 @@ impl RealBackend {
             app,
             reg: Mutex::new(reg),
             single,
-            ops: Mutex::new(ops),
+            ops: Mutex::new((root, ops)),
             host,
             rt: rt.handle().clone(),
             tx,
@@ -340,8 +348,25 @@ impl Inner {
         self.emit(Event::Log(line.into()));
     }
 
+    /// The operations for the registry's current Workspace. The Go app or the CLI may have
+    /// changed it in the shared database: then they are rebuilt (Reims lookup, installer and
+    /// kext folders) and the cached host facts dropped.
     fn ops(&self) -> rg_ops::Ops {
-        self.ops.lock().clone()
+        let root = self.reg.lock().workspace_root();
+        let mut cur = self.ops.lock();
+        if cur.0 == root {
+            return cur.1.clone();
+        }
+        match new_ops(&self.app, &root, self.host.as_ref()) {
+            Ok(o) => cur.1 = o,
+            // Kept on the old folders; logged once (the root is remembered either way).
+            Err(e) => self.log(format!("error: Workspace {root}: {e}")),
+        }
+        cur.0 = root;
+        let ops = cur.1.clone();
+        drop(cur);
+        self.invalidate_checks();
+        ops
     }
 
     fn entries(&self) -> Result<Vec<rg_core::VmEntry>, String> {
@@ -705,6 +730,20 @@ impl Inner {
                     moved.config.workspace
                 ))
             }
+            Task::RemoveVm { id, delete_files } => {
+                if self.single.is_some() {
+                    return Err("this window shows one VM file (--config)".into());
+                }
+                let e = self.entry(id)?;
+                // Its own connection: the UI keeps using the shared one meanwhile.
+                let reg = Registry::open(&self.app).map_err(err)?;
+                for f in ops.delete_vm(&reg, &e, *delete_files).map_err(err)? {
+                    log(&format!("deleted {f}"));
+                }
+                self.seen.lock().remove(id);
+                self.emit(Event::VmsChanged);
+                Ok(format!("{} removed", e.display_name()))
+            }
             Task::RemoveInstaller { build } => {
                 rg_macos::remove_installer(&ops.installers_dir(), build).map_err(err)?;
                 Ok(format!("Deleted the offline installer {build}"))
@@ -1008,23 +1047,6 @@ impl Backend for RealBackend {
         Ok(e.id)
     }
 
-    fn remove_vm(&self, id: &str, delete_files: bool) -> Result<(), String> {
-        if self.inner.single.is_some() {
-            return Err("this window shows one VM file (--config)".into());
-        }
-        let e = self.inner.entry(id)?;
-        let ops = self.inner.ops();
-        let removed = ops
-            .delete_vm(&self.inner.reg.lock(), &e, delete_files)
-            .map_err(err)?;
-        for f in removed {
-            self.inner.log(format!("deleted {f}"));
-        }
-        self.inner.seen.lock().remove(id);
-        self.inner.emit(Event::VmsChanged);
-        Ok(())
-    }
-
     fn recommended(&self) -> Config {
         let mem = self.inner.ops().host.mem_total_mib();
         Config::defaults().recommended(threads(), mem)
@@ -1258,19 +1280,18 @@ impl Backend for RealBackend {
     }
 
     fn set_workspace_root(&self, path: &str) -> Result<(), String> {
-        let reg = self.inner.reg.lock();
-        if path.trim() == reg.workspace_root() {
+        let root = self.inner.reg.lock().workspace_root();
+        if path.trim() == root {
             return Ok(());
         }
-        reg.set_workspace_root(path).map_err(err)?;
-        let mut ops =
-            rg_ops::Ops::new(self.inner.app.clone(), &reg.workspace_root()).map_err(err)?;
-        if let Some(h) = &self.inner.host {
-            ops.host = h.clone();
-        }
-        *self.inner.ops.lock() = ops;
-        drop(reg);
-        self.inner.invalidate_checks();
+        // Validate the folder before saving it.
+        new_ops(&self.inner.app, path, self.inner.host.as_ref()).map_err(err)?;
+        self.inner
+            .reg
+            .lock()
+            .set_workspace_root(path)
+            .map_err(err)?;
+        self.inner.ops(); // rebuilds them
         Ok(())
     }
 

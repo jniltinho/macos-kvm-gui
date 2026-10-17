@@ -95,8 +95,44 @@ fn creates_lists_saves_and_removes_vms() -> TestResult {
 
     b.select(&vms[0].id);
     assert_eq!(b.selected(), Some(vms[0].id.clone()));
-    b.remove_vm(&id, false)?;
+    // Remove with purge runs off the UI thread and reports through events.
+    let folder = t.path().join("VMs/nilton");
+    std::fs::create_dir_all(&folder)?;
+    std::fs::write(folder.join("mac_hdd_ng.img"), "disk")?;
+    b.run(
+        None,
+        Task::RemoveVm {
+            id: id.clone(),
+            delete_files: true,
+        },
+    );
+    let done = wait(&b, |e| matches!(e, Event::TaskDone { .. })).ok_or("no TaskDone")?;
+    let Event::TaskDone { result, .. } = done else {
+        return Err("unreachable".into());
+    };
+    assert!(result?.contains("removed"));
     assert_eq!(b.vms().len(), 1);
+    assert!(!folder.exists());
+    Ok(())
+}
+
+#[test]
+fn workspace_changed_elsewhere_rebuilds_the_operations() -> TestResult {
+    let t = tempfile::tempdir()?;
+    let b = backend(&t)?;
+    let c = b.vms()[0].config.clone();
+    b.host_checks(&c);
+    assert!(wait(&b, |e| *e == Event::VmsChanged).is_some());
+    assert!(b.inner.checks.lock().fresh.is_some());
+    // The Go app (or the CLI) sets another Workspace in the shared database.
+    let other = t.path().join("Elsewhere");
+    Registry::open(&AppDir::at(t.path().join("app")))?
+        .set_workspace_root(&other.to_string_lossy())?;
+    assert_eq!(b.inner.ops().workspace_root, other);
+    assert!(
+        b.inner.checks.lock().fresh.is_none(),
+        "host facts recomputed"
+    );
     Ok(())
 }
 

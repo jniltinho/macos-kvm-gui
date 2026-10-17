@@ -567,3 +567,106 @@ fn settings_move_opens_the_move_dialog() {
     h.run_steps(5);
     assert!(matches!(h.state().modals.as_slice(), [Modal::File(_)]));
 }
+
+// ---- Settings › Network (the Go app's network.go) ----
+
+fn settings_of(networks: Option<Vec<rg_core::Nic>>) -> crate::dialogs::Settings {
+    let v = crate::backend::VmEntry {
+        id: "1".into(),
+        config: rg_core::Config {
+            name: "Go VM".into(),
+            networks,
+            ..rg_core::Config::defaults()
+        },
+        state: VmState::Stopped,
+        outside: false,
+    };
+    crate::dialogs::Settings::new(&v, Default::default(), false)
+}
+
+fn saved_nics(s: &crate::dialogs::Settings) -> Option<Vec<rg_core::Nic>> {
+    s.collect().unwrap_or_else(|e| unreachable!("{e}")).networks
+}
+
+#[test]
+fn untouched_legacy_vm_keeps_its_implicit_adapter() {
+    assert_eq!(saved_nics(&settings_of(None)), None);
+}
+
+#[test]
+fn edited_legacy_adapter_is_saved_with_the_legacy_mac() {
+    let mut s = settings_of(None);
+    s.nics[0].mode = "bridged".into();
+    s.nics[0].bridge = "br0".into();
+    s.nics[0].model = "e1000-82545em".into();
+    let nics = saved_nics(&s).unwrap_or_default();
+    assert_eq!(nics.len(), 1);
+    assert_eq!(
+        (
+            nics[0].mode.as_str(),
+            nics[0].model.as_str(),
+            nics[0].mac.as_str()
+        ),
+        ("bridged", "e1000-82545em", rg_core::network::LEGACY_MAC)
+    );
+}
+
+#[test]
+fn skipped_adapters_get_valid_macs() {
+    let mut s = settings_of(None);
+    s.nics[2].enabled = true;
+    s.nics[2].mac = "02:00:00:00:00:03".into();
+    let nics = saved_nics(&s).unwrap_or_default();
+    assert_eq!(nics.len(), 3);
+    assert!(!nics[1].enabled);
+    let r = rg_core::network::validate_nics(&nics);
+    assert!(r.is_ok(), "{r:?}");
+}
+
+/// Adapter 2's MAC after ticking "Enable Network Adapter" in a fresh app.
+fn enabled_adapter_mac() -> String {
+    let mut h = harness(ThemeMode::Light, |a| {
+        if let Some(Modal::Settings(mut s)) = Modal::settings(a) {
+            s.page = Page::Network;
+            s.adapter = 1;
+            a.open(Modal::Settings(s));
+        }
+    });
+    h.get_by_label("Enable Network Adapter").click();
+    h.run_steps(5);
+    match h.state().modals.last() {
+        Some(Modal::Settings(s)) => s.nics[1].mac.clone(),
+        _ => String::new(),
+    }
+}
+
+#[test]
+fn enabling_an_adapter_gives_it_a_random_mac() {
+    let (a, b) = (enabled_adapter_mac(), enabled_adapter_mac());
+    let r = rg_core::network::validate_nics(&[rg_core::Nic {
+        enabled: true,
+        mode: "nat".into(),
+        model: "vmxnet3".into(),
+        mac: a.clone(),
+        ..Default::default()
+    }]);
+    assert!(r.is_ok(), "{a}: {r:?}");
+    assert_ne!(a, b, "same VM and SSH port, still different addresses");
+}
+
+#[test]
+fn remove_runs_as_a_task_and_refreshes_the_list() {
+    let mut h = harness(ThemeMode::Light, |a| {
+        if let Some(m) = a.current().map(Modal::confirm_remove) {
+            a.open(m);
+        }
+    });
+    let before = h.state().vms.len();
+    // The dialog's button (the toolbar has one too).
+    if let Some(b) = h.get_all_by_label("Remove").last() {
+        b.click();
+    }
+    h.run_steps(5);
+    assert!(h.state().busy.is_none());
+    assert_eq!(h.state().vms.len(), before - 1);
+}
